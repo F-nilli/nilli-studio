@@ -115,7 +115,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
           className="flex items-center gap-2 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
         >
           <Plus className="w-5 h-5" />
-          New Episode
+          New Project
         </Link>
       </div>
 
@@ -259,7 +259,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
           <p className="text-base text-[#888] mt-2">
             {filter !== 'all'
               ? 'Try switching to All'
-              : 'Hit "+ New Episode" to kick off your next production'}
+              : 'Hit "+ New Project" to kick off your next production'}
           </p>
           {filter === 'all' && (
             <Link
@@ -267,7 +267,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
               className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
             >
               <Plus className="w-5 h-5" />
-              New Episode
+              New Project
             </Link>
           )}
         </div>
