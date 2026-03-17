@@ -63,3 +63,14 @@ h2 {
   background: #333;
   border-radius: 3px;
 }
+
+@keyframes dotComplete {
+  0%   { transform: scale(1);   background-color: #ff3c00; }
+  35%  { transform: scale(2.2); background-color: #ff6633; }
+  65%  { transform: scale(1.6); background-color: #555; }
+  100% { transform: scale(1);   background-color: #333; }
+}
+
+.dot-complete {
+  animation: dotComplete 0.75s ease-out forwards;
+}

@@ -21,11 +21,31 @@ export default async function EpisodeDetailPage({ params }: { params: Promise<{ 
 
   if (!episodeRes.data) notFound()
 
+  const taskIds = (tasksRes.data || []).map(t => t.id)
+
+  const { data: commentsData } = taskIds.length > 0
+    ? await supabase
+        .from('comments')
+        .select('task_id, body, created_at')
+        .in('task_id', taskIds)
+        .order('created_at', { ascending: false })
+    : { data: [] }
+
+  // Latest comment + count per task
+  const taskComments: Record<string, { count: number; latest: string }> = {}
+  for (const c of (commentsData || [])) {
+    if (!taskComments[c.task_id]) {
+      taskComments[c.task_id] = { count: 0, latest: c.body }
+    }
+    taskComments[c.task_id].count++
+  }
+
   return (
     <EpisodeDetailClient
       currentUser={profileRes.data as User}
       episode={episodeRes.data as Episode}
       initialTasks={(tasksRes.data || []) as unknown as Task[]}
+      taskComments={taskComments}
     />
   )
 }
