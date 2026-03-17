@@ -177,7 +177,7 @@ function EpisodeTaskRow({
 
           <div className="flex-1 min-w-0">
             <p className={cn(
-              'text-sm font-medium truncate',
+              'text-base font-medium truncate',
               isLocked ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white'
             )}>
               {task.label}

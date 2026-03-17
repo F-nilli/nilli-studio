@@ -88,20 +88,20 @@ export function Navbar({ user }: NavbarProps) {
   ]
 
   return (
-    <nav className="h-14 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-4 gap-6 sticky top-0 z-40">
+    <nav className="h-12 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-4 gap-4 sticky top-0 z-40">
       {/* Logo */}
       <Link href="/dashboard" className="shrink-0">
-        <Image src="/logo.png" alt="Nilli Studio" width={100} height={36} className="h-8 w-auto object-contain" priority />
+        <Image src="/logo.png" alt="Nilli Studio" width={90} height={32} className="h-7 w-auto object-contain" priority />
       </Link>
 
       {/* Nav Links */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5">
         {navLinks.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+              'flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-medium transition-colors',
               pathname.startsWith(href)
                 ? 'bg-[#ff3c00] text-white'
                 : 'text-[#888] hover:text-white hover:bg-white/5'

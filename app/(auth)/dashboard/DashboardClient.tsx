@@ -133,8 +133,8 @@ function TaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClic
               {task.episode?.guest_name} · {task.episode?.client_label}
             </span>
           </div>
-          <p className="text-sm font-medium text-gray-900 dark:text-white">{task.label}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{task.track}</p>
+          <p className="text-base font-medium text-gray-900 dark:text-white">{task.label}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{task.track}</p>
         </div>
 
         <div className="flex flex-col items-end gap-2 shrink-0">
