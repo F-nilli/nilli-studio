@@ -39,13 +39,8 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
   const overdue = isOverdue(task.due_date, task.status)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
 
-  useEffect(() => {
-    fetchComments()
-  }, [task.id])
-
-  useEffect(() => {
-    commentEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [comments])
+  useEffect(() => { fetchComments() }, [task.id])
+  useEffect(() => { commentEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [comments])
 
   async function fetchComments() {
     const { data } = await supabase
@@ -60,13 +55,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
     e.preventDefault()
     if (!newComment.trim()) return
     setSubmitting(true)
-
     await supabase.from('comments').insert({
       task_id: task.id,
       author_id: currentUser.id,
       body: newComment.trim(),
     })
-
     setNewComment('')
     setSubmitting(false)
     fetchComments()
@@ -74,12 +67,10 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
 
   async function updateStatus(newStatus: TaskStatus) {
     if (newStatus === 'in_review') {
-      // Notify Ali (and Francis) about review submission
       const { data: reviewers } = await supabase
         .from('users')
         .select('*')
         .in('name', ['Ali', 'Francis'])
-
       for (const reviewer of reviewers || []) {
         if (reviewer.id !== currentUser.id) {
           await sendNotification(supabase, {
@@ -111,47 +102,24 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
   }
 
   async function checkAndUnlockDependencies(episodeId: string) {
-    const { data: allTasks } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('episode_id', episodeId)
-
+    const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', episodeId)
     if (!allTasks) return
-
-    const approvedIds = new Set(
-      allTasks.filter(t => t.status === 'approved').map(t => t.id)
-    )
-
+    const approvedIds = new Set(allTasks.filter(t => t.status === 'approved').map(t => t.id))
     for (const t of allTasks) {
       if (t.status === 'locked' && t.dep_task_ids.length > 0) {
         const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
         if (allDepsApproved) {
-          await supabase
-            .from('tasks')
-            .update({ status: 'ready' })
-            .eq('id', t.id)
-
-          // Notify assignee
-          const { data: assignee } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', t.assignee_id)
-            .single()
-
+          await supabase.from('tasks').update({ status: 'ready' }).eq('id', t.id)
+          const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
           if (assignee) {
-            const { data: episode } = await supabase
-              .from('episodes')
-              .select('*')
-              .eq('id', episodeId)
-              .single()
-
+            const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()
             await sendNotification(supabase, {
               userId: assignee.id,
               type: 'task_unlocked',
               title: 'New task ready',
               body: `"${t.label}" is now ready for ${episode ? `${episode.guest_name} / ${episode.client_label}` : ''}`,
               taskId: t.id,
-              episodeId: episodeId,
+              episodeId,
               slackWebhookUrl: assignee.slack_webhook_url,
             })
           }
@@ -160,85 +128,72 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
     }
   }
 
-  function handleApprovalOpen(action: 'approve' | 'revision') {
-    setApprovalAction(action)
-    setShowApprovalModal(true)
-  }
-
   const nextStatus = NEXT_STATUS[task.status]
   const canAction = isAssignee && nextStatus !== undefined
   const canReview = isReviewer && task.status === 'in_review'
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
         <div
-          className="bg-white dark:bg-gray-900 w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col shadow-2xl"
+          className="bg-[#1e1e1e] border border-[#2e2e2e] w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col shadow-2xl"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-start justify-between p-5 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-start justify-between p-5 border-b border-[#2e2e2e]">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: trackColor }}
-                />
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{task.track}</span>
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: trackColor }} />
+                <span className="text-sm font-medium text-[#888]">{task.track}</span>
                 <StatusBadge status={task.status} />
                 {overdue && (
-                  <span className="flex items-center gap-1 text-xs text-red-500">
-                    <AlertCircle className="w-3 h-3" />
-                    Overdue
+                  <span className="flex items-center gap-1 text-sm text-[#ff3c00]">
+                    <AlertCircle className="w-3 h-3" />Overdue
                   </span>
                 )}
               </div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white leading-snug">{task.label}</h2>
+              <h2 className="text-lg font-bold text-white leading-snug">{task.label}</h2>
             </div>
-            <button onClick={onClose} className="ml-4 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
+            <button onClick={onClose} className="ml-4 p-1 rounded-md hover:bg-[#2a2a2a] text-[#888]">
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            {/* Meta */}
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Assignee</p>
+                <p className="text-xs text-[#888] mb-1">Assignee</p>
                 {task.assignee && (
                   <div className="flex items-center gap-2">
                     <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" />
-                    <span className="text-gray-900 dark:text-white font-medium">{task.assignee.name}</span>
+                    <span className="text-white font-medium">{task.assignee.name}</span>
                   </div>
                 )}
               </div>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Due Date</p>
-                <p className={cn('font-medium', overdue ? 'text-red-500' : 'text-gray-900 dark:text-white')}>
+                <p className="text-xs text-[#888] mb-1">Due Date</p>
+                <p className={cn('font-medium', overdue ? 'text-[#ff3c00]' : 'text-white')}>
                   {formatDate(task.due_date)}
                 </p>
               </div>
             </div>
 
-            {/* Note */}
             {task.note && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
-                <p className="text-sm text-yellow-800 dark:text-yellow-300">{task.note}</p>
+              <div className="bg-[#ff3c00]/10 border border-[#ff3c00]/20 rounded-lg p-3">
+                <p className="text-base text-[#ff9980]">{task.note}</p>
               </div>
             )}
 
-            {/* Locked state */}
             {task.status === 'locked' && (
-              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+              <div className="flex items-center gap-2 text-base text-[#666] bg-[#2a2a2a] rounded-lg p-3">
                 <Lock className="w-4 h-4" />
                 <span>Waiting for dependencies to be approved</span>
               </div>
             )}
 
-            {/* Comments */}
             <div>
-              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-semibold text-[#888] uppercase tracking-wider mb-3">
                 Comments ({comments.length})
               </h3>
               <div className="space-y-3">
@@ -249,12 +204,10 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
                     )}
                     <div className="flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-xs font-semibold text-gray-900 dark:text-white">
-                          {comment.author?.name}
-                        </span>
-                        <span className="text-xs text-gray-400">{formatDate(comment.created_at)}</span>
+                        <span className="text-sm font-semibold text-white">{comment.author?.name}</span>
+                        <span className="text-xs text-[#666]">{formatDate(comment.created_at)}</span>
                       </div>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{comment.body}</p>
+                      <p className="text-base text-[#ccc] mt-0.5">{comment.body}</p>
                     </div>
                   </div>
                 ))}
@@ -264,31 +217,29 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 dark:border-gray-800 p-4 space-y-3">
-            {/* Comment input */}
+          <div className="border-t border-[#2e2e2e] p-4 space-y-3">
             <form onSubmit={submitComment} className="flex gap-2">
               <Avatar name={currentUser.name} color={currentUser.avatar_color} size="sm" />
               <input
                 value={newComment}
                 onChange={e => setNewComment(e.target.value)}
                 placeholder="Add a comment..."
-                className="flex-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-1.5 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-base text-white placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
               />
               <button
                 type="submit"
                 disabled={submitting || !newComment.trim()}
-                className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg transition-colors"
+                className="p-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-40 text-white rounded-lg transition-colors"
               >
                 <Send className="w-4 h-4" />
               </button>
             </form>
 
-            {/* Action Buttons */}
             {canAction && (
               <button
                 onClick={() => updateStatus(nextStatus!)}
                 disabled={updatingStatus}
-                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm transition-colors"
+                className="w-full py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white font-semibold rounded-lg text-base transition-colors"
               >
                 {updatingStatus ? 'Updating...' : (
                   task.status === 'in_progress' ? 'Submit for Review' :
@@ -302,14 +253,14 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
             {canReview && (
               <div className="flex gap-2">
                 <button
-                  onClick={() => handleApprovalOpen('revision')}
-                  className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg text-sm transition-colors"
+                  onClick={() => { setApprovalAction('revision'); setShowApprovalModal(true) }}
+                  className="flex-1 py-2.5 px-4 bg-[#2a2a2a] hover:bg-[#333] border border-[#ff3c00]/40 text-[#ff3c00] font-semibold rounded-lg text-base transition-colors"
                 >
                   Send Back
                 </button>
                 <button
-                  onClick={() => handleApprovalOpen('approve')}
-                  className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors"
+                  onClick={() => { setApprovalAction('approve'); setShowApprovalModal(true) }}
+                  className="flex-1 py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] text-white font-semibold rounded-lg text-base transition-colors"
                 >
                   Approve
                 </button>

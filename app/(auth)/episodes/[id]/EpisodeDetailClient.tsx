@@ -25,25 +25,15 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
-  // Real-time task updates
   useEffect(() => {
     const channel = supabase
       .channel(`episode-${episode.id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'tasks',
-        filter: `episode_id=eq.${episode.id}`,
-      }, (payload) => {
-        setTasks(prev => prev.map(t =>
-          t.id === payload.new.id ? { ...t, ...payload.new } : t
-        ))
-        setSelectedTask(prev =>
-          prev?.id === payload.new.id ? { ...prev, ...payload.new } as Task : prev
-        )
-      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `episode_id=eq.${episode.id}` },
+        (payload) => {
+          setTasks(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t))
+          setSelectedTask(prev => prev?.id === payload.new.id ? { ...prev, ...payload.new } as Task : prev)
+        })
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [episode.id])
 
@@ -52,10 +42,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
     setSelectedTask(updated)
   }
 
-  // Group tasks by track
-  const tracks = TRACK_ORDER.filter(track =>
-    tasks.some(t => t.track === track)
-  )
+  const tracks = TRACK_ORDER.filter(track => tasks.some(t => t.track === track))
 
   const daysUntil = Math.round(
     (parseISO(episode.release_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -63,71 +50,53 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-start gap-3">
         <Link
           href={currentUser.role === 'admin' ? '/board' : '/dashboard'}
-          className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 mt-0.5 shrink-0"
+          className="p-2 rounded-md hover:bg-[#2a2a2a] text-[#888] mt-0.5 shrink-0"
         >
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{episode.client_label}</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-            <span className={cn(
-              'text-sm font-medium',
-              daysUntil < 0 ? 'text-red-500' :
-              daysUntil < 3 ? 'text-yellow-500' :
-              'text-gray-500 dark:text-gray-400'
+            <span className="text-base text-[#888] font-medium">{episode.client_label}</span>
+            <span className="text-[#444]">·</span>
+            <span className={cn('text-base font-medium',
+              daysUntil < 0 ? 'text-[#ff3c00]' : daysUntil < 3 ? 'text-yellow-500' : 'text-[#888]'
             )}>
               {daysUntil < 0 ? `Released ${Math.abs(daysUntil)}d ago` :
                daysUntil === 0 ? 'Releases today' :
                `Releases in ${daysUntil}d · ${format(parseISO(episode.release_date), 'MMM d, yyyy')}`}
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{episode.guest_name}</h1>
+          <h1 className="text-3xl font-black text-white mt-1">{episode.guest_name}</h1>
         </div>
         {episode.footage_url && (
           <a
-            href={episode.footage_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors shrink-0"
+            href={episode.footage_url} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors shrink-0"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Footage
+            <ExternalLink className="w-3.5 h-3.5" />Footage
           </a>
         )}
       </div>
 
-      {/* Tracks */}
       <div className="space-y-6">
         {tracks.map(track => {
           const trackTasks = tasks.filter(t => t.track === track)
           const trackColor = TRACK_COLORS[track]
+          const done = trackTasks.filter(t => t.status === 'approved' || t.status === 'done').length
 
           return (
             <div key={track}>
               <div className="flex items-center gap-2 mb-3">
-                <span
-                  className="inline-block w-3 h-3 rounded-sm"
-                  style={{ backgroundColor: trackColor }}
-                />
-                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{track}</h2>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  {trackTasks.filter(t => t.status === 'approved' || t.status === 'done').length}/{trackTasks.length}
-                </span>
+                <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: trackColor }} />
+                <h2 className="text-base font-bold text-white">{track}</h2>
+                <span className="text-sm text-[#666]">{done}/{trackTasks.length}</span>
               </div>
-
               <div className="space-y-2">
                 {trackTasks.map(task => (
-                  <EpisodeTaskRow
-                    key={task.id}
-                    task={task}
-                    currentUser={currentUser}
-                    onClick={() => setSelectedTask(task)}
-                  />
+                  <EpisodeTaskRow key={task.id} task={task} onClick={() => setSelectedTask(task)} />
                 ))}
               </div>
             </div>
@@ -147,15 +116,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
   )
 }
 
-function EpisodeTaskRow({
-  task,
-  currentUser,
-  onClick,
-}: {
-  task: Task
-  currentUser: User
-  onClick: () => void
-}) {
+function EpisodeTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
 
@@ -163,41 +124,30 @@ function EpisodeTaskRow({
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left rounded-lg border px-4 py-3 transition-all group',
+        'w-full text-left rounded-lg border px-4 py-3 transition-all',
         isLocked
-          ? 'opacity-50 bg-gray-50 dark:bg-gray-800/30 border-gray-200 dark:border-gray-800 cursor-default'
+          ? 'opacity-40 bg-[#1a1a1a] border-[#2e2e2e] cursor-default'
           : overdue
-          ? 'bg-white dark:bg-gray-900 border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'
-          : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-600'
+          ? 'bg-[#1e1e1e] border-[#ff3c00]/40 hover:border-[#ff3c00]/70'
+          : 'bg-[#1e1e1e] border-[#2e2e2e] hover:border-[#444]'
       )}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          {isLocked && <Lock className="w-3.5 h-3.5 text-gray-400 shrink-0" />}
-
-          <div className="flex-1 min-w-0">
-            <p className={cn(
-              'text-base font-medium truncate',
-              isLocked ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white'
-            )}>
-              {task.label}
-            </p>
-          </div>
+          {isLocked && <Lock className="w-3.5 h-3.5 text-[#555] shrink-0" />}
+          <p className={cn('text-base font-medium truncate', isLocked ? 'text-[#555]' : 'text-white')}>
+            {task.label}
+          </p>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          {overdue && !isLocked && (
-            <AlertCircle className="w-4 h-4 text-red-500" />
-          )}
-
+          {overdue && !isLocked && <AlertCircle className="w-4 h-4 text-[#ff3c00]" />}
           {task.due_date && !isLocked && (
-            <span className={cn('text-xs', overdue ? 'text-red-500' : 'text-gray-400 dark:text-gray-500')}>
+            <span className={cn('text-sm', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
               {formatDate(task.due_date)}
             </span>
           )}
-
           <StatusBadge status={task.status} />
-
           {task.assignee && (
             <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" />
           )}
