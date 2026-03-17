@@ -88,7 +88,7 @@ export function Navbar({ user }: NavbarProps) {
   ]
 
   return (
-    <nav className="h-16 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-8 sticky top-0 z-40">
+    <nav className="h-20 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-8 sticky top-0 z-40">
       {/* Nav Links — left */}
       <div className="flex items-center gap-1 flex-1">
         {navLinks.map(({ href, label, icon: Icon }) => (
@@ -110,7 +110,7 @@ export function Navbar({ user }: NavbarProps) {
 
       {/* Logo — center */}
       <Link href="/dashboard" className="absolute left-1/2 -translate-x-1/2">
-        <Image src="/logo.png" alt="Nilli Studio" width={140} height={52} className="h-11 w-auto object-contain" priority />
+        <Image src="/logo.png" alt="Nilli Studio" width={200} height={72} className="h-16 w-auto object-contain" priority />
       </Link>
 
       <div className="flex items-center gap-2 flex-1 justify-end">
