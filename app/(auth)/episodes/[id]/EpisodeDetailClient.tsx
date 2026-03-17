@@ -96,19 +96,19 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
   )
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-3">
+    <div className="max-w-4xl space-y-4">
+      <div className="flex items-center gap-3">
         <Link
           href={currentUser.role === 'admin' ? '/board' : '/dashboard'}
-          className="p-2 rounded-md hover:bg-[#2a2a2a] text-[#888] mt-0.5 shrink-0"
+          className="p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] shrink-0"
         >
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-base text-[#888] font-medium">{episode.client_label}</span>
+            <span className="text-sm text-[#888] font-medium">{episode.client_label}</span>
             <span className="text-[#444]">·</span>
-            <span className={cn('text-base font-medium',
+            <span className={cn('text-sm font-medium',
               daysUntil < 0 ? 'text-[#ff3c00]' : daysUntil < 3 ? 'text-yellow-500' : 'text-[#888]'
             )}>
               {daysUntil < 0 ? `Released ${Math.abs(daysUntil)}d ago` :
@@ -116,7 +116,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
                `Releases in ${daysUntil}d · ${format(parseISO(episode.release_date), 'MMM d, yyyy')}`}
             </span>
           </div>
-          <h1 className="text-3xl font-black text-white mt-1">{episode.guest_name}</h1>
+          <h1 className="text-2xl font-black text-white">{episode.guest_name}</h1>
         </div>
         {episode.footage_url && (
           <a
@@ -128,7 +128,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
         )}
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {tracks.map(track => {
           const trackTasks = tasks.filter(t => t.track === track)
           const trackColor = TRACK_COLORS[track]
@@ -136,17 +136,18 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
 
           return (
             <div key={track}>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: trackColor }} />
-                <h2 className="text-base font-bold text-white">{track}</h2>
-                <span className="text-sm text-[#666]">{done}/{trackTasks.length}</span>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: trackColor }} />
+                <h2 className="text-sm font-bold text-white uppercase tracking-wide">{track}</h2>
+                <span className="text-xs text-[#555]">{done}/{trackTasks.length}</span>
               </div>
-              <div className="space-y-2">
-                {trackTasks.map(task => (
+              <div className="border border-[#2e2e2e] rounded-lg overflow-hidden">
+                {trackTasks.map((task, i) => (
                   <EpisodeTaskRow
                     key={task.id}
                     task={task}
                     canEditDates={canEditDates}
+                    isLast={i === trackTasks.length - 1}
                     onDateChange={(oldDate, newDate) => handleDateChange(task.id, oldDate, newDate)}
                     onClick={() => setSelectedTask(task)}
                   />
@@ -172,18 +173,18 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks }: Prop
 interface TaskRowProps {
   task: Task
   canEditDates: boolean
+  isLast: boolean
   onDateChange: (oldDate: string | null, newDate: string) => void
   onClick: () => void
 }
 
-function EpisodeTaskRow({ task, canEditDates, onDateChange, onClick }: TaskRowProps) {
+function EpisodeTaskRow({ task, canEditDates, isLast, onDateChange, onClick }: TaskRowProps) {
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
   const [editingDate, setEditingDate] = useState(false)
   const [dateValue, setDateValue] = useState(toDatetimeLocal(task.due_date))
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Sync if task.due_date changes externally
   useEffect(() => {
     if (!editingDate) setDateValue(toDatetimeLocal(task.due_date))
   }, [task.due_date, editingDate])
@@ -209,75 +210,68 @@ function EpisodeTaskRow({ task, canEditDates, onDateChange, onClick }: TaskRowPr
   return (
     <div
       className={cn(
-        'w-full text-left rounded-lg border px-4 py-3 transition-all',
-        isLocked
-          ? 'opacity-40 bg-[#1a1a1a] border-[#2e2e2e]'
-          : overdue
-          ? 'bg-[#1e1e1e] border-[#ff3c00]/40 hover:border-[#ff3c00]/70'
-          : 'bg-[#1e1e1e] border-[#2e2e2e] hover:border-[#444]'
+        'flex items-center gap-3 px-3 py-2 transition-colors',
+        !isLast && 'border-b border-[#2a2a2a]',
+        isLocked ? 'opacity-35 bg-[#191919]' : overdue ? 'bg-[#ff3c00]/5 hover:bg-[#ff3c00]/8' : 'bg-[#1e1e1e] hover:bg-[#242424]'
       )}
     >
-      <div className="flex items-center justify-between gap-3">
-        <button
-          onClick={onClick}
-          className="flex items-center gap-3 flex-1 min-w-0 text-left"
-        >
-          {isLocked && <Lock className="w-3.5 h-3.5 text-[#555] shrink-0" />}
-          <p className={cn('text-base font-medium truncate', isLocked ? 'text-[#555]' : 'text-white')}>
-            {task.label}
-          </p>
-        </button>
+      {/* Row clickable area */}
+      <button onClick={onClick} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+        {isLocked
+          ? <Lock className="w-3 h-3 text-[#444] shrink-0" />
+          : <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', overdue ? 'bg-[#ff3c00]' : 'bg-[#444]')} />
+        }
+        <span className={cn('text-sm truncate', isLocked ? 'text-[#555]' : overdue ? 'text-white' : 'text-[#ddd]')}>
+          {task.label}
+        </span>
+      </button>
 
-        <div className="flex items-center gap-3 shrink-0">
-          {overdue && !isLocked && <AlertCircle className="w-4 h-4 text-[#ff3c00]" />}
+      {/* Right side */}
+      <div className="flex items-center gap-2.5 shrink-0">
+        {overdue && !isLocked && <AlertCircle className="w-3.5 h-3.5 text-[#ff3c00]" />}
 
-          {/* Date display / edit */}
-          {!isLocked && (
-            editingDate ? (
-              <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                <input
-                  ref={inputRef}
-                  type="datetime-local"
-                  value={dateValue}
-                  onChange={e => setDateValue(e.target.value)}
-                  onKeyDown={handleDateKeyDown}
-                  className="px-2 py-1 bg-[#2a2a2a] border border-[#ff3c00]/60 text-white rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
-                />
+        {!isLocked && (
+          editingDate ? (
+            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+              <input
+                ref={inputRef}
+                type="datetime-local"
+                value={dateValue}
+                onChange={e => setDateValue(e.target.value)}
+                onKeyDown={handleDateKeyDown}
+                className="px-2 py-0.5 bg-[#2a2a2a] border border-[#ff3c00]/60 text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+              />
+              <button onClick={commitDate} className="p-0.5 rounded bg-[#ff3c00] hover:bg-[#e63600] text-white">
+                <Check className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 group/date">
+              {task.due_date && (
+                <span className={cn('text-xs tabular-nums', overdue ? 'text-[#ff3c00]' : 'text-[#555]')}>
+                  {formatDate(task.due_date)}
+                </span>
+              )}
+              {showDateEdit && (
                 <button
-                  onClick={commitDate}
-                  className="p-1 rounded-md bg-[#ff3c00] hover:bg-[#e63600] text-white"
+                  onClick={e => { e.stopPropagation(); setEditingDate(true) }}
+                  className="p-0.5 rounded opacity-0 group-hover/date:opacity-100 hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-all"
                 >
-                  <Check className="w-3.5 h-3.5" />
+                  <Pencil className="w-2.5 h-2.5" />
                 </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 group/date">
-                {task.due_date && (
-                  <span className={cn('text-sm', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
-                    {formatDate(task.due_date)}
-                  </span>
-                )}
-                {showDateEdit && (
-                  <button
-                    onClick={e => { e.stopPropagation(); setEditingDate(true) }}
-                    className="p-1 rounded opacity-0 group-hover/date:opacity-100 hover:bg-[#2a2a2a] text-[#666] hover:text-white transition-all"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            )
-          )}
+              )}
+            </div>
+          )
+        )}
 
+        <button onClick={onClick}>
+          <StatusBadge status={task.status} />
+        </button>
+        {task.assignee && (
           <button onClick={onClick}>
-            <StatusBadge status={task.status} />
+            <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" />
           </button>
-          {task.assignee && (
-            <button onClick={onClick}>
-              <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" />
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   )
