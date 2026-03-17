@@ -21,7 +21,19 @@ export function cn(...inputs: ClassValue[]) {
 export function formatDate(date: string | Date | null): string {
   if (!date) return '—'
   const d = typeof date === 'string' ? parseISO(date) : date
-  return format(d, 'MMM d, yyyy')
+  const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0
+  return hasTime ? format(d, 'MMM d, yyyy · h:mm a') : format(d, 'MMM d, yyyy')
+}
+
+// Convert DB timestamp string to datetime-local input value (YYYY-MM-DDTHH:mm)
+export function toDatetimeLocal(isoString: string | null): string {
+  if (!isoString) return ''
+  return isoString.slice(0, 16)
+}
+
+// Convert datetime-local input value to DB timestamp string
+export function fromDatetimeLocal(value: string): string {
+  return value + ':00'
 }
 
 export function isOverdue(dueDate: string | null, status: TaskStatus): boolean {
@@ -44,7 +56,9 @@ export function calculateDueDates(
       result[t.id] = null
     } else {
       // due_date = release_date - (max_days - task.dueDays) days
-      result[t.id] = subDays(release, maxDays - t.dueDays)
+      const d = subDays(release, maxDays - t.dueDays)
+      d.setHours(9, 0, 0, 0)
+      result[t.id] = d
     }
   }
   return result

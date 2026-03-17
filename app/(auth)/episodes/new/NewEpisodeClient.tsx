@@ -1,19 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, ClientKey } from '@/lib/types'
-import { CLIENT_TEMPLATES } from '@/lib/templates'
+import { CLIENT_TEMPLATES, TaskTemplate } from '@/lib/templates'
 import { CLIENT_LABELS } from '@/lib/constants'
-import { calculateDueDates } from '@/lib/utils'
-import { format } from 'date-fns'
+import { calculateDueDates, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils'
+import { format, parseISO } from 'date-fns'
 
 interface Props {
   currentUser: User
   allUsers: User[]
+}
+
+function getDownstreamTemplateIds(templateId: number, templates: TaskTemplate[]): number[] {
+  const result: number[] = []
+  const queue = [templateId]
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    for (const t of templates) {
+      if (t.deps.includes(current) && !result.includes(t.id)) {
+        result.push(t.id)
+        queue.push(t.id)
+      }
+    }
+  }
+  return result
 }
 
 export function NewEpisodeClient({ currentUser, allUsers }: Props) {
@@ -25,9 +40,42 @@ export function NewEpisodeClient({ currentUser, allUsers }: Props) {
   const [footageUrl, setFootageUrl] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
 
   const clientOptions: ClientKey[] = ['brandon_gentile', 'bitcoin_edge', 'peruvian_bull', 'walker_america', 'youre_the_voice']
   const selectedTemplate = CLIENT_TEMPLATES[clientKey]
+  const unlockedTemplates = selectedTemplate.filter(t => t.deps.length === 0)
+
+  // Recalculate suggested dates whenever release date or client changes
+  useEffect(() => {
+    if (!releaseDate) { setTaskDueDates({}); return }
+    const dueDates = calculateDueDates(releaseDate, selectedTemplate)
+    const dates: Record<number, string> = {}
+    for (const t of selectedTemplate) {
+      dates[t.id] = dueDates[t.id] ? toDatetimeLocal(format(dueDates[t.id]!, "yyyy-MM-dd'T'HH:mm")) : ''
+    }
+    setTaskDueDates(dates)
+  }, [releaseDate, clientKey])
+
+  function handleDateChange(templateId: number, newValue: string) {
+    const oldValue = taskDueDates[templateId]
+    if (!oldValue || !newValue) {
+      setTaskDueDates(prev => ({ ...prev, [templateId]: newValue }))
+      return
+    }
+    const delta = new Date(newValue).getTime() - new Date(oldValue).getTime()
+    const downstream = getDownstreamTemplateIds(templateId, selectedTemplate)
+    setTaskDueDates(prev => {
+      const next = { ...prev, [templateId]: newValue }
+      for (const id of downstream) {
+        if (prev[id]) {
+          const shifted = new Date(new Date(prev[id]).getTime() + delta)
+          next[id] = format(shifted, "yyyy-MM-dd'T'HH:mm")
+        }
+      }
+      return next
+    })
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -41,11 +89,11 @@ export function NewEpisodeClient({ currentUser, allUsers }: Props) {
 
     if (epError || !episode) { setError(epError?.message || 'Failed to create episode'); setLoading(false); return }
 
-    const dueDates = calculateDueDates(releaseDate, selectedTemplate)
     const templateIdToDbId: Record<number, string> = {}
 
     const taskInserts = selectedTemplate.map(template => {
       const assignee = allUsers.find(u => u.name.toLowerCase() === template.assigneeName.toLowerCase())
+      const rawDate = taskDueDates[template.id]
       return {
         episode_id: episode.id,
         template_task_id: template.id,
@@ -53,7 +101,7 @@ export function NewEpisodeClient({ currentUser, allUsers }: Props) {
         assignee_id: assignee?.id || currentUser.id,
         track: template.track,
         status: template.deps.length === 0 ? 'ready' : 'locked',
-        due_date: dueDates[template.id] ? format(dueDates[template.id]!, 'yyyy-MM-dd') : null,
+        due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
         note: template.note || null,
         dep_task_ids: [],
       }
@@ -145,8 +193,33 @@ export function NewEpisodeClient({ currentUser, allUsers }: Props) {
           />
         </div>
 
+        {/* First task due dates */}
+        {releaseDate && unlockedTemplates.length > 0 && (
+          <div>
+            <p className="text-base font-medium text-[#ccc] mb-2">Due dates for first tasks</p>
+            <p className="text-sm text-[#666] mb-3">Downstream tasks will shift automatically.</p>
+            <div className="space-y-2">
+              {unlockedTemplates.map(t => (
+                <div key={t.id} className="bg-[#2a2a2a] rounded-lg px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <span className="text-base text-white font-medium truncate">{t.label}</span>
+                    <span className="text-sm text-[#666] shrink-0">{t.assigneeName}</span>
+                  </div>
+                  <input
+                    type="datetime-local"
+                    value={taskDueDates[t.id] || ''}
+                    onChange={e => handleDateChange(t.id, e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-[#1e1e1e] border border-[#3a3a3a] text-white rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* All tasks preview */}
         <div>
-          <p className="text-base font-medium text-[#ccc] mb-2">Tasks that will be generated ({selectedTemplate.length})</p>
+          <p className="text-base font-medium text-[#ccc] mb-2">All tasks ({selectedTemplate.length})</p>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
             {selectedTemplate.map(t => (
               <div key={t.id} className="flex items-center gap-2 text-base text-[#888] bg-[#2a2a2a] rounded-md px-3 py-1.5">

@@ -173,7 +173,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
               </div>
               <div>
                 <p className="text-xs text-[#888] mb-1">Due Date</p>
-                <p className={cn('font-medium', overdue ? 'text-[#ff3c00]' : 'text-white')}>
+                <p className={cn('font-medium text-sm', overdue ? 'text-[#ff3c00]' : 'text-white')}>
                   {formatDate(task.due_date)}
                 </p>
               </div>
