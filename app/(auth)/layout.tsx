@@ -24,7 +24,7 @@ export default async function AuthLayout({
   return (
     <div className="min-h-screen bg-[#161717]">
       <Navbar user={profile as User} />
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="px-8 py-8">
         {children}
       </main>
     </div>

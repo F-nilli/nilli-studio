@@ -88,7 +88,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
         {filteredEpisodes.map(ep => {
           const stats = getEpisodeStats(ep.tasks)
           const activeAssignees = getActiveAssignees(ep.tasks, allUsers)
@@ -99,53 +99,53 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
             <Link
               key={ep.id}
               href={`/episodes/${ep.id}`}
-              className="block bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl hover:border-[#444] transition-all hover:shadow-lg group"
+              className="block bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl hover:border-[#444] transition-all hover:shadow-lg group"
             >
-              <div className="p-5">
-                <div className="flex items-start justify-between mb-3">
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                      <span className="text-sm text-[#888] font-medium">{ep.client_label}</span>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColor}`} />
+                      <span className="text-base text-[#888] font-medium">{ep.client_label}</span>
                     </div>
-                    <h3 className="font-bold text-white text-lg truncate">{ep.guest_name}</h3>
+                    <h3 className="font-black text-white text-2xl truncate">{ep.guest_name}</h3>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-[#555] shrink-0 group-hover:text-white transition-colors" />
+                  <ChevronRight className="w-5 h-5 text-[#555] shrink-0 group-hover:text-white transition-colors mt-1" />
                 </div>
 
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm text-[#888] mb-1">
+                <div className="mb-5">
+                  <div className="flex justify-between text-base text-[#888] mb-1.5">
                     <span>{stats.approved}/{stats.total} tasks done</span>
                     <span>{stats.progress}%</span>
                   </div>
-                  <div className="w-full bg-[#2a2a2a] rounded-full h-1.5">
-                    <div className="bg-[#ff3c00] h-1.5 rounded-full transition-all" style={{ width: `${stats.progress}%` }} />
+                  <div className="w-full bg-[#2a2a2a] rounded-full h-2">
+                    <div className="bg-[#ff3c00] h-2 rounded-full transition-all" style={{ width: `${stats.progress}%` }} />
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-sm text-[#888]">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
+                  <div className="flex items-center gap-4 text-base text-[#888]">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4" />
                       <span className={daysUntilRelease < 3 ? 'text-[#ff3c00]' : ''}>
                         {daysUntilRelease < 0 ? `${Math.abs(daysUntilRelease)}d ago` :
                          daysUntilRelease === 0 ? 'Today' : `${daysUntilRelease}d left`}
                       </span>
                     </div>
                     {stats.overdue > 0 && (
-                      <div className="flex items-center gap-1 text-[#ff3c00]">
-                        <AlertCircle className="w-3 h-3" />
+                      <div className="flex items-center gap-1.5 text-[#ff3c00]">
+                        <AlertCircle className="w-4 h-4" />
                         <span>{stats.overdue} overdue</span>
                       </div>
                     )}
                   </div>
 
-                  <div className="flex -space-x-1.5">
+                  <div className="flex -space-x-2">
                     {activeAssignees.slice(0, 4).map(u => (
-                      <Avatar key={u.id} name={u.name} color={u.avatar_color} size="sm" />
+                      <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" />
                     ))}
                     {activeAssignees.length > 4 && (
-                      <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center text-xs font-medium text-[#888] border-2 border-[#1e1e1e]">
+                      <div className="w-8 h-8 rounded-full bg-[#2a2a2a] flex items-center justify-center text-sm font-medium text-[#888] border-2 border-[#1e1e1e]">
                         +{activeAssignees.length - 4}
                       </div>
                     )}
