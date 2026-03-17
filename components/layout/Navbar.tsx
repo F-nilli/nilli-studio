@@ -84,7 +84,7 @@ export function Navbar({ user }: NavbarProps) {
   const navLinks = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
-    ...(user.role === 'admin' ? [{ href: '/board', label: 'Board', icon: Trello }] : []),
+    { href: '/board', label: 'Board', icon: Trello },
   ]
 
   return (

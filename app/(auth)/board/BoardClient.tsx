@@ -110,13 +110,15 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
           <h1 className="text-3xl font-black text-white">Production Board</h1>
           <p className="text-[#888] text-base mt-1">{episodes.length} episode{episodes.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link
-          href="/episodes/new"
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          New Project
-        </Link>
+        {currentUser.role === 'admin' && (
+          <Link
+            href="/episodes/new"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            New Project
+          </Link>
+        )}
       </div>
 
       {/* Summary bar */}
