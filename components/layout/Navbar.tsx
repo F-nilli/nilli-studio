@@ -88,26 +88,26 @@ export function Navbar({ user }: NavbarProps) {
   ]
 
   return (
-    <nav className="h-12 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-4 gap-4 sticky top-0 z-40">
+    <nav className="h-16 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-8 gap-6 sticky top-0 z-40">
       {/* Logo */}
       <Link href="/dashboard" className="shrink-0">
-        <Image src="/logo.png" alt="Nilli Studio" width={90} height={32} className="h-7 w-auto object-contain" priority />
+        <Image src="/logo.png" alt="Nilli Studio" width={110} height={40} className="h-9 w-auto object-contain" priority />
       </Link>
 
       {/* Nav Links */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-1">
         {navLinks.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-medium transition-colors',
+              'flex items-center gap-2 px-4 py-2 rounded-lg text-base font-semibold transition-colors',
               pathname.startsWith(href)
                 ? 'bg-[#ff3c00] text-white'
                 : 'text-[#888] hover:text-white hover:bg-white/5'
             )}
           >
-            <Icon className="w-4 h-4" />
+            <Icon className="w-5 h-5" />
             {label}
           </Link>
         ))}
@@ -121,9 +121,9 @@ export function Navbar({ user }: NavbarProps) {
               setShowNotifications(!showNotifications)
               if (!showNotifications) markAllRead()
             }}
-            className="relative p-2 rounded-md text-[#888] hover:text-white hover:bg-white/5 transition-colors"
+            className="relative p-2.5 rounded-lg text-[#888] hover:text-white hover:bg-white/5 transition-colors"
           >
-            <Bell className="w-5 h-5" />
+            <Bell className="w-6 h-6" />
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 bg-[#ff3c00] rounded-full text-white text-[10px] flex items-center justify-center font-bold">
                 {unreadCount > 9 ? '9+' : unreadCount}
@@ -165,11 +165,11 @@ export function Navbar({ user }: NavbarProps) {
         <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
           >
             <Avatar name={user.name} color={user.avatar_color} size="sm" />
-            <span className="text-sm font-medium text-white hidden sm:block">{user.name}</span>
-            <ChevronDown className="w-3 h-3 text-[#888] hidden sm:block" />
+            <span className="text-base font-semibold text-white hidden sm:block">{user.name}</span>
+            <ChevronDown className="w-4 h-4 text-[#888] hidden sm:block" />
           </button>
 
           {showUserMenu && (
