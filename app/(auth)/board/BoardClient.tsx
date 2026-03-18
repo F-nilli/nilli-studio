@@ -44,6 +44,14 @@ function getStatusDot(tasks: Task[]): string {
   return 'bg-blue-500'
 }
 
+function getActivePipelineStage(tasks: Task[]): string | null {
+  const activeTasks = tasks.filter(t => t.status === 'ready' || t.status === 'in_progress')
+  if (activeTasks.length === 0) return null
+  const counts: Record<string, number> = {}
+  for (const t of activeTasks) counts[t.track] = (counts[t.track] || 0) + 1
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+}
+
 function getActiveStatus(tasks: Task[]): string | null {
   if (tasks.some(t => t.status === 'revision')) return 'Revision'
   if (tasks.some(t => t.status === 'in_review')) return 'In Review'
@@ -210,7 +218,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
           const stats = getEpisodeStats(ep.tasks)
           const activeAssignees = getActiveAssignees(ep.tasks, allUsers)
           const dotColor = getStatusDot(ep.tasks)
-          const activeStatus = getActiveStatus(ep.tasks)
+          const activePipelineStage = stats.done === 0 ? getActivePipelineStage(ep.tasks) : null
           const daysUntilRelease = differenceInDays(parseISO(ep.release_date), new Date())
           const hoursUntilRelease = differenceInHours(parseISO(ep.release_date), new Date())
           const isReleaseOverdue = hoursUntilRelease < 0
@@ -246,23 +254,25 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                 </div>
 
                 {/* Progress */}
-                <div className="mb-2">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-base text-[#888]">{stats.done} / {stats.total} tasks</span>
-                  </div>
-                  <div className="w-full bg-[#1e1e1e] rounded-full h-2.5">
-                    <div className="bg-[#ff3c00] h-2.5 rounded-full transition-all" style={{ width: `${stats.progress}%` }} />
-                  </div>
+                <div className="mb-4">
+                  {stats.done > 0 ? (
+                    <>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-base text-[#888]">{stats.done} / {stats.total} tasks</span>
+                      </div>
+                      <div className="w-full bg-[#1e1e1e] rounded-full h-2.5">
+                        <div className="bg-[#ff3c00] h-2.5 rounded-full transition-all" style={{ width: `${stats.progress}%` }} />
+                      </div>
+                    </>
+                  ) : activePipelineStage ? (
+                    <span className="inline-block text-sm font-semibold text-[#f7931a]/80 bg-[#f7931a]/10 px-3 py-1 rounded-full">
+                      {activePipelineStage} in progress
+                    </span>
+                  ) : (
+                    <span className="text-sm text-[#555]">Not started</span>
+                  )}
                 </div>
 
-                {/* Status badge */}
-                {activeStatus && (
-                  <div className="mb-4">
-                    <span className="text-sm font-medium text-[#888] bg-[#1e1e1e] px-2.5 py-1 rounded-md">
-                      {activeStatus}
-                    </span>
-                  </div>
-                )}
 
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-2 mb-4 pt-3 border-t border-[#1e1e1e]">
