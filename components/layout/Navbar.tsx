@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, LogOut, User, LayoutDashboard, Calendar, Trello, ChevronDown } from 'lucide-react'
+import { Bell, LogOut, User, LayoutDashboard, Calendar, Trello, ChevronDown, Settings } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import type { User as UserType, Notification } from '@/lib/types'
+import { canAccessSettings } from '@/lib/types'
 
 interface NavbarProps {
   user: UserType
@@ -85,6 +86,7 @@ export function Navbar({ user }: NavbarProps) {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
     { href: '/board', label: 'Board', icon: Trello },
+    ...(canAccessSettings(user) ? [{ href: '/settings', label: 'Settings', icon: Settings }] : []),
   ]
 
   return (

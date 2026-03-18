@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Task, User, Comment, TaskStatus } from '@/lib/types'
+import { Task, User, Comment, TaskStatus, canApprove } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { ApprovalModal } from './ApprovalModal'
@@ -35,7 +35,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
   const commentEndRef = useRef<HTMLDivElement>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
-  const isReviewer = currentUser.role === 'admin' || currentUser.name === 'Ali'
+  const isReviewer = canApprove(currentUser)
   const overdue = isOverdue(task.due_date, task.status)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
 

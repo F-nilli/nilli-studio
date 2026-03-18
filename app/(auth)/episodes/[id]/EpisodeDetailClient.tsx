@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Episode, Task, User, Track, TaskStatus } from '@/lib/types'
+import { Episode, Task, User, Track, TaskStatus, canEditDates as canEditDatesRole } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { TaskModal } from '@/components/tasks/TaskModal'
@@ -98,7 +98,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
-  const canEditDates = currentUser.role === 'admin' || currentUser.name === 'Ali'
+  const canEditDates = canEditDatesRole(currentUser)
 
   useEffect(() => {
     const channel = supabase

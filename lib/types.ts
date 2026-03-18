@@ -1,4 +1,13 @@
-export type UserRole = 'admin' | 'member'
+export type UserRole = 'admin' | 'ops_manager' | 'member'
+
+// Permission helpers
+export function canManageTeam(user: { role: UserRole }) { return user.role === 'admin' }
+export function canManageClients(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
+export function canEditDates(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
+export function canApprove(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
+export function canSeeAllEpisodes(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
+export function canAccessSettings(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
+export function canCreateProject(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
 
 export type TaskStatus =
   | 'locked'
@@ -43,6 +52,7 @@ export interface Episode {
   footage_url: string | null
   created_by: string
   created_at: string
+  published_at: string | null
 }
 
 export interface Task {
@@ -79,6 +89,38 @@ export type NotificationType =
   | 'task_approved'
   | 'task_revision'
   | 'task_overdue'
+
+export interface Client {
+  id: string
+  key: string
+  label: string
+  active: boolean
+  created_at: string
+}
+
+export interface DbTaskTemplate {
+  id: string
+  client_id: string
+  seq_id: number
+  label: string
+  assignee_id: string | null
+  track: Track
+  due_days: number | null
+  note: string | null
+  dep_seq_ids: number[]
+  created_at: string
+  assignee?: User
+}
+
+export interface ActivityEntry {
+  id: string
+  episode_id: string | null
+  task_id: string | null
+  action: string
+  detail: { from_status?: string; to_status?: string; task_label?: string }
+  created_at: string
+  episode?: { guest_name: string; client_label: string }
+}
 
 export interface Notification {
   id: string

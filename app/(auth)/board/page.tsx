@@ -17,7 +17,7 @@ export default async function BoardPage() {
 
   if (isAdmin) {
     const [episodesRes, tasksRes] = await Promise.all([
-      supabase.from('episodes').select('*').order('release_date', { ascending: true }),
+      supabase.from('episodes').select('*').is('published_at', null).order('release_date', { ascending: true }),
       supabase.from('tasks').select('*, assignee:users(*)').order('template_task_id', { ascending: true }),
     ])
     return (
@@ -50,7 +50,7 @@ export default async function BoardPage() {
   }
 
   const [episodesRes, tasksRes] = await Promise.all([
-    supabase.from('episodes').select('*').in('id', involvedEpisodeIds).order('release_date', { ascending: true }),
+    supabase.from('episodes').select('*').in('id', involvedEpisodeIds).is('published_at', null).order('release_date', { ascending: true }),
     supabase.from('tasks').select('*, assignee:users(*)').in('episode_id', involvedEpisodeIds).order('template_task_id', { ascending: true }),
   ])
 

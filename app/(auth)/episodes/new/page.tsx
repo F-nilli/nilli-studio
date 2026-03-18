@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { NewEpisodeClient } from './NewEpisodeClient'
-import type { User } from '@/lib/types'
+import type { User, Client, DbTaskTemplate } from '@/lib/types'
+import { canCreateProject } from '@/lib/types'
 
 export default async function NewEpisodePage() {
   const supabase = await createClient()
@@ -14,9 +15,20 @@ export default async function NewEpisodePage() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || profile.role !== 'admin') redirect('/dashboard')
+  if (!profile || !canCreateProject(profile)) redirect('/dashboard')
 
-  const { data: allUsers } = await supabase.from('users').select('*')
+  const [usersRes, clientsRes, templatesRes] = await Promise.all([
+    supabase.from('users').select('*'),
+    supabase.from('clients').select('*').eq('active', true).order('label'),
+    supabase.from('task_templates').select('*, assignee:users(*)').order('seq_id'),
+  ])
 
-  return <NewEpisodeClient currentUser={profile as User} allUsers={(allUsers || []) as User[]} />
+  return (
+    <NewEpisodeClient
+      currentUser={profile as User}
+      allUsers={(usersRes.data || []) as User[]}
+      clients={(clientsRes.data || []) as Client[]}
+      templates={(templatesRes.data || []) as unknown as DbTaskTemplate[]}
+    />
+  )
 }

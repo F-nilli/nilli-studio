@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Plus, AlertCircle, ChevronRight, Mic } from 'lucide-react'
-import { Episode, Task, User, TaskStatus } from '@/lib/types'
+import { Episode, Task, User, TaskStatus, canCreateProject } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, isOverdue } from '@/lib/utils'
 import { parseISO, differenceInDays, format } from 'date-fns'
@@ -110,7 +110,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
           <h1 className="text-3xl font-black text-white">Production Board</h1>
           <p className="text-[#888] text-base mt-1">{episodes.length} episode{episodes.length !== 1 ? 's' : ''}</p>
         </div>
-        {currentUser.role === 'admin' && (
+        {canCreateProject(currentUser) && (
           <Link
             href="/episodes/new"
             className="flex items-center gap-2 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
@@ -263,7 +263,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
               ? 'Try switching to All'
               : 'Hit "+ New Project" to kick off your next production'}
           </p>
-          {filter === 'all' && (
+          {filter === 'all' && canCreateProject(currentUser) && (
             <Link
               href="/episodes/new"
               className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
