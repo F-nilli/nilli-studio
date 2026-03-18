@@ -6,7 +6,7 @@ import { Plus, AlertCircle, ChevronRight, Mic } from 'lucide-react'
 import { Episode, Task, User, TaskStatus, canCreateProject } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, isOverdue } from '@/lib/utils'
-import { parseISO, differenceInDays, format } from 'date-fns'
+import { parseISO, differenceInDays, differenceInHours, format } from 'date-fns'
 
 interface Props {
   currentUser: User
@@ -170,12 +170,22 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
           const dotColor = getStatusDot(ep.tasks)
           const activeStatus = getActiveStatus(ep.tasks)
           const daysUntilRelease = differenceInDays(parseISO(ep.release_date), new Date())
+          const hoursUntilRelease = differenceInHours(parseISO(ep.release_date), new Date())
+          const isReleaseOverdue = hoursUntilRelease < 0
+          const isReleaseSoon = !isReleaseOverdue && hoursUntilRelease <= 24
 
           return (
             <Link
               key={ep.id}
               href={`/episodes/${ep.id}`}
-              className="block bg-[#1e1e1e] border border-[#2e2e2e] rounded-2xl hover:border-[#444] transition-all hover:shadow-lg group overflow-hidden"
+              className={cn(
+                'block bg-[#1e1e1e] rounded-2xl transition-all hover:shadow-lg group overflow-hidden border',
+                isReleaseOverdue
+                  ? 'border-[#ff3c00]/50 shadow-[0_0_14px_rgba(255,60,0,0.2)]'
+                  : isReleaseSoon
+                  ? 'border-yellow-500/50 shadow-[0_0_14px_rgba(234,179,8,0.2)]'
+                  : 'border-[#2e2e2e] hover:border-[#444]'
+              )}
             >
               <div className="p-6">
                 {/* Card header */}

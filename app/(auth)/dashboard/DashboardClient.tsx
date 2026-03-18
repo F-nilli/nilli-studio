@@ -5,6 +5,7 @@ import { AlertCircle, Clock, ChevronRight, Lock } from 'lucide-react'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
+import { differenceInHours, parseISO } from 'date-fns'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
 
@@ -157,14 +158,20 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
 
 function TaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClick: () => void }) {
   const overdue = isOverdue(task.due_date, task.status)
+  const hoursUntilDue = task.due_date ? differenceInHours(parseISO(task.due_date), new Date()) : null
+  const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left bg-[#1e1e1e] border rounded-lg p-4 hover:border-[#444] transition-all group',
-        overdue ? 'border-[#ff3c00]/40' : 'border-[#2e2e2e]'
+        'w-full text-left bg-[#1e1e1e] border rounded-lg p-4 transition-all group',
+        overdue
+          ? 'border-[#ff3c00]/50 shadow-[0_0_14px_rgba(255,60,0,0.2)] hover:border-[#ff3c00]/70'
+          : isDueSoon
+          ? 'border-yellow-500/50 shadow-[0_0_14px_rgba(234,179,8,0.2)] hover:border-yellow-500/70'
+          : 'border-[#2e2e2e] hover:border-[#444]'
       )}
     >
       <div className="flex items-start justify-between gap-3">
