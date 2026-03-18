@@ -8,6 +8,7 @@ import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { differenceInHours, parseISO } from 'date-fns'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
+import { createClient } from '@/lib/supabase/client'
 
 const ACTIVE_STATUSES: TaskStatus[] = ['ready', 'in_progress', 'in_review', 'revision']
 
@@ -16,8 +17,14 @@ interface Props {
   tasks: (Task & { episode: Episode })[]
 }
 
-export function DashboardClient({ currentUser, tasks }: Props) {
+export function DashboardClient({ currentUser, tasks: initialTasks }: Props) {
+  const [tasks, setTasks] = useState(initialTasks)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+
+  function handleTaskUpdate(updated: Task) {
+    setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t))
+    if (selectedTask?.id === updated.id) setSelectedTask(updated)
+  }
 
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
@@ -89,7 +96,7 @@ export function DashboardClient({ currentUser, tasks }: Props) {
               </div>
               <div className="space-y-2">
                 {statusTasks.map(task => (
-                  <TaskCard key={task.id} task={task} onClick={() => setSelectedTask(task)} />
+                  <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => setSelectedTask(task)} onUpdate={handleTaskUpdate} />
                 ))}
               </div>
             </div>
@@ -130,7 +137,7 @@ export function DashboardClient({ currentUser, tasks }: Props) {
           task={selectedTask}
           currentUser={currentUser}
           onClose={() => setSelectedTask(null)}
-          onUpdate={(updated) => setSelectedTask(updated)}
+          onUpdate={(updated) => { handleTaskUpdate(updated); setSelectedTask(updated) }}
         />
       )}
     </div>
@@ -170,17 +177,75 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
   )
 }
 
-function TaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClick: () => void }) {
+const ACTION_LABELS: Partial<Record<TaskStatus, string>> = {
+  ready: 'Start',
+  in_progress: 'Submit for Review',
+  in_review: 'Review',
+  revision: 'Resubmit',
+}
+
+function TaskCard({ task, currentUser, onClick, onUpdate }: {
+  task: Task & { episode: Episode }
+  currentUser: User
+  onClick: () => void
+  onUpdate: (task: Task) => void
+}) {
+  const supabase = createClient()
+  const [acting, setActing] = useState(false)
   const overdue = isOverdue(task.due_date, task.status)
   const hoursUntilDue = task.due_date ? differenceInHours(parseISO(task.due_date), new Date()) : null
   const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
+  async function handleAction(e: React.MouseEvent) {
+    e.stopPropagation()
+
+    // in_review → open modal for approval/revision flow
+    if (task.status === 'in_review') { onClick(); return }
+
+    const nextStatus: TaskStatus =
+      task.status === 'ready' ? 'in_progress' :
+      task.status === 'in_progress' ? 'in_review' :
+      task.status === 'revision' ? 'in_review' : task.status
+
+    setActing(true)
+    const { data } = await supabase
+      .from('tasks')
+      .update({ status: nextStatus })
+      .eq('id', task.id)
+      .select('*, assignee:users(*)')
+      .single()
+
+    if (data) {
+      onUpdate(data as unknown as Task)
+      if (nextStatus === 'in_review') {
+        const { data: reviewers } = await supabase
+          .from('users').select('*').in('role', ['admin', 'ops_manager'])
+        for (const reviewer of reviewers || []) {
+          if (reviewer.id !== currentUser.id) {
+            await supabase.from('notifications').insert({
+              user_id: reviewer.id, type: 'task_submitted_review',
+              title: 'Task submitted for review',
+              body: `${currentUser.name} submitted "${task.label}" for review`,
+              task_id: task.id, episode_id: task.episode_id, read: false,
+            })
+          }
+        }
+        fetch('/api/slack/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }),
+        }).catch(() => {})
+      }
+    }
+    setActing(false)
+  }
+
   return (
-    <button
+    <div
       onClick={onClick}
       className={cn(
-        'w-full text-left bg-[#141414] border rounded-lg p-4 transition-all group',
+        'w-full text-left bg-[#141414] border rounded-lg p-4 transition-all group cursor-pointer',
         overdue
           ? 'border-[#ff3c00]/50 shadow-[0_0_14px_rgba(255,60,0,0.2)] hover:border-[#ff3c00]/70'
           : isDueSoon
@@ -210,10 +275,14 @@ function TaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClic
           )}
         </div>
 
-        <span className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap">
-          {task.status === 'ready' ? 'Start' : task.status === 'in_progress' ? 'Submit for Review' : task.status === 'in_review' ? 'Review' : 'Resubmit'}
-        </span>
+        <button
+          onClick={handleAction}
+          disabled={acting}
+          className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
+        >
+          {acting ? '...' : ACTION_LABELS[task.status as TaskStatus]}
+        </button>
       </div>
-    </button>
+    </div>
   )
 }
