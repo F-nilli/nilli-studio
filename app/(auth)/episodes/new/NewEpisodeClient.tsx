@@ -216,7 +216,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
 
             <div>
               <label className="block text-base font-medium text-[#ccc] mb-1.5">
-                Brief & Notes <span className="text-[#666] font-normal">(optional)</span>
+                Notes <span className="text-[#666] font-normal">(optional)</span>
               </label>
               <textarea
                 value={notes}
