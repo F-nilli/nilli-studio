@@ -286,7 +286,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   </div>
                   <div className="text-center">
                     <p className={`text-xl font-black ${stats.blocked > 0 ? 'text-amber-400' : 'text-[#555]'}`}>{stats.blocked}</p>
-                    <p className="text-xs text-[#666] mt-0.5">Blocked</p>
+                    <p className="text-xs text-[#666] mt-0.5">Queued</p>
                   </div>
                 </div>
 
