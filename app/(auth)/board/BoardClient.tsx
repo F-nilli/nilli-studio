@@ -290,14 +290,32 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   </div>
                 </div>
 
+                {/* Notes preview */}
+                {ep.notes && (
+                  <p className="text-xs text-[#666] leading-relaxed mb-3 line-clamp-2">{ep.notes}</p>
+                )}
+
                 {/* Assignees */}
                 <div className="flex items-center justify-between">
-                  {stats.overdue > 0 && (
-                    <div className="flex items-center gap-1.5 text-sm text-[#ff3c00]">
-                      <AlertCircle className="w-4 h-4" />
-                      <span>{stats.overdue} overdue</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {stats.overdue > 0 && (
+                      <div className="flex items-center gap-1.5 text-sm text-[#ff3c00]">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>{stats.overdue} overdue</span>
+                      </div>
+                    )}
+                    {ep.footage_url && (
+                      <a
+                        href={ep.footage_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-xs font-semibold text-[#f7931a]/80 hover:text-[#f7931a] transition-colors"
+                      >
+                        Footage →
+                      </a>
+                    )}
+                  </div>
                   <div className="flex -space-x-2 ml-auto">
                     {activeAssignees.slice(0, 5).map(u => (
                       <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" />
