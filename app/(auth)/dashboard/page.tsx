@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardClient } from './DashboardClient'
 import type { User, Task, Episode } from '@/lib/types'
+import { canApprove } from '@/lib/types'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -18,10 +19,24 @@ export default async function DashboardPage() {
       .order('due_date', { ascending: true, nullsFirst: false }),
   ])
 
+  const profile = profileRes.data as User
+  let reviewTasks: (Task & { episode: Episode })[] = []
+
+  if (canApprove(profile)) {
+    const { data } = await supabase
+      .from('tasks')
+      .select('*, assignee:users(*), episode:episodes(*)')
+      .eq('status', 'in_review')
+      .neq('assignee_id', user.id)
+      .order('due_date', { ascending: true, nullsFirst: false })
+    reviewTasks = (data || []) as unknown as (Task & { episode: Episode })[]
+  }
+
   return (
     <DashboardClient
-      currentUser={profileRes.data as User}
+      currentUser={profile}
       tasks={(tasksRes.data || []) as unknown as (Task & { episode: Episode })[]}
+      reviewTasks={reviewTasks}
     />
   )
 }

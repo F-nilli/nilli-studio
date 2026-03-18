@@ -15,14 +15,20 @@ const ACTIVE_STATUSES: TaskStatus[] = ['ready', 'in_progress', 'in_review', 'rev
 interface Props {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
+  reviewTasks?: (Task & { episode: Episode })[]
 }
 
-export function DashboardClient({ currentUser, tasks: initialTasks }: Props) {
+export function DashboardClient({ currentUser, tasks: initialTasks, reviewTasks: initialReviewTasks = [] }: Props) {
   const [tasks, setTasks] = useState(initialTasks)
+  const [reviewTasks, setReviewTasks] = useState(initialReviewTasks)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
   function handleTaskUpdate(updated: Task) {
     setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t))
+    // Remove from review queue once approved/revised (no longer in_review)
+    if (updated.status !== 'in_review') {
+      setReviewTasks(prev => prev.filter(t => t.id !== updated.id))
+    }
     if (selectedTask?.id === updated.id) setSelectedTask(updated)
   }
 
@@ -75,6 +81,23 @@ export function DashboardClient({ currentUser, tasks: initialTasks }: Props) {
           >
             View overdue
           </button>
+        </div>
+      )}
+
+      {/* Needs Review section — for admins/ops_managers */}
+      {reviewTasks.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-purple-400 uppercase tracking-wider">Needs Review</h2>
+            <span className="bg-purple-500/20 text-purple-400 text-xs font-medium px-2 py-0.5 rounded-full">
+              {reviewTasks.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {reviewTasks.map(task => (
+              <ReviewTaskCard key={task.id} task={task} onClick={() => setSelectedTask(task)} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -174,6 +197,42 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
         </div>
       </div>
     </button>
+  )
+}
+
+function ReviewTaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClick: () => void }) {
+  const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
+  const overdue = isOverdue(task.due_date, task.status)
+
+  return (
+    <div
+      onClick={onClick}
+      className="w-full text-left bg-[#141414] border border-purple-500/30 rounded-lg p-4 cursor-pointer hover:border-purple-500/60 transition-all group"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: trackColor }} />
+            <span className="text-sm text-[#888] truncate">
+              {task.episode?.guest_name} · {task.episode?.client_label}
+            </span>
+          </div>
+          <p className="text-base font-medium text-white">{task.label}</p>
+          <p className="text-sm text-[#888] mt-0.5">{task.track} · {task.assignee?.name}</p>
+        </div>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {task.due_date && (
+            <div className={cn('flex items-center gap-1 text-sm', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
+              {overdue && <AlertCircle className="w-3 h-3" />}
+              <span>{formatDate(task.due_date)}</span>
+            </div>
+          )}
+          <span className="px-3 py-1.5 bg-purple-500/20 text-purple-300 text-xs font-bold rounded-full whitespace-nowrap">
+            Review →
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }
 
