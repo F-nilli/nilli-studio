@@ -54,18 +54,18 @@ function getActiveStatus(tasks: Task[]): string | null {
 function DeadlineChip({ daysLeft }: { daysLeft: number }) {
   if (daysLeft < 0) {
     return (
-      <span className="px-2 py-0.5 rounded-md text-sm font-semibold bg-[#ff3c00]/20 text-[#ff3c00]">
+      <span className="px-3 py-1 rounded-lg text-base font-bold bg-[#ff3c00]/20 text-[#ff3c00]">
         {Math.abs(daysLeft)}d overdue
       </span>
     )
   }
   if (daysLeft === 0) {
-    return <span className="px-2 py-0.5 rounded-md text-sm font-semibold bg-[#ff3c00]/20 text-[#ff3c00]">Today</span>
+    return <span className="px-3 py-1 rounded-lg text-base font-bold bg-[#ff3c00]/20 text-[#ff3c00]">Today</span>
   }
   if (daysLeft <= 3) {
-    return <span className="px-2 py-0.5 rounded-md text-sm font-semibold bg-amber-500/20 text-amber-400">{daysLeft}d left</span>
+    return <span className="px-3 py-1 rounded-lg text-base font-bold bg-amber-500/20 text-amber-400">{daysLeft}d left</span>
   }
-  return <span className="px-2 py-0.5 rounded-md text-sm font-semibold bg-[#2a2a2a] text-[#888]">{daysLeft}d left</span>
+  return <span className="px-3 py-1 rounded-lg text-base font-bold bg-[#2a2a2a] text-[#888]">{daysLeft}d left</span>
 }
 
 export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
@@ -197,14 +197,16 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers }: Props) {
                     </div>
                     <h3 className="font-black text-white text-2xl truncate">{ep.guest_name}</h3>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-[#555] shrink-0 group-hover:text-white transition-colors mt-1" />
+                  <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
+                    <DeadlineChip daysLeft={daysUntilRelease} />
+                    <ChevronRight className="w-5 h-5 text-[#555] group-hover:text-white transition-colors" />
+                  </div>
                 </div>
 
                 {/* Progress */}
                 <div className="mb-2">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-base text-[#888]">{stats.done} / {stats.total} tasks</span>
-                    <DeadlineChip daysLeft={daysUntilRelease} />
                   </div>
                   <div className="w-full bg-[#2a2a2a] rounded-full h-2.5">
                     <div className="bg-[#ff3c00] h-2.5 rounded-full transition-all" style={{ width: `${stats.progress}%` }} />

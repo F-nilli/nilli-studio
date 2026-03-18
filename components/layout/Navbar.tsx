@@ -86,7 +86,6 @@ export function Navbar({ user }: NavbarProps) {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
     { href: '/board', label: 'Board', icon: Trello },
-    ...(canAccessSettings(user) ? [{ href: '/settings', label: 'Settings', icon: Settings }] : []),
   ]
 
   return (
@@ -184,6 +183,16 @@ export function Navbar({ user }: NavbarProps) {
                 <User className="w-4 h-4" />
                 Profile
               </Link>
+              {canAccessSettings(user) && (
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#ccc] hover:text-white hover:bg-white/5"
+                  onClick={() => setShowUserMenu(false)}
+                >
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </Link>
+              )}
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#ff3c00] hover:bg-white/5"

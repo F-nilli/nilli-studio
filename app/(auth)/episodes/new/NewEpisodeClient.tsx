@@ -53,7 +53,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   const supabase = createClient()
   const [clientId, setClientId] = useState<string>(clients[0]?.id || '')
   const [guestName, setGuestName] = useState('')
-  const [releaseDate, setReleaseDate] = useState('')
+  const [releaseDate, setReleaseDate] = useState('') // datetime-local value
   const [footageUrl, setFootageUrl] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -100,7 +100,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         client_key: selectedClient.key,
         client_label: selectedClient.label,
         guest_name: guestName,
-        release_date: releaseDate,
+        release_date: releaseDate.slice(0, 10),
         footage_url: footageUrl || null,
         created_by: currentUser.id,
       })
@@ -197,9 +197,9 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
             </div>
 
             <div>
-              <label className="block text-base font-medium text-[#ccc] mb-1.5">Release Date</label>
+              <label className="block text-base font-medium text-[#ccc] mb-1.5">Release Date & Time</label>
               <input
-                type="date" value={releaseDate} onChange={e => setReleaseDate(e.target.value)} required
+                type="datetime-local" value={releaseDate} onChange={e => setReleaseDate(e.target.value)} required
                 className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
               />
             </div>
