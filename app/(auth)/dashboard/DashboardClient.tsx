@@ -108,9 +108,9 @@ export function DashboardClient({ currentUser, tasks }: Props) {
         {lockedTasks.length > 0 && (
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <Lock className="w-4 h-4 text-[#555]" />
-              <h2 className="text-sm font-semibold text-[#555] uppercase tracking-wider">
-                Upcoming — Waiting on Dependencies
+              <h2 className="text-sm font-semibold text-[#555] uppercase tracking-wider flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5" />
+                Queued
               </h2>
               <span className="bg-[#222] text-[#555] text-xs font-medium px-2 py-0.5 rounded-full border border-[#2e2e2e]">
                 {lockedTasks.length}
