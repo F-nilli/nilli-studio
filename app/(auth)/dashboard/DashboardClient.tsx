@@ -43,7 +43,7 @@ export function DashboardClient({ currentUser, tasks: initialTasks }: Props) {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-black text-white">
-          Hey, {currentUser.name.split(' ')[0]} 👋
+          Hey, {currentUser.name.split(' ')[0]}
         </h1>
         <p className="text-[#888] text-base mt-1">
           {activeTasks.length} active task{activeTasks.length !== 1 ? 's' : ''}
