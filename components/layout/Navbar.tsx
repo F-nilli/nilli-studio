@@ -78,6 +78,7 @@ export function Navbar({ user }: NavbarProps) {
   async function handleSignOut() {
     await supabase.auth.signOut()
     router.push('/login')
+    router.refresh()
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
