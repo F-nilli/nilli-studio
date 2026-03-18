@@ -84,7 +84,6 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
           body: `"${nextTask.label}" is now ready${episode ? ` for ${episode.guest_name} / ${episode.client_label}` : ''}`,
           taskId: nextTask.id,
           episodeId: task.episode_id,
-          slackWebhookUrl: nextTask.assignee.slack_webhook_url,
         })
       }
 
@@ -109,10 +108,21 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
             title: 'Task approved',
             body: `"${task.label}" was approved by ${currentUser.name}`,
             taskId: task.id, episodeId: task.episode_id,
-            slackWebhookUrl: assignee.slack_webhook_url,
           })
         }
       }
+
+      // Slack: approval block
+      fetch('/api/slack/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'approval',
+          episodeId: task.episode_id,
+          completedTaskLabel: task.label,
+          nextTasks: nextTasks.map(t => ({ label: t.label, assigneeName: t.assignee.name })),
+        }),
+      }).catch(() => {})
 
       if (updatedTask) onConfirm(updatedTask as unknown as Task)
     } else {
@@ -127,8 +137,20 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
           title: 'Task sent back for revision',
           body: `"${task.label}" was sent back for revision${revisedTaskDueDate ? `. Due: ${format(new Date(revisedTaskDueDate), 'MMM d, yyyy')}` : ''}`,
           taskId: task.id, episodeId: task.episode_id,
-          slackWebhookUrl: assignee.slack_webhook_url,
         })
+
+        // Slack: revision block
+        fetch('/api/slack/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'revision',
+            episodeId: task.episode_id,
+            taskLabel: task.label,
+            assigneeName: assignee.name,
+            dueDate: revisedTaskDueDate ? format(new Date(revisedTaskDueDate), 'MMM d') : undefined,
+          }),
+        }).catch(() => {})
       }
 
       if (updatedTask) onConfirm(updatedTask as unknown as Task)

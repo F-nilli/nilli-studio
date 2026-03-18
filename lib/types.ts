@@ -39,7 +39,6 @@ export interface User {
   name: string
   role: UserRole
   avatar_color: string
-  slack_webhook_url: string | null
   created_at: string
 }
 
@@ -98,6 +97,7 @@ export interface Client {
   created_at: string
   last_saved_at: string | null
   last_saved_by_name: string | null
+  slack_channel_id: string | null
 }
 
 export interface DbTaskTemplate {

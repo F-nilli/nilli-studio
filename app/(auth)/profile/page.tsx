@@ -16,7 +16,6 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null)
   const [name, setName] = useState('')
   const [avatarColor, setAvatarColor] = useState('#fbbf24')
-  const [slackWebhook, setSlackWebhook] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -25,7 +24,7 @@ export default function ProfilePage() {
       const { data: { user: authUser } } = await supabase.auth.getUser()
       if (!authUser) return
       const { data } = await supabase.from('users').select('*').eq('id', authUser.id).single()
-      if (data) { setUser(data as User); setName(data.name); setAvatarColor(data.avatar_color); setSlackWebhook(data.slack_webhook_url || '') }
+      if (data) { setUser(data as User); setName(data.name); setAvatarColor(data.avatar_color) }
     }
     load()
   }, [])
@@ -34,7 +33,7 @@ export default function ProfilePage() {
     e.preventDefault()
     if (!user) return
     setSaving(true)
-    await supabase.from('users').update({ name, avatar_color: avatarColor, slack_webhook_url: slackWebhook || null }).eq('id', user.id)
+    await supabase.from('users').update({ name, avatar_color: avatarColor }).eq('id', user.id)
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -76,19 +75,6 @@ export default function ProfilePage() {
               />
             ))}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-base font-medium text-[#ccc] mb-1.5">
-            Slack Webhook URL
-            <span className="text-[#666] font-normal ml-1 text-sm">(for notifications)</span>
-          </label>
-          <input
-            type="url" value={slackWebhook} onChange={e => setSlackWebhook(e.target.value)}
-            placeholder="https://hooks.slack.com/services/..."
-            className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
-          />
-          <p className="text-sm text-[#666] mt-1">Set up an incoming webhook in Slack and paste the URL here.</p>
         </div>
 
         <button type="submit" disabled={saving}

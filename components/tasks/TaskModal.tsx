@@ -70,7 +70,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
       const { data: reviewers } = await supabase
         .from('users')
         .select('*')
-        .in('name', ['Ali', 'Francis'])
+        .in('role', ['admin', 'ops_manager'])
       for (const reviewer of reviewers || []) {
         if (reviewer.id !== currentUser.id) {
           await sendNotification(supabase, {
@@ -80,10 +80,20 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
             body: `${currentUser.name} submitted "${task.label}" for review`,
             taskId: task.id,
             episodeId: task.episode_id,
-            slackWebhookUrl: reviewer.slack_webhook_url,
           })
         }
       }
+      // Slack: review submitted block
+      fetch('/api/slack/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'review_submitted',
+          episodeId: task.episode_id,
+          taskLabel: task.label,
+          assigneeName: currentUser.name,
+        }),
+      }).catch(() => {})
     }
 
     setUpdatingStatus(true)
@@ -120,7 +130,6 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
               body: `"${t.label}" is now ready for ${episode ? `${episode.guest_name} / ${episode.client_label}` : ''}`,
               taskId: t.id,
               episodeId,
-              slackWebhookUrl: assignee.slack_webhook_url,
             })
           }
         }

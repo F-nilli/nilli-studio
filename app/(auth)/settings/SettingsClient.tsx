@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, canManageTeam } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Pencil, ExternalLink } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
-type Tab = 'team' | 'clients' | 'activity'
+type Tab = 'team' | 'clients' | 'activity' | 'integrations'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -43,6 +43,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
     { id: 'team' as Tab, label: 'Team', icon: Users },
     { id: 'clients' as Tab, label: 'Clients & Templates', icon: Building2 },
     { id: 'activity' as Tab, label: 'Activity', icon: Activity },
+    ...(currentUser.role === 'admin' ? [{ id: 'integrations' as Tab, label: 'Integrations', icon: Zap }] : []),
   ]
 
   return (
@@ -87,6 +88,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
         />
       )}
       {activeTab === 'activity' && <ActivityTab activity={activity} />}
+      {activeTab === 'integrations' && <IntegrationsTab />}
     </div>
   )
 }
@@ -140,12 +142,6 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u))
     setActionLoading(null)
     showToast('Role updated')
-  }
-
-  async function handleSlackUpdate(userId: string, webhook: string) {
-    await supabase.from('users').update({ slack_webhook_url: webhook || null }).eq('id', userId)
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, slack_webhook_url: webhook || null } : u))
-    showToast('Slack webhook saved')
   }
 
   async function handleRemove(userId: string) {
@@ -234,11 +230,11 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
 
       {/* Users table */}
       <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-2 bg-[#101010] border-b border-[#2e2e2e]">
+        <div className="grid grid-cols-[1fr_140px_80px_100px] px-4 py-2 bg-[#101010] border-b border-[#2e2e2e]">
           <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Member</span>
           <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Role</span>
           <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Tasks</span>
-          <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Slack</span>
+          <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Actions</span>
         </div>
         {users.map(u => (
           <UserRow
@@ -249,7 +245,6 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
             activeTasks={taskCountByUser[u.id] || 0}
             actionLoading={actionLoading}
             onRoleChange={handleRoleChange}
-            onSlackUpdate={handleSlackUpdate}
             onRemove={handleRemove}
             onResetPassword={handleResetPassword}
           />
@@ -259,20 +254,17 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   )
 }
 
-function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChange, onSlackUpdate, onRemove, onResetPassword }: {
+function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChange, onRemove, onResetPassword }: {
   user: User; isSelf: boolean; isAdmin: boolean; activeTasks: number
   actionLoading: string | null
   onRoleChange: (id: string, role: UserRole) => void
-  onSlackUpdate: (id: string, webhook: string) => void
   onRemove: (id: string) => void
   onResetPassword: (id: string) => void
 }) {
-  const [editingSlack, setEditingSlack] = useState(false)
-  const [slackVal, setSlackVal] = useState(user.slack_webhook_url || '')
   const [showRoleMenu, setShowRoleMenu] = useState(false)
 
   return (
-    <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b border-[#242424] last:border-0 items-center hover:bg-[#111111] transition-colors group">
+    <div className="grid grid-cols-[1fr_140px_80px_100px] px-4 py-3 border-b border-[#242424] last:border-0 items-center hover:bg-[#111111] transition-colors group">
       {/* Name + email */}
       <div className="flex items-center gap-3 min-w-0">
         <Avatar name={user.name} color={user.avatar_color} size="sm" />
@@ -325,50 +317,19 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
         {activeTasks > 0 && <span className="text-xs text-[#666] ml-1">active</span>}
       </div>
 
-      {/* Slack + actions */}
-      <div className="flex items-center gap-2">
-        {editingSlack ? (
-          <div className="flex items-center gap-1 flex-1">
-            <input
-              value={slackVal}
-              onChange={e => setSlackVal(e.target.value)}
-              placeholder="https://hooks.slack.com/..."
-              className="flex-1 min-w-0 px-2 py-0.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
-            />
-            <button onClick={() => { onSlackUpdate(user.id, slackVal); setEditingSlack(false) }}
-              className="p-0.5 bg-[#ff3c00] rounded text-white"><Check className="w-3 h-3" /></button>
-            <button onClick={() => setEditingSlack(false)}
-              className="p-0.5 text-[#666] hover:text-white"><X className="w-3 h-3" /></button>
-          </div>
-        ) : (
-          <>
-            {user.slack_webhook_url
-              ? <span className="text-xs font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">Connected</span>
-              : <a href="/profile" className="text-xs font-medium text-[#ff3c00] hover:underline">Not set up →</a>
-            }
-            {isAdmin && (
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => setEditingSlack(true)} title="Edit Slack webhook"
-                  className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
-                  <Pencil className="w-3 h-3" />
-                </button>
-                {!isSelf && (
-                  <>
-                    <button onClick={() => onResetPassword(user.id)} disabled={actionLoading === user.id + '-reset'} title="Send password reset"
-                      className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
-                      <RefreshCw className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => onRemove(user.id)} disabled={actionLoading === user.id + '-remove'} title="Remove user"
-                      className="p-1 rounded hover:bg-[#ff3c00]/20 text-[#555] hover:text-[#ff3c00] transition-colors">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {/* Actions */}
+      {isAdmin && !isSelf && (
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => onResetPassword(user.id)} disabled={actionLoading === user.id + '-reset'} title="Send password reset"
+            className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
+            <RefreshCw className="w-3 h-3" />
+          </button>
+          <button onClick={() => onRemove(user.id)} disabled={actionLoading === user.id + '-remove'} title="Remove user"
+            className="p-1 rounded hover:bg-[#ff3c00]/20 text-[#555] hover:text-[#ff3c00] transition-colors">
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -385,6 +346,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [addingClient, setAddingClient] = useState(false)
   const [newClientLabel, setNewClientLabel] = useState('')
   const [newClientKey, setNewClientKey] = useState('')
+  const [channelId, setChannelId] = useState(initialClients[0]?.slack_channel_id || '')
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
 
@@ -397,6 +359,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   function selectClient(id: string) {
     setSelectedClientId(id)
     setEditingTasks(templates.filter(t => t.client_id === id).sort((a, b) => a.seq_id - b.seq_id))
+    setChannelId(clients.find(c => c.id === id)?.slack_channel_id || '')
   }
 
   const currentTasks = editingTasks.length > 0 ? editingTasks : clientTemplates
@@ -456,8 +419,8 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       setEditingTasks([])
     }
     const savedAt = new Date().toISOString()
-    await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name }).eq('id', selectedClientId)
-    setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, last_saved_at: savedAt, last_saved_by_name: currentUser.name } : c))
+    await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null }).eq('id', selectedClientId)
+    setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null } : c))
     setSaving(false)
     showToast('Template saved')
   }
@@ -534,6 +497,13 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <input
+                  value={channelId}
+                  onChange={e => setChannelId(e.target.value)}
+                  placeholder="#channel-id"
+                  title="Slack Channel ID"
+                  className="px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555] w-32"
+                />
                 <label className="flex items-center gap-2 text-sm text-[#888] cursor-pointer">
                   <input
                     type="checkbox"
@@ -616,6 +586,91 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Integrations Tab ─────────────────────────────────────────────────────────
+
+function IntegrationsTab() {
+  const [token, setToken] = useState('')
+  const [status, setStatus] = useState<{ connected: boolean; workspaceName: string | null; tokenHint: string | null } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
+
+  useEffect(() => {
+    fetch('/api/admin/slack').then(r => r.json()).then(setStatus).catch(() => {})
+  }, [])
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+    const res = await fetch('/api/admin/slack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error || 'Failed to connect'); setSaving(false); return }
+    setStatus({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4) })
+    setToken('')
+    setToast('Slack connected!')
+    setTimeout(() => setToast(''), 3000)
+    setSaving(false)
+  }
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
+            <Zap className="w-5 h-5 text-[#ff3c00]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-white">Slack</h3>
+            <p className="text-xs text-[#666]">Post Block Kit notifications to client channels</p>
+          </div>
+          {status && (
+            status.connected
+              ? <span className="text-xs font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full shrink-0">Connected · {status.workspaceName}</span>
+              : <span className="text-xs font-medium text-[#888] bg-[#1e1e1e] px-2 py-0.5 rounded-full shrink-0">Not connected</span>
+          )}
+        </div>
+
+        {toast && <p className="text-sm text-green-400">{toast}</p>}
+        {error && <p className="text-sm text-[#ff3c00]">{error}</p>}
+
+        <form onSubmit={handleSave} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-[#ccc] mb-1.5">
+              Bot Token{status?.tokenHint && <span className="text-[#555] font-normal ml-1">({status.tokenHint})</span>}
+            </label>
+            <input
+              type="password"
+              value={token}
+              onChange={e => setToken(e.target.value)}
+              required
+              placeholder="xoxb-..."
+              className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+            />
+            <p className="text-xs text-[#555] mt-1">
+              From your Slack app&apos;s &ldquo;OAuth &amp; Permissions&rdquo; page. Requires <code className="text-[#888]">chat:write</code> scope.
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={saving || !token}
+            className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
+          >
+            {saving ? 'Connecting...' : status?.connected ? 'Update token' : 'Connect Slack'}
+          </button>
+        </form>
+      </div>
+      <p className="text-xs text-[#555]">
+        Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
+      </p>
     </div>
   )
 }

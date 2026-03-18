@@ -147,9 +147,6 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
             body: `"${task.label}" is ready for ${guestName} / ${selectedClient.label}`,
             task_id: task.id, episode_id: episode.id, read: false,
           })
-          if (assignee.slack_webhook_url) {
-            fetch(assignee.slack_webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: `*New task ready*\n"${task.label}" is ready for ${guestName} / ${selectedClient.label}` }) }).catch(() => {})
-          }
         }
       }
     }

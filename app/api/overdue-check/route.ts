@@ -71,14 +71,6 @@ export async function GET(request: Request) {
       read: false,
     })
 
-    if (assignee.slack_webhook_url) {
-      await fetch(assignee.slack_webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `⚠️ *Overdue task*\n${notifBody}` }),
-      }).catch(() => {})
-    }
-
     // Also notify Francis if they're not the assignee
     if (francis && francis.id !== assignee.id) {
       await supabase.from('notifications').insert({
@@ -90,14 +82,6 @@ export async function GET(request: Request) {
         episode_id: task.episode_id,
         read: false,
       })
-
-      if (francis.slack_webhook_url) {
-        await fetch(francis.slack_webhook_url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: `⚠️ *Overdue task (${assignee.name})*\n${notifBody}` }),
-        }).catch(() => {})
-      }
     }
 
     notified++
