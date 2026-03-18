@@ -49,6 +49,7 @@ export interface Episode {
   guest_name: string
   release_date: string
   footage_url: string | null
+  notes: string | null
   created_by: string
   created_at: string
   published_at: string | null

@@ -55,6 +55,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   const [guestName, setGuestName] = useState('')
   const [releaseDate, setReleaseDate] = useState('') // datetime-local value
   const [footageUrl, setFootageUrl] = useState('')
+  const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
@@ -102,6 +103,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         guest_name: guestName,
         release_date: releaseDate.slice(0, 10),
         footage_url: footageUrl || null,
+        notes: notes || null,
         created_by: currentUser.id,
       })
       .select().single()
@@ -209,6 +211,19 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                 type="url" value={footageUrl} onChange={e => setFootageUrl(e.target.value)}
                 placeholder="https://drive.google.com/..."
                 className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-base font-medium text-[#ccc] mb-1.5">
+                Brief & Notes <span className="text-[#666] font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Add episode brief, client direction, or notes for the team..."
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555] resize-none"
               />
             </div>
 

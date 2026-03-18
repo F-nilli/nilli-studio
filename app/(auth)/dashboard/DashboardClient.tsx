@@ -159,6 +159,7 @@ export function DashboardClient({ currentUser, tasks: initialTasks, reviewTasks:
         <TaskModal
           task={selectedTask}
           currentUser={currentUser}
+          episode={selectedTask?.episode ?? undefined}
           onClose={() => setSelectedTask(null)}
           onUpdate={(updated) => { handleTaskUpdate(updated); setSelectedTask(updated) }}
         />

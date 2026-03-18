@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Task, User, Comment, TaskStatus, canApprove } from '@/lib/types'
+import { Task, User, Comment, TaskStatus, canApprove, Episode } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { ApprovalModal } from './ApprovalModal'
@@ -16,7 +16,14 @@ interface Props {
   currentUser: User
   onClose: () => void
   onUpdate: (task: Task) => void
+  episode?: Episode
 }
+
+function getDomain(url: string) {
+  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
+}
+
+const FOOTAGE_TRACKS = ['Trailer', 'Clips & Shorts', 'Long-form']
 
 const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
   ready: 'in_progress',
@@ -24,7 +31,7 @@ const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
   revision: 'in_review',
 }
 
-export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
+export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Props) {
   const supabase = createClient()
   const [comments, setComments] = useState<Comment[]>([])
   const [newComment, setNewComment] = useState('')
@@ -187,6 +194,20 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
                 </p>
               </div>
             </div>
+
+                {episode?.footage_url && FOOTAGE_TRACKS.includes(task.track) && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-[#888]">Footage</p>
+                    <a
+                      href={episode.footage_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-[#f7931a] hover:text-[#e07d10] transition-colors"
+                    >
+                      {getDomain(episode.footage_url)} →
+                    </a>
+                  </div>
+                )}
 
             {task.note && (
               <div className="bg-[#ff3c00]/10 border border-[#ff3c00]/20 rounded-lg p-3">

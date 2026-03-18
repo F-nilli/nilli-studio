@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Episode, Task, User, Track, TaskStatus, canEditDates as canEditDatesRole } from '@/lib/types'
+import { Episode, Task, User, Track, TaskStatus, canEditDates as canEditDatesRole, canApprove } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { TaskModal } from '@/components/tasks/TaskModal'
@@ -99,6 +99,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
   const canEditDates = canEditDatesRole(currentUser)
+  const canEdit = canApprove(currentUser)
 
   useEffect(() => {
     const channel = supabase
@@ -182,6 +183,13 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         )}
       </div>
 
+      {/* Brief & Notes */}
+      <BriefNotes
+        episodeId={episode.id}
+        initialNotes={episode.notes}
+        canEdit={canEdit}
+      />
+
       {/* Two-column: task list + timeline */}
       <div className="flex items-start gap-4">
 
@@ -224,9 +232,102 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         <TaskModal
           task={selectedTask}
           currentUser={currentUser}
+          episode={episode}
           onClose={() => setSelectedTask(null)}
           onUpdate={handleTaskUpdate}
         />
+      )}
+    </div>
+  )
+}
+
+// ─── Brief & Notes ────────────────────────────────────────────────────────────
+
+function BriefNotes({ episodeId, initialNotes, canEdit }: {
+  episodeId: string
+  initialNotes: string | null
+  canEdit: boolean
+}) {
+  const supabase = createClient()
+  const [notes, setNotes] = useState(initialNotes || '')
+  const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const isEmpty = !notes.trim()
+  const lines = notes.split('\n')
+  const isLong = lines.length > 2 || notes.length > 160
+  const preview = isLong && !expanded ? lines.slice(0, 2).join('\n') : notes
+
+  function scheduleAutoSave(value: string) {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(async () => {
+      await supabase.from('episodes').update({ notes: value || null }).eq('id', episodeId)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }, 1000)
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setNotes(e.target.value)
+    scheduleAutoSave(e.target.value)
+  }
+
+  if (isEmpty && !editing) {
+    if (!canEdit) return null
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="w-full text-left text-sm text-[#3a3a3a] hover:text-[#555] italic py-3 px-4 rounded-xl border border-dashed border-[#2e2e2e] hover:border-[#444] transition-colors"
+      >
+        Add episode brief, client direction, or notes for the team...
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-[#555] uppercase tracking-wider">Brief & Notes</span>
+        <div className="flex items-center gap-2">
+          {saved && <span className="text-xs text-green-400 font-medium">Saved</span>}
+          {canEdit && !editing && (
+            <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
+              <Pencil className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {editing && canEdit ? (
+        <textarea
+          value={notes}
+          onChange={handleChange}
+          onBlur={() => setEditing(false)}
+          autoFocus
+          placeholder="Add episode brief, client direction, or notes for the team..."
+          rows={4}
+          className="w-full bg-[#1e1e1e] border border-[#333] rounded-lg px-3 py-2 text-sm text-[#ccc] resize-none focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#444] leading-relaxed"
+        />
+      ) : (
+        <div>
+          <p className="text-sm text-[#ccc] whitespace-pre-wrap leading-relaxed">
+            {preview}{isLong && !expanded ? ' …' : ''}
+          </p>
+          <div className="flex items-center gap-3 mt-1">
+            {isLong && (
+              <button onClick={() => setExpanded(!expanded)} className="text-xs text-[#555] hover:text-[#888] transition-colors">
+                {expanded ? 'Show less' : 'Show more'}
+              </button>
+            )}
+            {canEdit && (
+              <button onClick={() => setEditing(true)} className="text-xs text-[#444] hover:text-[#666] transition-colors">
+                Edit
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
