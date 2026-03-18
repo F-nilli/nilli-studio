@@ -263,6 +263,17 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
           </div>
           <p className="text-base font-medium text-white">{task.label}</p>
           <p className="text-sm text-[#888] mt-0.5">{task.track}</p>
+          {task.episode?.footage_url && ['Trailer', 'Clips & Shorts', 'Long-form'].includes(task.track) && (
+            <a
+              href={task.episode.footage_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="text-xs text-[#f7931a]/70 hover:text-[#f7931a] transition-colors mt-0.5 inline-block"
+            >
+              Footage →
+            </a>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2 shrink-0">
