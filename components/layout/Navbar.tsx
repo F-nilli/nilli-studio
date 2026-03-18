@@ -89,7 +89,7 @@ export function Navbar({ user }: NavbarProps) {
   ]
 
   return (
-    <nav className="h-24 bg-[#161717] border-b border-[#2e2e2e] flex items-center px-8 sticky top-0 z-40">
+    <nav className="h-24 bg-[#0a0a0a] border-b border-[#2e2e2e] flex items-center px-8 sticky top-0 z-40">
       {/* Nav Links — left */}
       <div className="flex items-center gap-1 flex-1">
         {navLinks.map(({ href, label, icon: Icon }) => (
@@ -133,7 +133,7 @@ export function Navbar({ user }: NavbarProps) {
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-1 w-80 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg shadow-xl overflow-hidden">
+            <div className="absolute right-0 top-full mt-1 w-80 bg-[#141414] border border-[#2e2e2e] rounded-lg shadow-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-[#2e2e2e]">
                 <h3 className="font-semibold text-sm text-white">Notifications</h3>
               </div>
@@ -174,7 +174,7 @@ export function Navbar({ user }: NavbarProps) {
           </button>
 
           {showUserMenu && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg shadow-xl overflow-hidden">
+            <div className="absolute right-0 top-full mt-1 w-48 bg-[#141414] border border-[#2e2e2e] rounded-lg shadow-xl overflow-hidden">
               <Link
                 href="/profile"
                 className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#ccc] hover:text-white hover:bg-white/5"

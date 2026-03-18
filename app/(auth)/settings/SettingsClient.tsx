@@ -2,14 +2,14 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User, Client, DbTaskTemplate, ActivityEntry, Episode, UserRole, Track, canManageTeam, canManageClients } from '@/lib/types'
+import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, canManageTeam } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Archive, Plus, Trash2, RefreshCw, Mail, Shield, ChevronDown, Check, X, Pencil, ExternalLink } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Pencil, ExternalLink } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
-type Tab = 'team' | 'clients' | 'activity' | 'published'
+type Tab = 'team' | 'clients' | 'activity'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -34,17 +34,15 @@ interface Props {
   clients: Client[]
   templates: DbTaskTemplate[]
   activity: ActivityEntry[]
-  episodes: Episode[]
 }
 
-export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients, templates, activity, episodes }: Props) {
+export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients, templates, activity }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('team')
 
   const tabs = [
-    { id: 'team' as Tab, label: 'Team', icon: Users, show: true },
-    { id: 'clients' as Tab, label: 'Clients & Templates', icon: Building2, show: true },
-    { id: 'activity' as Tab, label: 'Activity', icon: Activity, show: true },
-    { id: 'published' as Tab, label: 'Published', icon: Archive, show: true },
+    { id: 'team' as Tab, label: 'Team', icon: Users },
+    { id: 'clients' as Tab, label: 'Clients & Templates', icon: Building2 },
+    { id: 'activity' as Tab, label: 'Activity', icon: Activity },
   ]
 
   return (
@@ -56,7 +54,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-[#2e2e2e]">
-        {tabs.filter(t => t.show).map(tab => (
+        {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -89,9 +87,6 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
         />
       )}
       {activeTab === 'activity' && <ActivityTab activity={activity} />}
-      {activeTab === 'published' && (
-        <PublishedTab episodes={episodes} currentUser={currentUser} />
-      )}
     </div>
   )
 }
@@ -172,7 +167,7 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   return (
     <div className="space-y-4">
       {toast && (
-        <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2">
+        <div className="bg-[#141414] border border-[#2e2e2e] rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2">
           <Check className="w-4 h-4 text-green-400" />{toast}
         </div>
       )}
@@ -190,26 +185,26 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
       </div>
 
       {showInvite && isAdmin && (
-        <form onSubmit={handleInvite} className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+        <form onSubmit={handleInvite} className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
           <h3 className="font-bold text-white">Invite new member</h3>
           {inviteError && <p className="text-sm text-[#ff3c00]">{inviteError}</p>}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-[#888] mb-1 block">Full name</label>
               <input value={inviteName} onChange={e => setInviteName(e.target.value)} required placeholder="Jane Smith"
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
             </div>
             <div>
               <label className="text-xs text-[#888] mb-1 block">Email</label>
               <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required placeholder="jane@studio.com"
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-[#888] mb-1 block">Role</label>
               <select value={inviteRole} onChange={e => setInviteRole(e.target.value as UserRole)}
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]">
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]">
                 <option value="admin">Admin — Full access + user management</option>
                 <option value="ops_manager">Ops Manager — Full access, no user management</option>
                 <option value="member">Basic — Own tasks only</option>
@@ -239,7 +234,7 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
 
       {/* Users table */}
       <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-2 bg-[#191919] border-b border-[#2e2e2e]">
+        <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-2 bg-[#101010] border-b border-[#2e2e2e]">
           <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Member</span>
           <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Role</span>
           <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Tasks</span>
@@ -277,7 +272,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
   const [showRoleMenu, setShowRoleMenu] = useState(false)
 
   return (
-    <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b border-[#242424] last:border-0 items-center hover:bg-[#1a1a1a] transition-colors group">
+    <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b border-[#242424] last:border-0 items-center hover:bg-[#111111] transition-colors group">
       {/* Name + email */}
       <div className="flex items-center gap-3 min-w-0">
         <Avatar name={user.name} color={user.avatar_color} size="sm" />
@@ -300,12 +295,12 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
               <ChevronDown className="w-3 h-3 text-[#555]" />
             </button>
             {showRoleMenu && (
-              <div className="absolute left-0 top-full mt-1 w-64 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg shadow-xl z-10 overflow-hidden">
+              <div className="absolute left-0 top-full mt-1 w-64 bg-[#141414] border border-[#2e2e2e] rounded-lg shadow-xl z-10 overflow-hidden">
                 {(['admin', 'ops_manager', 'member'] as UserRole[]).map(role => (
                   <button
                     key={role}
                     onClick={() => { onRoleChange(user.id, role); setShowRoleMenu(false) }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-[#2a2a2a] transition-colors"
+                    className="w-full text-left px-4 py-2.5 hover:bg-[#1e1e1e] transition-colors"
                   >
                     <p className="text-sm text-white font-medium">{ROLE_LABELS[role]}</p>
                     <p className="text-xs text-[#666]">{ROLE_DESCRIPTIONS[role]}</p>
@@ -338,7 +333,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
               value={slackVal}
               onChange={e => setSlackVal(e.target.value)}
               placeholder="https://hooks.slack.com/..."
-              className="flex-1 min-w-0 px-2 py-0.5 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+              className="flex-1 min-w-0 px-2 py-0.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
             />
             <button onClick={() => { onSlackUpdate(user.id, slackVal); setEditingSlack(false) }}
               className="p-0.5 bg-[#ff3c00] rounded text-white"><Check className="w-3 h-3" /></button>
@@ -347,19 +342,20 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
           </div>
         ) : (
           <>
-            <span className={cn('text-xs', user.slack_webhook_url ? 'text-green-400' : 'text-[#444]')}>
-              {user.slack_webhook_url ? '● Slack' : '○ Slack'}
-            </span>
+            {user.slack_webhook_url
+              ? <span className="text-xs font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">Connected</span>
+              : <a href="/profile" className="text-xs font-medium text-[#ff3c00] hover:underline">Not set up →</a>
+            }
             {isAdmin && (
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onClick={() => setEditingSlack(true)} title="Edit Slack webhook"
-                  className="p-1 rounded hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-colors">
+                  className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
                   <Pencil className="w-3 h-3" />
                 </button>
                 {!isSelf && (
                   <>
                     <button onClick={() => onResetPassword(user.id)} disabled={actionLoading === user.id + '-reset'} title="Send password reset"
-                      className="p-1 rounded hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-colors">
+                      className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
                       <RefreshCw className="w-3 h-3" />
                     </button>
                     <button onClick={() => onRemove(user.id)} disabled={actionLoading === user.id + '-remove'} title="Remove user"
@@ -459,6 +455,9 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       setTemplates(prev => [...prev.filter(t => t.client_id !== selectedClientId), ...newTemplates as unknown as DbTaskTemplate[]])
       setEditingTasks([])
     }
+    const savedAt = new Date().toISOString()
+    await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name }).eq('id', selectedClientId)
+    setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, last_saved_at: savedAt, last_saved_by_name: currentUser.name } : c))
     setSaving(false)
     showToast('Template saved')
   }
@@ -483,7 +482,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   return (
     <div className="space-y-4">
       {toast && (
-        <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2">
+        <div className="bg-[#141414] border border-[#2e2e2e] rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2">
           <Check className="w-4 h-4 text-green-400" />{toast}
         </div>
       )}
@@ -497,7 +496,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
               onClick={() => selectClient(c.id)}
               className={cn(
                 'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between gap-2',
-                selectedClientId === c.id ? 'bg-[#ff3c00]/10 text-white border border-[#ff3c00]/30' : 'text-[#888] hover:text-white hover:bg-[#2a2a2a]'
+                selectedClientId === c.id ? 'bg-[#ff3c00]/10 text-white border border-[#ff3c00]/30' : 'text-[#888] hover:text-white hover:bg-[#1e1e1e]'
               )}
             >
               <span className="truncate">{c.label}</span>
@@ -506,16 +505,16 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
           ))}
           <button
             onClick={() => setAddingClient(!addingClient)}
-            className="w-full text-left px-3 py-2 rounded-lg text-sm text-[#555] hover:text-white hover:bg-[#2a2a2a] transition-colors flex items-center gap-1.5"
+            className="w-full text-left px-3 py-2 rounded-lg text-sm text-[#555] hover:text-white hover:bg-[#1e1e1e] transition-colors flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />New client
           </button>
           {addingClient && (
             <form onSubmit={handleAddClient} className="space-y-2 pt-1">
               <input value={newClientLabel} onChange={e => setNewClientLabel(e.target.value)} required placeholder="Client name"
-                className="w-full px-2 py-1.5 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]" />
+                className="w-full px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]" />
               <input value={newClientKey} onChange={e => setNewClientKey(e.target.value)} required placeholder="client_key (no spaces)"
-                className="w-full px-2 py-1.5 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]" />
+                className="w-full px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]" />
               <button type="submit" className="w-full py-1.5 bg-[#ff3c00] text-white rounded text-xs font-semibold">Add</button>
             </form>
           )}
@@ -528,6 +527,11 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
               <div>
                 <h3 className="font-bold text-white">{selectedClient.label}</h3>
                 <p className="text-xs text-[#666] mt-0.5">{currentTasks.length} tasks in template</p>
+                {selectedClient.last_saved_at && (
+                  <p className="text-xs text-[#555] mt-0.5">
+                    Last edited by {selectedClient.last_saved_by_name ?? '—'} · {format(parseISO(selectedClient.last_saved_at), 'MMM d')}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-[#888] cursor-pointer">
@@ -551,30 +555,30 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[28px_1fr_100px_130px_60px_120px_28px] gap-2 px-3 py-2 bg-[#191919] border-b border-[#2e2e2e]">
+              <div className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_24px] gap-2 px-3 py-2 bg-[#101010] border-b border-[#2e2e2e]">
                 {['#', 'Task', 'Track', 'Assignee', 'Days', 'Deps', ''].map(h => (
                   <span key={h} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
               </div>
               {currentTasks.map((task, idx) => (
-                <div key={task.id} className="grid grid-cols-[28px_1fr_100px_130px_60px_120px_28px] gap-2 px-3 py-2 border-b border-[#242424] last:border-0 items-center">
+                <div key={task.id} className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_24px] gap-2 px-3 py-2 border-b border-[#242424] last:border-0 items-center">
                   <span className="text-xs text-[#555] font-mono">{idx + 1}</span>
                   <input
                     value={task.label}
                     onChange={e => updateTask(idx, 'label', e.target.value)}
-                    className="px-2 py-1 bg-[#2a2a2a] border border-[#333] text-white rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
                   />
                   <select
                     value={task.track}
                     onChange={e => updateTask(idx, 'track', e.target.value as Track)}
-                    className="px-2 py-1 bg-[#2a2a2a] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
                   >
                     {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <select
                     value={task.assignee_id || ''}
                     onChange={e => updateTask(idx, 'assignee_id', e.target.value || null)}
-                    className="px-2 py-1 bg-[#2a2a2a] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
                   >
                     <option value="">Unassigned</option>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -584,17 +588,17 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                     value={task.due_days ?? ''}
                     onChange={e => updateTask(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
                     placeholder="—"
-                    className="px-2 py-1 bg-[#2a2a2a] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
                   />
                   {/* Deps: multi-select of earlier tasks */}
                   <select
                     multiple
                     value={(task.dep_seq_ids || []).map(String)}
                     onChange={e => updateTask(idx, 'dep_seq_ids', Array.from(e.target.selectedOptions).map(o => parseInt(o.value)))}
-                    className="px-1 py-0.5 bg-[#2a2a2a] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] h-8"
+                    className="px-1 py-0.5 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] h-8"
                   >
                     {currentTasks.filter((_, i) => i !== idx).map(t => (
-                      <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label.slice(0, 15)}</option>
+                      <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label.slice(0, 24)}</option>
                     ))}
                   </select>
                   <button onClick={() => removeTask(idx)} className="p-0.5 rounded text-[#555] hover:text-[#ff3c00] transition-colors">
@@ -604,7 +608,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
               ))}
               <button
                 onClick={addTask}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#555] hover:text-white hover:bg-[#1a1a1a] transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#555] hover:text-white hover:bg-[#111111] transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />Add task
               </button>
@@ -650,7 +654,7 @@ function ActivityTab({ activity }: { activity: ActivityEntry[] }) {
           </p>
           <div className="border border-[#2e2e2e] rounded-xl overflow-hidden divide-y divide-[#242424]">
             {entries.map(entry => (
-              <div key={entry.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#1a1a1a] transition-colors">
+              <div key={entry.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#111111] transition-colors">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className="text-sm font-medium text-white truncate">{entry.detail.task_label}</span>
                   {entry.episode && (
@@ -682,86 +686,3 @@ function ActivityTab({ activity }: { activity: ActivityEntry[] }) {
   )
 }
 
-// ─── Published Tab ────────────────────────────────────────────────────────────
-
-function PublishedTab({ episodes, currentUser }: { episodes: Episode[]; currentUser: User }) {
-  const supabase = createClient()
-  const [episodeList, setEpisodeList] = useState<Episode[]>(episodes)
-  const [loading, setLoading] = useState<string | null>(null)
-
-  const published = episodeList.filter(e => e.published_at)
-  const unpublished = episodeList.filter(e => !e.published_at)
-
-  async function togglePublish(episodeId: string, publish: boolean) {
-    setLoading(episodeId)
-    await supabase.from('episodes').update({ published_at: publish ? new Date().toISOString() : null }).eq('id', episodeId)
-    setEpisodeList(prev => prev.map(e => e.id === episodeId ? { ...e, published_at: publish ? new Date().toISOString() : null } : e))
-    setLoading(null)
-  }
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm text-[#888]">Mark episodes as Published to hide them from the active Board. They remain accessible here.</p>
-      </div>
-
-      {/* Active episodes — can be published */}
-      {unpublished.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-[#555] uppercase tracking-wide mb-2">Active — {unpublished.length}</p>
-          <div className="border border-[#2e2e2e] rounded-xl overflow-hidden divide-y divide-[#242424]">
-            {unpublished.map(ep => (
-              <div key={ep.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#1a1a1a] transition-colors">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">{ep.guest_name}</p>
-                  <p className="text-xs text-[#666]">{ep.client_label} · Releases {formatDate(ep.release_date)}</p>
-                </div>
-                <a href={`/episodes/${ep.id}`} className="p-1.5 rounded hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-colors">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-                <button
-                  onClick={() => togglePublish(ep.id, true)}
-                  disabled={loading === ep.id}
-                  className="px-3 py-1.5 text-xs font-semibold text-[#888] border border-[#2e2e2e] rounded-lg hover:border-green-500/50 hover:text-green-400 transition-colors disabled:opacity-50"
-                >
-                  Mark Published
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Published episodes */}
-      {published.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-[#555] uppercase tracking-wide mb-2">Published — {published.length}</p>
-          <div className="border border-[#2e2e2e] rounded-xl overflow-hidden divide-y divide-[#242424]">
-            {published.map(ep => (
-              <div key={ep.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#1a1a1a] transition-colors opacity-60">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">{ep.guest_name}</p>
-                  <p className="text-xs text-[#666]">{ep.client_label} · Published {ep.published_at ? formatDate(ep.published_at) : ''}</p>
-                </div>
-                <button
-                  onClick={() => togglePublish(ep.id, false)}
-                  disabled={loading === ep.id}
-                  className="px-3 py-1.5 text-xs font-semibold text-[#555] border border-[#2a2a2a] rounded-lg hover:border-[#ff3c00]/50 hover:text-[#ff3c00] transition-colors disabled:opacity-50"
-                >
-                  Unarchive
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {published.length === 0 && unpublished.length === 0 && (
-        <div className="text-center py-16 text-[#555]">
-          <Archive className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="font-bold text-white">No episodes yet</p>
-        </div>
-      )}
-    </div>
-  )
-}

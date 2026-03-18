@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BoardClient } from './BoardClient'
 import type { User, Episode, Task } from '@/lib/types'
+import { canSeeAllEpisodes } from '@/lib/types'
 
 export default async function BoardPage() {
   const supabase = await createClient()
@@ -11,11 +12,16 @@ export default async function BoardPage() {
   const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
   if (!profile) redirect('/login')
 
-  const isAdmin = profile.role === 'admin'
-
   const usersRes = await supabase.from('users').select('*')
 
-  if (isAdmin) {
+  // Always fetch published episodes for the Archive tab
+  const { data: publishedEpisodesData } = await supabase
+    .from('episodes')
+    .select('*')
+    .not('published_at', 'is', null)
+    .order('published_at', { ascending: false })
+
+  if (canSeeAllEpisodes(profile)) {
     const [episodesRes, tasksRes] = await Promise.all([
       supabase.from('episodes').select('*').is('published_at', null).order('release_date', { ascending: true }),
       supabase.from('tasks').select('*, assignee:users(*)').order('template_task_id', { ascending: true }),
@@ -26,11 +32,12 @@ export default async function BoardPage() {
         episodes={(episodesRes.data || []) as Episode[]}
         tasks={(tasksRes.data || []) as unknown as Task[]}
         allUsers={(usersRes.data || []) as User[]}
+        publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
       />
     )
   }
 
-  // Non-admin: find episodes they're involved in, show full task picture per card
+  // Member: find episodes they're involved in
   const { data: myTasks } = await supabase
     .from('tasks')
     .select('episode_id')
@@ -45,6 +52,7 @@ export default async function BoardPage() {
         episodes={[]}
         tasks={[]}
         allUsers={(usersRes.data || []) as User[]}
+        publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
       />
     )
   }
@@ -60,6 +68,7 @@ export default async function BoardPage() {
       episodes={(episodesRes.data || []) as Episode[]}
       tasks={(tasksRes.data || []) as unknown as Task[]}
       allUsers={(usersRes.data || []) as User[]}
+      publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
     />
   )
 }

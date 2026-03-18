@@ -46,13 +46,13 @@ export default function ProfilePage() {
     <div className="max-w-lg">
       <h1 className="text-3xl font-black text-white mb-6">Profile</h1>
 
-      <form onSubmit={handleSave} className="bg-[#1e1e1e] rounded-xl border border-[#2e2e2e] p-6 space-y-5">
+      <form onSubmit={handleSave} className="bg-[#141414] rounded-xl border border-[#2e2e2e] p-6 space-y-5">
         <div className="flex items-center gap-4 pb-4 border-b border-[#2e2e2e]">
           <Avatar name={name || 'You'} color={avatarColor} size="lg" />
           <div>
             <p className="font-bold text-white text-lg">{name || 'Your name'}</p>
             <p className="text-base text-[#888]">{user.email}</p>
-            <span className="text-sm bg-[#2a2a2a] text-[#888] px-2 py-0.5 rounded-full mt-1 inline-block capitalize">
+            <span className="text-sm bg-[#1e1e1e] text-[#888] px-2 py-0.5 rounded-full mt-1 inline-block capitalize">
               {user.role}
             </span>
           </div>
@@ -62,7 +62,7 @@ export default function ProfilePage() {
           <label className="block text-base font-medium text-[#ccc] mb-1.5">Display Name</label>
           <input
             type="text" value={name} onChange={e => setName(e.target.value)} required
-            className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+            className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
           />
         </div>
 
@@ -86,7 +86,7 @@ export default function ProfilePage() {
           <input
             type="url" value={slackWebhook} onChange={e => setSlackWebhook(e.target.value)}
             placeholder="https://hooks.slack.com/services/..."
-            className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+            className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
           />
           <p className="text-sm text-[#666] mt-1">Set up an incoming webhook in Slack and paste the URL here.</p>
         </div>

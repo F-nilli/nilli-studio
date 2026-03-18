@@ -69,7 +69,7 @@ export function DashboardClient({ currentUser, tasks }: Props) {
                 <h2 className="text-sm font-semibold text-[#888] uppercase tracking-wider">
                   {STATUS_LABELS[status]}
                 </h2>
-                <span className="bg-[#2a2a2a] text-[#888] text-xs font-medium px-2 py-0.5 rounded-full">
+                <span className="bg-[#1e1e1e] text-[#888] text-xs font-medium px-2 py-0.5 rounded-full">
                   {statusTasks.length}
                 </span>
               </div>
@@ -166,7 +166,7 @@ function TaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClic
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left bg-[#1e1e1e] border rounded-lg p-4 transition-all group',
+        'w-full text-left bg-[#141414] border rounded-lg p-4 transition-all group',
         overdue
           ? 'border-[#ff3c00]/50 shadow-[0_0_14px_rgba(255,60,0,0.2)] hover:border-[#ff3c00]/70'
           : isDueSoon

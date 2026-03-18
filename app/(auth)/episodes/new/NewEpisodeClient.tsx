@@ -160,13 +160,13 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   return (
     <div className="max-w-2xl">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/board" className="p-2 rounded-md hover:bg-[#2a2a2a] text-[#888]">
+        <Link href="/board" className="p-2 rounded-md hover:bg-[#1e1e1e] text-[#888]">
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <h1 className="text-3xl font-black text-white">New Project</h1>
       </div>
 
-      <form onSubmit={handleCreate} className="bg-[#1e1e1e] rounded-xl border border-[#2e2e2e] p-6 space-y-5">
+      <form onSubmit={handleCreate} className="bg-[#141414] rounded-xl border border-[#2e2e2e] p-6 space-y-5">
         {error && (
           <div className="bg-[#ff3c00]/10 border border-[#ff3c00]/30 text-[#ff3c00] px-3 py-2 rounded-lg text-base">
             {error}
@@ -181,7 +181,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               <label className="block text-base font-medium text-[#ccc] mb-1.5">Client</label>
               <select
                 value={clientId} onChange={e => setClientId(e.target.value)}
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
               >
                 {clients.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
@@ -192,7 +192,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               <input
                 type="text" value={guestName} onChange={e => setGuestName(e.target.value)} required
                 placeholder="e.g. Elon Musk"
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
               />
             </div>
 
@@ -200,7 +200,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               <label className="block text-base font-medium text-[#ccc] mb-1.5">Release Date & Time</label>
               <input
                 type="datetime-local" value={releaseDate} onChange={e => setReleaseDate(e.target.value)} required
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
               />
             </div>
 
@@ -211,7 +211,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               <input
                 type="url" value={footageUrl} onChange={e => setFootageUrl(e.target.value)}
                 placeholder="https://drive.google.com/..."
-                className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
               />
             </div>
 
@@ -224,7 +224,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                   {unlockedTemplates.map(t => {
                     const assignee = allUsers.find(u => u.id === t.assignee_id)
                     return (
-                      <div key={t.seq_id} className="bg-[#2a2a2a] rounded-lg px-3 py-2.5">
+                      <div key={t.seq_id} className="bg-[#1e1e1e] rounded-lg px-3 py-2.5">
                         <div className="flex items-center justify-between gap-3 mb-1.5">
                           <span className="text-base text-white font-medium truncate">{t.label}</span>
                           <span className="text-sm text-[#666] shrink-0">{assignee?.name || '—'}</span>
@@ -233,7 +233,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                           type="datetime-local"
                           value={taskDueDates[t.seq_id] || ''}
                           onChange={e => handleDateChange(t.seq_id, e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-[#1e1e1e] border border-[#3a3a3a] text-white rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                          className="w-full px-2.5 py-1.5 bg-[#141414] border border-[#2e2e2e] text-white rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
                         />
                       </div>
                     )
@@ -250,7 +250,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                   {clientTemplates.map(t => {
                     const assignee = allUsers.find(u => u.id === t.assignee_id)
                     return (
-                      <div key={t.seq_id} className="flex items-center gap-2 text-base text-[#888] bg-[#2a2a2a] rounded-md px-3 py-1.5">
+                      <div key={t.seq_id} className="flex items-center gap-2 text-base text-[#888] bg-[#1e1e1e] rounded-md px-3 py-1.5">
                         <span className="text-[#555] text-sm w-5 shrink-0">{t.seq_id}.</span>
                         <span className="flex-1 truncate">{t.label}</span>
                         <span className="text-sm text-[#666] shrink-0">{assignee?.name || '—'}</span>
@@ -262,7 +262,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
             )}
 
             <div className="flex gap-3 pt-2">
-              <Link href="/board" className="flex-1 py-2.5 px-4 border border-[#3a3a3a] text-[#ccc] font-medium rounded-lg text-base text-center hover:bg-[#2a2a2a] transition-colors">
+              <Link href="/board" className="flex-1 py-2.5 px-4 border border-[#2e2e2e] text-[#ccc] font-medium rounded-lg text-base text-center hover:bg-[#1e1e1e] transition-colors">
                 Cancel
               </Link>
               <button type="submit" disabled={loading}

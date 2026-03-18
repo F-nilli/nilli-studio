@@ -136,7 +136,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
     <>
       <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
         <div
-          className="bg-[#1e1e1e] border border-[#2e2e2e] w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col shadow-2xl"
+          className="bg-[#141414] border border-[#2e2e2e] w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col shadow-2xl"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -154,7 +154,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
               </div>
               <h2 className="text-lg font-bold text-white leading-snug">{task.label}</h2>
             </div>
-            <button onClick={onClose} className="ml-4 p-1 rounded-md hover:bg-[#2a2a2a] text-[#888]">
+            <button onClick={onClose} className="ml-4 p-1 rounded-md hover:bg-[#1e1e1e] text-[#888]">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -186,7 +186,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
             )}
 
             {task.status === 'locked' && (
-              <div className="flex items-center gap-2 text-base text-[#666] bg-[#2a2a2a] rounded-lg p-3">
+              <div className="flex items-center gap-2 text-base text-[#666] bg-[#1e1e1e] rounded-lg p-3">
                 <Lock className="w-4 h-4" />
                 <span>Waiting for dependencies to be approved</span>
               </div>
@@ -224,7 +224,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
                 value={newComment}
                 onChange={e => setNewComment(e.target.value)}
                 placeholder="Add a comment..."
-                className="flex-1 px-3 py-1.5 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-base text-white placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                className="flex-1 px-3 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg text-base text-white placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
               />
               <button
                 type="submit"
@@ -254,7 +254,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate }: Props) {
               <div className="flex gap-2">
                 <button
                   onClick={() => { setApprovalAction('revision'); setShowApprovalModal(true) }}
-                  className="flex-1 py-2.5 px-4 bg-[#2a2a2a] hover:bg-[#333] border border-[#ff3c00]/40 text-[#ff3c00] font-semibold rounded-lg text-base transition-colors"
+                  className="flex-1 py-2.5 px-4 bg-[#1e1e1e] hover:bg-[#333] border border-[#ff3c00]/40 text-[#ff3c00] font-semibold rounded-lg text-base transition-colors"
                 >
                   Send Back
                 </button>

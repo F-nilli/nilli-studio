@@ -140,12 +140,12 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
 
   return (
     <div className="fixed inset-0 bg-black/80 z-60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-[#2e2e2e]">
           <h2 className="text-lg font-bold text-white">
             {action === 'approve' ? 'Approve Task' : 'Send Back for Revision'}
           </h2>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-[#2a2a2a] text-[#888]">
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-[#1e1e1e] text-[#888]">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -178,7 +178,7 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
                     <input
                       type="date" value={dueDates[nextTask.id] || ''} min={today}
                       onChange={e => setDueDates(prev => ({ ...prev, [nextTask.id]: e.target.value }))}
-                      className="w-full px-3 py-1.5 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-base text-white focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                      className="w-full px-3 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg text-base text-white focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
                     />
                   </div>
                 </div>
@@ -201,7 +201,7 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
                     <input
                       type="date" value={revisedTaskDueDate} min={today}
                       onChange={e => setRevisedTaskDueDate(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-base text-white focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                      className="w-full px-3 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg text-base text-white focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
                     />
                   </div>
                 </div>
@@ -211,7 +211,7 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
         </div>
 
         <div className="flex gap-2 p-5 border-t border-[#2e2e2e]">
-          <button onClick={onClose} className="flex-1 py-2.5 px-4 border border-[#3a3a3a] text-[#ccc] font-medium rounded-lg text-base hover:bg-[#2a2a2a] transition-colors">
+          <button onClick={onClose} className="flex-1 py-2.5 px-4 border border-[#2e2e2e] text-[#ccc] font-medium rounded-lg text-base hover:bg-[#1e1e1e] transition-colors">
             Cancel
           </button>
           <button

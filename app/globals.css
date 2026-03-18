@@ -11,10 +11,10 @@
 } */
 
 :root {
-  --background: #161717;
+  --background: #0a0a0a;
   --foreground: #ffffff;
   --accent: #ff3c00;
-  --muted: #2a2a2a;
+  --muted: #1e1e1e;
   --border: #2e2e2e;
   --text-muted: #888888;
 }

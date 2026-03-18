@@ -96,6 +96,8 @@ export interface Client {
   label: string
   active: boolean
   created_at: string
+  last_saved_at: string | null
+  last_saved_by_name: string | null
 }
 
 export interface DbTaskTemplate {

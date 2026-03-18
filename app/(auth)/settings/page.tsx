@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { SettingsClient } from './SettingsClient'
-import type { User, Client, DbTaskTemplate, ActivityEntry, Episode } from '@/lib/types'
+import type { User, Client, DbTaskTemplate, ActivityEntry } from '@/lib/types'
 import { canAccessSettings } from '@/lib/types'
 
 export default async function SettingsPage() {
@@ -12,7 +12,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
   if (!profile || !canAccessSettings(profile)) redirect('/dashboard')
 
-  const [usersRes, clientsRes, templatesRes, activityRes, episodesRes] = await Promise.all([
+  const [usersRes, clientsRes, templatesRes, activityRes] = await Promise.all([
     supabase.from('users').select('*').order('name'),
     supabase.from('clients').select('*').order('label'),
     supabase.from('task_templates').select('*, assignee:users(*)').order('seq_id'),
@@ -21,7 +21,6 @@ export default async function SettingsPage() {
       .select('*, episode:episodes(guest_name, client_label)')
       .order('created_at', { ascending: false })
       .limit(100),
-    supabase.from('episodes').select('*').order('release_date', { ascending: false }),
   ])
 
   // Active task count per user
@@ -43,7 +42,6 @@ export default async function SettingsPage() {
       clients={(clientsRes.data || []) as Client[]}
       templates={(templatesRes.data || []) as unknown as DbTaskTemplate[]}
       activity={(activityRes.data || []) as unknown as ActivityEntry[]}
-      episodes={(episodesRes.data || []) as Episode[]}
     />
   )
 }

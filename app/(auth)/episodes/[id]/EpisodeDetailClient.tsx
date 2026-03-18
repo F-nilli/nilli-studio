@@ -154,7 +154,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       <div className="flex items-center gap-3">
         <Link
           href={currentUser.role === 'admin' ? '/board' : '/dashboard'}
-          className="p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] shrink-0"
+          className="p-1.5 rounded-md hover:bg-[#1e1e1e] text-[#888] shrink-0"
         >
           <ArrowLeft className="w-4 h-4" />
         </Link>
@@ -175,7 +175,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         {episode.footage_url && (
           <a
             href={episode.footage_url} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors shrink-0"
           >
             <ExternalLink className="w-3.5 h-3.5" />Footage
           </a>
@@ -277,13 +277,13 @@ function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick
   return (
     <div className={cn(
       'h-10 flex items-center gap-3 px-3 transition-colors',
-      isLocked ? 'opacity-35 bg-[#191919]' : overdue ? 'bg-[#ff3c00]/5 hover:bg-[#ff3c00]/8' : 'bg-[#1e1e1e] hover:bg-[#242424]'
+      isLocked ? 'opacity-35 bg-[#101010]' : overdue ? 'bg-[#ff3c00]/5 hover:bg-[#ff3c00]/8' : 'bg-[#141414] hover:bg-[#242424]'
     )}>
       {/* Label — aggressively bigger */}
       <button onClick={onClick} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
         {isLocked
           ? <Lock className="w-3 h-3 text-[#444] shrink-0" />
-          : <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', overdue ? 'bg-[#ff3c00]' : 'bg-[#3a3a3a]')} />
+          : <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', overdue ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]')} />
         }
         <span className={cn(
           'text-base font-semibold truncate leading-none',
@@ -300,11 +300,11 @@ function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick
         {taskComment && commentPreview && (
           <button
             onClick={onClick}
-            className="flex items-center gap-1.5 bg-[#232323] border border-[#2e2e2e] rounded-full px-2 py-0.5 max-w-[200px] hover:border-[#3a3a3a] transition-colors"
+            className="flex items-center gap-1.5 bg-[#232323] border border-[#2e2e2e] rounded-full px-2 py-0.5 max-w-[200px] hover:border-[#2e2e2e] transition-colors"
           >
             <MessageSquare className="w-3 h-3 text-[#ff3c00] shrink-0" />
             <span className="text-xs text-[#666] shrink-0 font-medium">{taskComment.count}</span>
-            <span className="text-[#3a3a3a] text-xs shrink-0">·</span>
+            <span className="text-[#2e2e2e] text-xs shrink-0">·</span>
             <span className="text-xs text-[#555] truncate">{commentPreview}</span>
           </button>
         )}
@@ -321,7 +321,7 @@ function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick
                 value={dateValue}
                 onChange={e => setDateValue(e.target.value)}
                 onKeyDown={handleDateKeyDown}
-                className="px-2 py-0.5 bg-[#2a2a2a] border border-[#ff3c00]/60 text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                className="px-2 py-0.5 bg-[#1e1e1e] border border-[#ff3c00]/60 text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
               />
               <button onClick={commitDate} className="p-0.5 rounded bg-[#ff3c00] hover:bg-[#e63600] text-white">
                 <Check className="w-3 h-3" />
@@ -337,7 +337,7 @@ function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick
               {showDateEdit && (
                 <button
                   onClick={e => { e.stopPropagation(); setEditingDate(true) }}
-                  className="p-0.5 rounded opacity-0 group-hover/date:opacity-100 hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-all"
+                  className="p-0.5 rounded opacity-0 group-hover/date:opacity-100 hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-all"
                 >
                   <Pencil className="w-2.5 h-2.5" />
                 </button>

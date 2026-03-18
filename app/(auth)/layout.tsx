@@ -22,7 +22,7 @@ export default async function AuthLayout({
   if (!profile) redirect('/login')
 
   return (
-    <div className="min-h-screen bg-[#161717]">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={profile as User} />
       <main className="px-8 py-8">
         {children}
