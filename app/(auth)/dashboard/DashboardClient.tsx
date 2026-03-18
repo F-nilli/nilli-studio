@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle, Clock, ChevronRight, Lock } from 'lucide-react'
+import { AlertCircle, Clock, Lock } from 'lucide-react'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
@@ -210,7 +210,9 @@ function TaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClic
           )}
         </div>
 
-        <ChevronRight className="w-4 h-4 text-[#555] shrink-0 group-hover:text-white mt-0.5 transition-colors" />
+        <span className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap">
+          {task.status === 'ready' ? 'Start' : task.status === 'in_progress' ? 'Submit for Review' : task.status === 'in_review' ? 'Review' : 'Resubmit'}
+        </span>
       </div>
     </button>
   )
