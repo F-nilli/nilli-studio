@@ -50,11 +50,24 @@ export function DashboardClient({ currentUser, tasks }: Props) {
       </div>
 
       {overdueCount > 0 && (
-        <div className="bg-[#ff3c00]/10 border border-[#ff3c00]/30 rounded-lg p-4 flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-[#ff3c00] shrink-0" />
-          <p className="text-base text-[#ff3c00]">
-            You have {overdueCount} overdue task{overdueCount !== 1 ? 's' : ''}. Please review them below.
-          </p>
+        <div className="bg-[#dc2626] rounded-xl p-5 flex items-center gap-5">
+          <div className="flex items-center justify-center w-14 h-14 bg-white/20 rounded-xl shrink-0">
+            <span className="text-3xl font-black text-white leading-none">{overdueCount}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-black text-lg leading-tight">
+              {overdueCount} overdue task{overdueCount !== 1 ? 's' : ''}
+            </p>
+            <p className="text-white/80 text-sm font-medium mt-0.5">
+              {overdueCount !== 1 ? 'These tasks need' : 'This task needs'} your immediate attention
+            </p>
+          </div>
+          <button
+            onClick={() => document.getElementById('overdue-section')?.scrollIntoView({ behavior: 'smooth' })}
+            className="shrink-0 px-4 py-2.5 bg-white text-[#dc2626] font-bold text-sm rounded-lg hover:bg-white/90 transition-colors"
+          >
+            View overdue
+          </button>
         </div>
       )}
 
@@ -63,8 +76,9 @@ export function DashboardClient({ currentUser, tasks }: Props) {
         {ACTIVE_STATUSES.map(status => {
           const statusTasks = grouped[status]
           if (statusTasks.length === 0) return null
+          const hasOverdue = statusTasks.some(t => isOverdue(t.due_date, t.status))
           return (
-            <div key={status}>
+            <div key={status} id={hasOverdue ? 'overdue-section' : undefined}>
               <div className="flex items-center gap-2 mb-3">
                 <h2 className="text-sm font-semibold text-[#888] uppercase tracking-wider">
                   {STATUS_LABELS[status]}
