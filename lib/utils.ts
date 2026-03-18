@@ -25,15 +25,15 @@ export function formatDate(date: string | Date | null): string {
   return hasTime ? format(d, 'MMM d, yyyy · h:mm a') : format(d, 'MMM d, yyyy')
 }
 
-// Convert DB timestamp string to datetime-local input value (YYYY-MM-DDTHH:mm)
+// Convert DB timestamp string to datetime-local input value in the user's LOCAL timezone
 export function toDatetimeLocal(isoString: string | null): string {
   if (!isoString) return ''
-  return isoString.slice(0, 16)
+  return format(parseISO(isoString), "yyyy-MM-dd'T'HH:mm")
 }
 
-// Convert datetime-local input value to DB timestamp string
+// Convert datetime-local input value (local time) to UTC ISO string for DB storage
 export function fromDatetimeLocal(value: string): string {
-  return value + ':00'
+  return new Date(value).toISOString()
 }
 
 export function isOverdue(dueDate: string | null, status: TaskStatus): boolean {
