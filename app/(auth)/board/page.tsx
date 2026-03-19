@@ -24,7 +24,7 @@ export default async function BoardPage() {
   if (canSeeAllEpisodes(profile)) {
     const [episodesRes, tasksRes] = await Promise.all([
       supabase.from('episodes').select('*').is('published_at', null).order('release_date', { ascending: true }),
-      supabase.from('tasks').select('*, assignee:users(*)').order('template_task_id', { ascending: true }),
+      supabase.from('tasks').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('template_task_id', { ascending: true }),
     ])
     return (
       <BoardClient

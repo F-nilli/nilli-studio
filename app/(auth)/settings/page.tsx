@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   const [usersRes, clientsRes, templatesRes, activityRes] = await Promise.all([
     supabase.from('users').select('*').order('name'),
     supabase.from('clients').select('*').order('label'),
-    supabase.from('task_templates').select('*, assignee:users(*)').order('seq_id'),
+    supabase.from('task_templates').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('seq_id'),
     supabase
       .from('activity_log')
       .select('*, episode:episodes(guest_name, client_label)')

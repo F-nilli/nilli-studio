@@ -280,7 +280,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
       .from('tasks')
       .update(updatePayload)
       .eq('id', task.id)
-      .select('*, assignee:users(*)')
+      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
       .single()
 
     if (data) {

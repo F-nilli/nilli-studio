@@ -514,22 +514,41 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     }))
 
     // Guard: don't wipe data if there's nothing valid to save
-    if (inserts.length === 0 || inserts.every(t => !t.label.trim())) {
+    if (inserts.length === 0 || inserts.every(t => !(t.label || '').trim())) {
       setSaving(false)
       showToast('Add at least one task before saving')
       return
     }
 
-    // Delete only the current template pipeline, not other pipelines for this client
-    await supabase.from('task_templates').delete().eq('client_id', selectedClientId).eq('template_name', selectedTemplateName)
+    // Delete only this pipeline — not other pipelines for the same client
+    const { error: deleteError } = await supabase
+      .from('task_templates')
+      .delete()
+      .eq('client_id', selectedClientId)
+      .eq('template_name', selectedTemplateName)
 
-    const { data: newTemplates, error: insertError } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
-    if (insertError || !newTemplates) {
+    if (deleteError) {
       setSaving(false)
-      showToast('Save failed — please re-enter tasks and try again')
+      showToast(`Save failed: ${deleteError.message}`)
       return
     }
-    setTemplates(prev => [...prev.filter(t => t.client_id !== selectedClientId), ...newTemplates as unknown as DbTaskTemplate[]])
+
+    const { data: newTemplates, error: insertError } = await supabase
+      .from('task_templates')
+      .insert(inserts)
+      .select('*, assignee:users(*)')
+
+    if (insertError || !newTemplates) {
+      setSaving(false)
+      showToast(`Save failed: ${insertError?.message || 'unknown error'}`)
+      return
+    }
+
+    // Replace only the current pipeline in state — leave other pipelines intact
+    setTemplates(prev => [
+      ...prev.filter(t => !(t.client_id === selectedClientId && (t.template_name || 'Default') === selectedTemplateName)),
+      ...newTemplates as unknown as DbTaskTemplate[],
+    ])
     setEditingTasks([])
     const savedAt = new Date().toISOString()
     await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null }).eq('id', selectedClientId)

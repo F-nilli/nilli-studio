@@ -12,7 +12,7 @@ export default async function CalendarPage() {
     supabase.from('users').select('*').eq('id', user.id).single(),
     supabase
       .from('tasks')
-      .select('*, assignee:users(*), episode:episodes(*)')
+      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
       .eq('assignee_id', user.id)
       .not('due_date', 'is', null)
       .order('due_date', { ascending: true }),

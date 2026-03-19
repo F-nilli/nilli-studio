@@ -12,7 +12,7 @@ export default async function DashboardPage() {
     supabase.from('users').select('*').eq('id', user.id).single(),
     supabase
       .from('tasks')
-      .select('*, assignee:users(*), episode:episodes(*)')
+      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
       .eq('assignee_id', user.id)
       .neq('status', 'done')
       .order('due_date', { ascending: true, nullsFirst: false }),
@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   const isAdmin = profile.role === 'admin'
   const reviewQuery = supabase
     .from('tasks')
-    .select('*, assignee:users(*), episode:episodes(*)')
+    .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
     .eq('status', 'in_review')
     .eq('requires_approval', true)
     .neq('assignee_id', user.id)

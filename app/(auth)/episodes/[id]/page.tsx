@@ -14,7 +14,7 @@ export default async function EpisodeDetailPage({ params }: { params: Promise<{ 
     supabase.from('episodes').select('*').eq('id', id).single(),
     supabase
       .from('tasks')
-      .select('*, assignee:users(*)')
+      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
       .eq('episode_id', id)
       .order('template_task_id', { ascending: true }),
   ])

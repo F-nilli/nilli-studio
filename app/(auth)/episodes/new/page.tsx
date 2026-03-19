@@ -20,7 +20,7 @@ export default async function NewEpisodePage() {
   const [usersRes, clientsRes, templatesRes] = await Promise.all([
     supabase.from('users').select('*'),
     supabase.from('clients').select('*').eq('active', true).order('label'),
-    supabase.from('task_templates').select('*, assignee:users(*)').order('seq_id'),
+    supabase.from('task_templates').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('seq_id'),
   ])
 
   return (
