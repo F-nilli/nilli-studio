@@ -6,8 +6,11 @@ import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, canManage
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type Tab = 'team' | 'clients' | 'activity' | 'integrations'
 
@@ -493,10 +496,9 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     showToast('Client deleted')
   }
 
-  async function saveTemplate() {
+  async function saveTasksNow(tasks: DbTaskTemplate[], silent = false) {
     if (!selectedClientId) return
     setSaving(true)
-    const tasks = editingTasks ?? clientTemplates
 
     const inserts = tasks.map((t, i) => ({
       client_id: selectedClientId,
@@ -513,14 +515,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       approver_id: t.requires_approval ? (t.approver_id || null) : null,
     }))
 
-    // Guard: don't wipe data if there's nothing valid to save
-    if (inserts.length === 0 || inserts.every(t => !(t.label || '').trim())) {
-      setSaving(false)
-      showToast('Add at least one task before saving', true)
-      return
-    }
-
-    // Delete only this pipeline — not other pipelines for the same client
     const { error: deleteError } = await supabase
       .from('task_templates')
       .delete()
@@ -544,7 +538,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       return
     }
 
-    // Replace only the current pipeline in state — leave other pipelines intact
     setTemplates(prev => [
       ...prev.filter(t => !(t.client_id === selectedClientId && (t.template_name || 'Default') === selectedTemplateName)),
       ...newTemplates as unknown as DbTaskTemplate[],
@@ -554,8 +547,45 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null }).eq('id', selectedClientId)
     setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null } : c))
     setSaving(false)
-    showToast('Template saved')
+    if (!silent) showToast('Template saved')
   }
+
+  async function saveTemplate() {
+    const tasks = editingTasks ?? clientTemplates
+    if (tasks.length === 0 || tasks.every(t => !(t.label || '').trim())) {
+      showToast('Add at least one task before saving', true)
+      return
+    }
+    await saveTasksNow(tasks)
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const tasks = editingTasks ?? clientTemplates
+    const oldIndex = tasks.findIndex(t => t.id === active.id)
+    const newIndex = tasks.findIndex(t => t.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const reordered = arrayMove(tasks, oldIndex, newIndex)
+
+    // Build old seq_id → new seq_id map
+    const oldToNew: Record<number, number> = {}
+    reordered.forEach((t, i) => { oldToNew[t.seq_id] = i + 1 })
+
+    // Assign new seq_ids and remap dep_seq_ids
+    const remapped = reordered.map((t, i) => ({
+      ...t,
+      seq_id: i + 1,
+      dep_seq_ids: (t.dep_seq_ids || []).map(d => oldToNew[d]).filter(Boolean),
+    }))
+
+    setEditingTasks(remapped)
+    saveTasksNow(remapped, true)
+  }
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   async function toggleClientActive(clientId: string, active: boolean) {
     await supabase.from('clients').update({ active }).eq('id', clientId)
@@ -749,110 +779,27 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
-                {['#', 'Task', 'Checklist', 'Assignee', 'Days', 'Deps', 'Approver', ''].map(h => (
-                  <span key={h} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
+              <div className="grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
+                {['', '#', 'Task', 'Checklist', 'Assignee', 'Days', 'Deps', 'Approver', ''].map((h, i) => (
+                  <span key={i} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
               </div>
-              {currentTasks.map((task, idx) => (
-                <div key={task.id} className="grid grid-cols-[28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center">
-                  <span className="text-sm text-[#555] font-mono">{idx + 1}</span>
-                  <input
-                    value={task.label}
-                    onChange={e => updateTask(idx, 'label', e.target.value)}
-                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
-                  />
-                  <select
-                    value={task.track}
-                    onChange={e => updateTask(idx, 'track', e.target.value as Track)}
-                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
-                  >
-                    {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <select
-                    value={task.assignee_id || ''}
-                    onChange={e => updateTask(idx, 'assignee_id', e.target.value || null)}
-                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
-                  >
-                    <option value="">Unassigned</option>
-                    {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                  {/* Days: D-X mode or +Xhr-after-dep mode */}
-                  <div className="flex items-center gap-1 w-full">
-                    {task.due_after_dep_hours != null ? (
-                      <>
-                        <span className="text-[#555] text-sm shrink-0">+</span>
-                        <input
-                          type="number"
-                          value={task.due_after_dep_hours ?? ''}
-                          onChange={e => updateTask(idx, 'due_after_dep_hours', e.target.value ? parseInt(e.target.value) : null)}
-                          className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-12 focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
-                        />
-                        <span className="text-[#555] text-sm shrink-0">h</span>
-                        <button type="button" title="Switch to D-X mode"
-                          onClick={() => updateTaskFields(idx, { due_after_dep_hours: null, due_days: null })}
-                          className="text-[#555] hover:text-white text-xs px-1 shrink-0">D</button>
-                      </>
-                    ) : (
-                      <>
-                        <input
-                          type="number"
-                          value={task.due_days ?? ''}
-                          onChange={e => updateTask(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
-                          placeholder="—"
-                          className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
-                        />
-                        <button type="button" title="+Xhr after dep completion"
-                          onClick={() => updateTaskFields(idx, { due_after_dep_hours: 24, due_days: null })}
-                          className="text-[#555] hover:text-white text-sm px-1 shrink-0">⚡</button>
-                      </>
-                    )}
-                  </div>
-                  {/* Deps: pill toggles */}
-                  <div className="flex flex-wrap gap-1">
-                    {currentTasks.filter((_, i) => i !== idx).length === 0 ? (
-                      <span className="text-xs text-[#444]">—</span>
-                    ) : (
-                      currentTasks.filter((_, i) => i !== idx).map(t => {
-                        const selected = (task.dep_seq_ids || []).includes(t.seq_id)
-                        return (
-                          <button
-                            key={t.seq_id}
-                            type="button"
-                            title={t.label}
-                            onClick={() => {
-                              const current = task.dep_seq_ids || []
-                              updateTask(idx, 'dep_seq_ids', selected ? current.filter(id => id !== t.seq_id) : [...current, t.seq_id])
-                            }}
-                            className={cn(
-                              'w-7 h-7 rounded text-xs font-bold transition-colors',
-                              selected ? 'bg-[#ff3c00] text-white' : 'bg-[#1e1e1e] text-[#555] hover:text-white border border-[#333]'
-                            )}
-                          >
-                            {t.seq_id}
-                          </button>
-                        )
-                      })
-                    )}
-                  </div>
-                  {/* Approver: "—" = no approval needed, else pick a team member */}
-                  <select
-                    value={task.requires_approval ? (task.approver_id || '') : ''}
-                    onChange={e => {
-                      const val = e.target.value
-                      updateTask(idx, 'requires_approval', val !== '')
-                      updateTask(idx, 'approver_id', val || null)
-                    }}
-                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
-                  >
-                    <option value="">— No approval</option>
-                    {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                  <button onClick={() => { if (confirm('Delete this task?')) removeTask(idx) }} className="p-0.5 rounded text-[#555] hover:text-[#ff3c00] transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={currentTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                  {currentTasks.map((task, idx) => (
+                    <SortableTaskRow
+                      key={task.id}
+                      task={task}
+                      idx={idx}
+                      allTasks={currentTasks}
+                      allUsers={allUsers}
+                      onUpdate={updateTask}
+                      onUpdateFields={updateTaskFields}
+                      onRemove={removeTask}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
               <button
                 onClick={addTask}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#555] hover:text-white hover:bg-[#111111] transition-colors"
@@ -863,6 +810,148 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Sortable Task Row ─────────────────────────────────────────────────────────
+
+function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onUpdateFields, onRemove }: {
+  task: DbTaskTemplate
+  idx: number
+  allTasks: DbTaskTemplate[]
+  allUsers: User[]
+  onUpdate: (idx: number, field: keyof DbTaskTemplate, value: unknown) => void
+  onUpdateFields: (idx: number, fields: Partial<DbTaskTemplate>) => void
+  onRemove: (idx: number) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center',
+        isDragging ? 'bg-[#1a1a1a] opacity-90' : 'bg-transparent'
+      )}
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="text-[#444] hover:text-[#888] cursor-grab active:cursor-grabbing touch-none"
+        tabIndex={-1}
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+
+      <span className="text-sm text-[#555] font-mono">{idx + 1}</span>
+
+      <input
+        value={task.label}
+        onChange={e => onUpdate(idx, 'label', e.target.value)}
+        className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+      />
+
+      <select
+        value={task.track}
+        onChange={e => onUpdate(idx, 'track', e.target.value as Track)}
+        className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+      >
+        {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+
+      <select
+        value={task.assignee_id || ''}
+        onChange={e => onUpdate(idx, 'assignee_id', e.target.value || null)}
+        className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+      >
+        <option value="">Unassigned</option>
+        {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+
+      {/* Days */}
+      <div className="flex items-center gap-1 w-full">
+        {task.due_after_dep_hours != null ? (
+          <>
+            <span className="text-[#555] text-sm shrink-0">+</span>
+            <input
+              type="number"
+              value={task.due_after_dep_hours ?? ''}
+              onChange={e => onUpdate(idx, 'due_after_dep_hours', e.target.value ? parseInt(e.target.value) : null)}
+              className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-12 focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+            />
+            <span className="text-[#555] text-sm shrink-0">h</span>
+            <button type="button" title="Switch to D-X mode"
+              onClick={() => onUpdateFields(idx, { due_after_dep_hours: null, due_days: null })}
+              className="text-[#555] hover:text-white text-xs px-1 shrink-0">D</button>
+          </>
+        ) : (
+          <>
+            <input
+              type="number"
+              value={task.due_days ?? ''}
+              onChange={e => onUpdate(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
+              placeholder="—"
+              className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+            />
+            <button type="button" title="+Xhr after dep completion"
+              onClick={() => onUpdateFields(idx, { due_after_dep_hours: 24, due_days: null })}
+              className="text-[#555] hover:text-white text-sm px-1 shrink-0">⚡</button>
+          </>
+        )}
+      </div>
+
+      {/* Deps */}
+      <div className="flex flex-wrap gap-1">
+        {allTasks.filter((_, i) => i !== idx).length === 0 ? (
+          <span className="text-xs text-[#444]">—</span>
+        ) : (
+          allTasks.filter((_, i) => i !== idx).map(t => {
+            const selected = (task.dep_seq_ids || []).includes(t.seq_id)
+            return (
+              <button
+                key={t.seq_id}
+                type="button"
+                title={t.label}
+                onClick={() => {
+                  const current = task.dep_seq_ids || []
+                  onUpdate(idx, 'dep_seq_ids', selected ? current.filter(id => id !== t.seq_id) : [...current, t.seq_id])
+                }}
+                className={cn(
+                  'w-7 h-7 rounded text-xs font-bold transition-colors',
+                  selected ? 'bg-[#ff3c00] text-white' : 'bg-[#1e1e1e] text-[#555] hover:text-white border border-[#333]'
+                )}
+              >
+                {t.seq_id}
+              </button>
+            )
+          })
+        )}
+      </div>
+
+      {/* Approver */}
+      <select
+        value={task.requires_approval ? (task.approver_id || '') : ''}
+        onChange={e => {
+          const val = e.target.value
+          onUpdate(idx, 'requires_approval', val !== '')
+          onUpdate(idx, 'approver_id', val || null)
+        }}
+        className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+      >
+        <option value="">— No approval</option>
+        {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+
+      <button
+        onClick={() => { if (confirm('Delete this task?')) onRemove(idx) }}
+        className="p-0.5 rounded text-[#555] hover:text-[#ff3c00] transition-colors"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
     </div>
   )
 }
