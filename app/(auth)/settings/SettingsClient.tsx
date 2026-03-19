@@ -365,7 +365,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const clientTemplates = templates
     .filter(t => t.client_id === selectedClientId && (t.template_name || 'Default') === selectedTemplateName)
     .sort((a, b) => a.seq_id - b.seq_id)
-  const [editingTasks, setEditingTasks] = useState<DbTaskTemplate[]>([])
+  const [editingTasks, setEditingTasks] = useState<DbTaskTemplate[] | null>(null)
 
   function showToast(msg: string, error = false) { setToast({ msg, error }); setTimeout(() => setToast(null), 4000) }
 
@@ -375,29 +375,29 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     const names = [...new Set(clientTpls.map(t => t.template_name || 'Default'))]
     const firstName = names[0] || 'Default'
     setSelectedTemplateName(firstName)
-    setEditingTasks([])
+    setEditingTasks(null)
     setChannelId(clients.find(c => c.id === id)?.slack_channel_id || '')
   }
 
   function selectTemplateName(name: string) {
     setSelectedTemplateName(name)
-    setEditingTasks([])
+    setEditingTasks(null)
   }
 
   function handleAddTemplate() {
     const name = newTemplateName.trim()
     if (!name) return
     setSelectedTemplateName(name)
-    setEditingTasks([])
+    setEditingTasks(null)
     setAddingTemplate(false)
     setNewTemplateName('')
   }
 
-  const currentTasks = editingTasks.length > 0 ? editingTasks : clientTemplates
+  const currentTasks = editingTasks ?? clientTemplates
 
   function updateTaskFields(idx: number, fields: Partial<DbTaskTemplate>) {
     setEditingTasks(prev => {
-      const base = prev.length > 0 ? prev : [...clientTemplates]
+      const base = prev ?? [...clientTemplates]
       return base.map((t, i) => i === idx ? { ...t, ...fields } : t)
     })
   }
@@ -407,7 +407,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   }
 
   function addTask() {
-    const base = editingTasks.length > 0 ? editingTasks : [...clientTemplates]
+    const base = editingTasks ?? [...clientTemplates]
     const newSeqId = Math.max(0, ...base.map(t => t.seq_id)) + 1
     const newTask: DbTaskTemplate = {
       id: 'new-' + Date.now(),
@@ -429,7 +429,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   }
 
   function removeTask(idx: number) {
-    const base = editingTasks.length > 0 ? editingTasks : [...clientTemplates]
+    const base = editingTasks ?? [...clientTemplates]
     setEditingTasks(base.filter((_, i) => i !== idx).map((t, i) => ({ ...t, seq_id: i + 1 })))
   }
 
@@ -496,7 +496,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   async function saveTemplate() {
     if (!selectedClientId) return
     setSaving(true)
-    const tasks = editingTasks.length > 0 ? editingTasks : clientTemplates
+    const tasks = editingTasks ?? clientTemplates
 
     const inserts = tasks.map((t, i) => ({
       client_id: selectedClientId,
@@ -549,7 +549,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       ...prev.filter(t => !(t.client_id === selectedClientId && (t.template_name || 'Default') === selectedTemplateName)),
       ...newTemplates as unknown as DbTaskTemplate[],
     ])
-    setEditingTasks([])
+    setEditingTasks(null)
     const savedAt = new Date().toISOString()
     await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null }).eq('id', selectedClientId)
     setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null } : c))
