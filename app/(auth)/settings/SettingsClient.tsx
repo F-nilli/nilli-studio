@@ -6,7 +6,7 @@ import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, canManage
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 type Tab = 'team' | 'clients' | 'activity' | 'integrations'
@@ -349,6 +349,10 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [channelId, setChannelId] = useState(initialClients[0]?.slack_channel_id || '')
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
+  const [renamingClient, setRenamingClient] = useState(false)
+  const [clientNameInput, setClientNameInput] = useState('')
+  const [duplicating, setDuplicating] = useState(false)
+  const [duplicateName, setDuplicateName] = useState('')
 
   // Multi-template support
   const initialClientTpls = initialTemplates.filter(t => t.client_id === initialClients[0]?.id)
@@ -428,6 +432,46 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   function removeTask(idx: number) {
     const base = editingTasks.length > 0 ? editingTasks : [...clientTemplates]
     setEditingTasks(base.filter((_, i) => i !== idx).map((t, i) => ({ ...t, seq_id: i + 1 })))
+  }
+
+  async function handleRenameClient(e: React.FormEvent) {
+    e.preventDefault()
+    const name = clientNameInput.trim()
+    if (!name || !selectedClientId) return
+    await supabase.from('clients').update({ label: name }).eq('id', selectedClientId)
+    setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, label: name } : c))
+    setRenamingClient(false)
+    showToast('Client renamed')
+  }
+
+  async function handleDuplicatePipeline(e: React.FormEvent) {
+    e.preventDefault()
+    const name = duplicateName.trim()
+    if (!name || !selectedClientId) return
+    const tasks = editingTasks.length > 0 ? editingTasks : clientTemplates
+    const inserts = tasks.map((t, i) => ({
+      client_id: selectedClientId,
+      template_name: name,
+      seq_id: i + 1,
+      label: t.label,
+      assignee_id: t.assignee_id || null,
+      track: t.track,
+      due_days: t.due_after_dep_hours ? null : t.due_days,
+      due_after_dep_hours: t.due_after_dep_hours || null,
+      note: t.note,
+      dep_seq_ids: t.dep_seq_ids || [],
+      requires_approval: t.requires_approval || false,
+      approver_id: t.requires_approval ? (t.approver_id || null) : null,
+    }))
+    const { data: newTemplates } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
+    if (newTemplates) {
+      setTemplates(prev => [...prev, ...newTemplates as unknown as DbTaskTemplate[]])
+      setSelectedTemplateName(name)
+      setEditingTasks([])
+    }
+    setDuplicating(false)
+    setDuplicateName('')
+    showToast(`Pipeline "${name}" created`)
   }
 
   async function saveTemplate() {
@@ -571,8 +615,54 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-white">{selectedClient.label} <span className="text-[#555] font-normal text-sm">· {selectedTemplateName}</span></h3>
-                <p className="text-xs text-[#666] mt-0.5">{currentTasks.length} tasks in pipeline</p>
+                {/* Client name — editable */}
+                {renamingClient ? (
+                  <form onSubmit={handleRenameClient} className="flex items-center gap-2 mb-1">
+                    <input
+                      autoFocus
+                      value={clientNameInput}
+                      onChange={e => setClientNameInput(e.target.value)}
+                      className="px-3 py-1.5 bg-[#1e1e1e] border border-[#ff3c00] text-white rounded-lg text-2xl font-black focus:outline-none w-64"
+                    />
+                    <button type="submit" className="p-1.5 bg-[#ff3c00] text-white rounded-lg"><Check className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => setRenamingClient(false)} className="p-1.5 text-[#555] hover:text-white"><X className="w-4 h-4" /></button>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-3 mb-1">
+                    <h2 className="text-3xl font-black text-white">{selectedClient.label}</h2>
+                    <button
+                      onClick={() => { setClientNameInput(selectedClient.label); setRenamingClient(true) }}
+                      className="p-1.5 rounded-lg text-[#555] hover:text-white hover:bg-[#1e1e1e] transition-colors"
+                      title="Rename client"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    {/* Duplicate pipeline */}
+                    {duplicating ? (
+                      <form onSubmit={handleDuplicatePipeline} className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          value={duplicateName}
+                          onChange={e => setDuplicateName(e.target.value)}
+                          placeholder="New pipeline name"
+                          className="px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555] w-40"
+                        />
+                        <button type="submit" className="px-2 py-1 bg-[#ff3c00] text-white rounded-lg text-xs font-semibold">Duplicate</button>
+                        <button type="button" onClick={() => { setDuplicating(false); setDuplicateName('') }} className="text-[#555] hover:text-white text-xs">Cancel</button>
+                      </form>
+                    ) : (
+                      <button
+                        onClick={() => { setDuplicating(true); setDuplicateName(selectedTemplateName + ' copy') }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#555] hover:text-white hover:bg-[#1e1e1e] transition-colors text-xs"
+                        title="Duplicate this pipeline"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Duplicate
+                      </button>
+                    )}
+                  </div>
+                )}
+                <p className="text-sm text-[#555]">{currentTasks.length} tasks · {selectedTemplateName}</p>
                 {selectedClient.last_saved_at && (
                   <p className="text-xs text-[#555] mt-0.5">
                     Last edited by {selectedClient.last_saved_by_name ?? '—'} · {format(parseISO(selectedClient.last_saved_at), 'MMM d')}
