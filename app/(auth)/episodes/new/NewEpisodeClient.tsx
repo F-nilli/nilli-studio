@@ -61,12 +61,14 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
 
   // Multi-template support
   const clientPipelineNames = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
-  const [selectedTemplateName, setSelectedTemplateName] = useState<string>(clientPipelineNames[0] || 'Default')
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>(
+    clientPipelineNames.includes('Default') ? 'Default' : (clientPipelineNames[0] || 'Default')
+  )
 
-  // Reset template when client changes
+  // Reset template when client changes — always prefer 'Default'
   useEffect(() => {
     const names = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
-    setSelectedTemplateName(names[0] || 'Default')
+    setSelectedTemplateName(names.includes('Default') ? 'Default' : (names[0] || 'Default'))
   }, [clientId])
 
   const selectedClient = clients.find(c => c.id === clientId)

@@ -290,8 +290,8 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   </div>
                 </div>
 
-                {/* Spawned-from badge */}
-                {ep.source && (
+                {/* Spawned-from badge — only on non-default spawned episodes */}
+                {ep.source && ep.template_name && ep.template_name !== 'Default' && (
                   <Link
                     href={`/episodes/${ep.source.id}`}
                     onClick={e => e.stopPropagation()}
