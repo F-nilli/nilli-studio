@@ -36,9 +36,19 @@ export function fromDatetimeLocal(value: string): string {
   return new Date(value).toISOString()
 }
 
-export function isOverdue(dueDate: string | null, status: TaskStatus): boolean {
-  if (!dueDate) return false
+export function isOverdue(
+  dueDate: string | null,
+  status: TaskStatus,
+  requiresApproval?: boolean,
+  reviewStartedAt?: string | null,
+): boolean {
   if (status === 'approved' || status === 'done') return false
+  // Flag approval tasks that have been waiting in review for 12+ hours
+  if (status === 'in_review' && requiresApproval && reviewStartedAt) {
+    const hoursInReview = (Date.now() - new Date(reviewStartedAt).getTime()) / (1000 * 60 * 60)
+    if (hoursInReview >= 12) return true
+  }
+  if (!dueDate) return false
   return isAfter(startOfDay(new Date()), startOfDay(parseISO(dueDate)))
 }
 

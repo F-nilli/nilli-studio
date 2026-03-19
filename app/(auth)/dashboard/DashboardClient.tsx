@@ -43,7 +43,7 @@ export function DashboardClient({ currentUser, tasks: initialTasks, reviewTasks:
     {} as Record<TaskStatus, (Task & { episode: Episode })[]>
   )
 
-  const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status)).length
+  const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
 
   return (
     <div className="space-y-6">
@@ -106,7 +106,7 @@ export function DashboardClient({ currentUser, tasks: initialTasks, reviewTasks:
         {ACTIVE_STATUSES.map(status => {
           const statusTasks = grouped[status]
           if (statusTasks.length === 0) return null
-          const hasOverdue = statusTasks.some(t => isOverdue(t.due_date, t.status))
+          const hasOverdue = statusTasks.some(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at))
           return (
             <div key={status} id={hasOverdue ? 'overdue-section' : undefined}>
               <div className="flex items-center gap-2 mb-3">
@@ -203,7 +203,7 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
 
 function ReviewTaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClick: () => void }) {
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
-  const overdue = isOverdue(task.due_date, task.status)
+  const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
 
   return (
     <div
@@ -253,7 +253,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
 }) {
   const supabase = createClient()
   const [acting, setActing] = useState(false)
-  const overdue = isOverdue(task.due_date, task.status)
+  const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseISO(task.due_date), new Date()) : null
   const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
@@ -274,9 +274,11 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
       rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
 
     setActing(true)
+    const updatePayload: Record<string, unknown> = { status: nextStatus }
+    if (nextStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
     const { data } = await supabase
       .from('tasks')
-      .update({ status: nextStatus })
+      .update(updatePayload)
       .eq('id', task.id)
       .select('*, assignee:users(*)')
       .single()

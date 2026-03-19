@@ -350,25 +350,57 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
 
+  // Multi-template support
+  const initialClientTpls = initialTemplates.filter(t => t.client_id === initialClients[0]?.id)
+  const initialTemplateNames = [...new Set(initialClientTpls.map(t => t.template_name || 'Default'))]
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>(initialTemplateNames[0] || 'Default')
+  const [addingTemplate, setAddingTemplate] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
+
   const selectedClient = clients.find(c => c.id === selectedClientId)
-  const clientTemplates = templates.filter(t => t.client_id === selectedClientId).sort((a, b) => a.seq_id - b.seq_id)
+  const templateNames = [...new Set(templates.filter(t => t.client_id === selectedClientId).map(t => t.template_name || 'Default'))]
+  const clientTemplates = templates
+    .filter(t => t.client_id === selectedClientId && (t.template_name || 'Default') === selectedTemplateName)
+    .sort((a, b) => a.seq_id - b.seq_id)
   const [editingTasks, setEditingTasks] = useState<DbTaskTemplate[]>([])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   function selectClient(id: string) {
     setSelectedClientId(id)
-    setEditingTasks(templates.filter(t => t.client_id === id).sort((a, b) => a.seq_id - b.seq_id))
+    const clientTpls = templates.filter(t => t.client_id === id)
+    const names = [...new Set(clientTpls.map(t => t.template_name || 'Default'))]
+    const firstName = names[0] || 'Default'
+    setSelectedTemplateName(firstName)
+    setEditingTasks([])
     setChannelId(clients.find(c => c.id === id)?.slack_channel_id || '')
+  }
+
+  function selectTemplateName(name: string) {
+    setSelectedTemplateName(name)
+    setEditingTasks([])
+  }
+
+  function handleAddTemplate() {
+    const name = newTemplateName.trim()
+    if (!name) return
+    setSelectedTemplateName(name)
+    setEditingTasks([])
+    setAddingTemplate(false)
+    setNewTemplateName('')
   }
 
   const currentTasks = editingTasks.length > 0 ? editingTasks : clientTemplates
 
-  function updateTask(idx: number, field: keyof DbTaskTemplate, value: unknown) {
+  function updateTaskFields(idx: number, fields: Partial<DbTaskTemplate>) {
     setEditingTasks(prev => {
       const base = prev.length > 0 ? prev : [...clientTemplates]
-      return base.map((t, i) => i === idx ? { ...t, [field]: value } : t)
+      return base.map((t, i) => i === idx ? { ...t, ...fields } : t)
     })
+  }
+
+  function updateTask(idx: number, field: keyof DbTaskTemplate, value: unknown) {
+    updateTaskFields(idx, { [field]: value } as Partial<DbTaskTemplate>)
   }
 
   function addTask() {
@@ -377,11 +409,13 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     const newTask: DbTaskTemplate = {
       id: 'new-' + Date.now(),
       client_id: selectedClientId!,
+      template_name: selectedTemplateName,
       seq_id: newSeqId,
       label: '',
       assignee_id: null,
       track: 'Long-form',
       due_days: null,
+      due_after_dep_hours: null,
       note: null,
       dep_seq_ids: [],
       requires_approval: false,
@@ -403,11 +437,13 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
     const inserts = tasks.map((t, i) => ({
       client_id: selectedClientId,
+      template_name: selectedTemplateName,
       seq_id: i + 1,
       label: t.label,
       assignee_id: t.assignee_id || null,
       track: t.track,
-      due_days: t.due_days,
+      due_days: t.due_after_dep_hours ? null : t.due_days,
+      due_after_dep_hours: t.due_after_dep_hours || null,
       note: t.note,
       dep_seq_ids: t.dep_seq_ids || [],
       requires_approval: t.requires_approval || false,
@@ -421,8 +457,8 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       return
     }
 
-    // Delete existing and re-insert
-    await supabase.from('task_templates').delete().eq('client_id', selectedClientId)
+    // Delete only the current template pipeline, not other pipelines for this client
+    await supabase.from('task_templates').delete().eq('client_id', selectedClientId).eq('template_name', selectedTemplateName)
 
     const { data: newTemplates, error: insertError } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
     if (insertError || !newTemplates) {
@@ -500,10 +536,43 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
         {/* Template editor */}
         {selectedClient && (
           <div className="flex-1 min-w-0 space-y-3">
+            {/* Pipeline selector */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {templateNames.map(name => (
+                <button
+                  key={name}
+                  onClick={() => selectTemplateName(name)}
+                  className={cn(
+                    'px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    selectedTemplateName === name ? 'bg-[#ff3c00] text-white' : 'bg-[#1e1e1e] text-[#888] hover:text-white border border-[#2e2e2e]'
+                  )}
+                >
+                  {name}
+                </button>
+              ))}
+              {!addingTemplate ? (
+                <button onClick={() => setAddingTemplate(true)} className="px-2 py-1 text-xs text-[#555] hover:text-white transition-colors">
+                  + Add pipeline
+                </button>
+              ) : (
+                <form onSubmit={e => { e.preventDefault(); handleAddTemplate() }} className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    value={newTemplateName}
+                    onChange={e => setNewTemplateName(e.target.value)}
+                    placeholder="Pipeline name"
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555] w-32"
+                  />
+                  <button type="submit" className="px-2 py-1 bg-[#ff3c00] text-white rounded text-xs font-semibold">Add</button>
+                  <button type="button" onClick={() => { setAddingTemplate(false); setNewTemplateName('') }} className="px-2 py-1 text-[#555] hover:text-white text-xs">Cancel</button>
+                </form>
+              )}
+            </div>
+
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-white">{selectedClient.label}</h3>
-                <p className="text-xs text-[#666] mt-0.5">{currentTasks.length} tasks in template</p>
+                <h3 className="font-bold text-white">{selectedClient.label} <span className="text-[#555] font-normal text-sm">· {selectedTemplateName}</span></h3>
+                <p className="text-xs text-[#666] mt-0.5">{currentTasks.length} tasks in pipeline</p>
                 {selectedClient.last_saved_at && (
                   <p className="text-xs text-[#555] mt-0.5">
                     Last edited by {selectedClient.last_saved_by_name ?? '—'} · {format(parseISO(selectedClient.last_saved_at), 'MMM d')}
@@ -567,13 +636,37 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                     <option value="">Unassigned</option>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
-                  <input
-                    type="number"
-                    value={task.due_days ?? ''}
-                    onChange={e => updateTask(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
-                    placeholder="—"
-                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
-                  />
+                  {/* Days: D-X mode or +Xhr-after-dep mode */}
+                  <div className="flex items-center gap-0.5 w-full">
+                    {task.due_after_dep_hours != null ? (
+                      <>
+                        <span className="text-[#555] text-xs shrink-0">+</span>
+                        <input
+                          type="number"
+                          value={task.due_after_dep_hours ?? ''}
+                          onChange={e => updateTask(idx, 'due_after_dep_hours', e.target.value ? parseInt(e.target.value) : null)}
+                          className="px-1 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs w-9 focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                        />
+                        <span className="text-[#555] text-xs shrink-0">h</span>
+                        <button type="button" title="Switch to D-X mode"
+                          onClick={() => updateTaskFields(idx, { due_after_dep_hours: null, due_days: null })}
+                          className="text-[#555] hover:text-white text-xs px-0.5 shrink-0">D</button>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="number"
+                          value={task.due_days ?? ''}
+                          onChange={e => updateTask(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
+                          placeholder="—"
+                          className="px-1 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                        />
+                        <button type="button" title="+Xhr after dep completion"
+                          onClick={() => updateTaskFields(idx, { due_after_dep_hours: 24, due_days: null })}
+                          className="text-[#555] hover:text-white text-xs px-0.5 shrink-0">⚡</button>
+                      </>
+                    )}
+                  </div>
                   {/* Deps: multi-select of earlier tasks */}
                   <select
                     multiple

@@ -6,7 +6,7 @@ import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate } from '@/lib/types'
-import { toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils'
+import { cn, fromDatetimeLocal } from '@/lib/utils'
 import { subDays, parseISO, format } from 'date-fns'
 
 interface Props {
@@ -34,16 +34,15 @@ function getDownstreamSeqIds(seqId: number, templates: DbTaskTemplate[]): number
 function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<number, string> {
   if (!releaseDate || templates.length === 0) return {}
   const release = parseISO(releaseDate)
-  const dueDaysValues = templates.map(t => t.due_days).filter((d): d is number => d !== null)
-  if (dueDaysValues.length === 0) return {}
-  const maxDays = Math.max(...dueDaysValues)
+  // Only consider tasks with fixed D-X due dates (not dynamic +Xhr ones)
+  const fixedTasks = templates.filter(t => t.due_days !== null && !t.due_after_dep_hours)
+  if (fixedTasks.length === 0) return {}
+  const maxDays = Math.max(...fixedTasks.map(t => t.due_days as number))
   const result: Record<number, string> = {}
-  for (const t of templates) {
-    if (t.due_days !== null) {
-      const d = subDays(release, maxDays - t.due_days)
-      d.setHours(9, 0, 0, 0)
-      result[t.seq_id] = format(d, "yyyy-MM-dd'T'HH:mm")
-    }
+  for (const t of fixedTasks) {
+    const d = subDays(release, maxDays - (t.due_days as number))
+    d.setHours(9, 0, 0, 0)
+    result[t.seq_id] = format(d, "yyyy-MM-dd'T'HH:mm")
   }
   return result
 }
@@ -53,21 +52,31 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   const supabase = createClient()
   const [clientId, setClientId] = useState<string>(clients[0]?.id || '')
   const [guestName, setGuestName] = useState('')
-  const [releaseDate, setReleaseDate] = useState('') // datetime-local value
+  const [releaseDate, setReleaseDate] = useState('')
   const [footageUrl, setFootageUrl] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
 
+  // Multi-template support
+  const clientPipelineNames = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>(clientPipelineNames[0] || 'Default')
+
+  // Reset template when client changes
+  useEffect(() => {
+    const names = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
+    setSelectedTemplateName(names[0] || 'Default')
+  }, [clientId])
+
   const selectedClient = clients.find(c => c.id === clientId)
-  const clientTemplates = templates.filter(t => t.client_id === clientId)
-  const unlockedTemplates = clientTemplates.filter(t => t.dep_seq_ids.length === 0)
+  const clientTemplates = templates.filter(t => t.client_id === clientId && (t.template_name || 'Default') === selectedTemplateName)
+  const unlockedTemplates = clientTemplates.filter(t => t.dep_seq_ids.length === 0 && !t.due_after_dep_hours)
 
   useEffect(() => {
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
     setTaskDueDates(calcDueDates(releaseDate, clientTemplates))
-  }, [releaseDate, clientId])
+  }, [releaseDate, clientId, selectedTemplateName])
 
   function handleDateChange(seqId: number, newValue: string) {
     const oldValue = taskDueDates[seqId]
@@ -76,7 +85,11 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
       return
     }
     const delta = new Date(newValue).getTime() - new Date(oldValue).getTime()
-    const downstream = getDownstreamSeqIds(seqId, clientTemplates)
+    // Only shift downstream tasks that have fixed D-X dates (not dynamic +Xhr ones)
+    const downstream = getDownstreamSeqIds(seqId, clientTemplates).filter(id => {
+      const t = clientTemplates.find(t => t.seq_id === id)
+      return t && !t.due_after_dep_hours
+    })
     setTaskDueDates(prev => {
       const next = { ...prev, [seqId]: newValue }
       for (const id of downstream) {
@@ -104,6 +117,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         release_date: releaseDate.slice(0, 10),
         footage_url: footageUrl || null,
         notes: notes || null,
+        template_name: selectedTemplateName,
         created_by: currentUser.id,
       })
       .select().single()
@@ -126,6 +140,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         dep_task_ids: [],
         requires_approval: template.requires_approval || false,
         approver_id: template.requires_approval ? (template.approver_id || null) : null,
+        due_after_dep_hours: template.due_after_dep_hours || null,
       }
     })
 
@@ -188,6 +203,30 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               </select>
             </div>
 
+            {/* Pipeline selector — only shown when client has multiple templates */}
+            {clientPipelineNames.length > 1 && (
+              <div>
+                <label className="block text-base font-medium text-[#ccc] mb-1.5">Pipeline</label>
+                <div className="flex gap-2 flex-wrap">
+                  {clientPipelineNames.map(name => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setSelectedTemplateName(name)}
+                      className={cn(
+                        'px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
+                        selectedTemplateName === name
+                          ? 'bg-[#ff3c00] text-white border-[#ff3c00]'
+                          : 'bg-[#1e1e1e] text-[#888] border-[#2e2e2e] hover:text-white'
+                      )}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-base font-medium text-[#ccc] mb-1.5">Guest Name</label>
               <input
@@ -229,7 +268,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               />
             </div>
 
-            {/* First task due dates */}
+            {/* First task due dates (only fixed D-X tasks, not dynamic +Xhr) */}
             {releaseDate && unlockedTemplates.length > 0 && (
               <div>
                 <p className="text-base font-medium text-[#ccc] mb-2">Due dates for first tasks</p>
@@ -267,6 +306,9 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                       <div key={t.seq_id} className="flex items-center gap-2 text-base text-[#888] bg-[#1e1e1e] rounded-md px-3 py-1.5">
                         <span className="text-[#555] text-sm w-5 shrink-0">{t.seq_id}.</span>
                         <span className="flex-1 truncate">{t.label}</span>
+                        {t.due_after_dep_hours && (
+                          <span className="text-xs text-[#555] shrink-0">+{t.due_after_dep_hours}h</span>
+                        )}
                         <span className="text-sm text-[#666] shrink-0">{assignee?.name || '—'}</span>
                       </div>
                     )

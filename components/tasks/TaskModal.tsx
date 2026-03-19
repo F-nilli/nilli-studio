@@ -45,7 +45,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   const isReviewer = task.requires_approval
     ? (currentUser.id === task.approver_id || currentUser.role === 'admin')
     : false
-  const overdue = isOverdue(task.due_date, task.status)
+  const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
 
   useEffect(() => { fetchComments() }, [task.id])
@@ -104,9 +104,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     }
 
     setUpdatingStatus(true)
+    const updatePayload: Record<string, unknown> = { status: resolvedStatus }
+    if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
     const { data } = await supabase
       .from('tasks')
-      .update({ status: resolvedStatus })
+      .update(updatePayload)
       .eq('id', task.id)
       .select('*, assignee:users(*)')
       .single()
@@ -126,7 +128,12 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
       if (t.status === 'locked' && t.dep_task_ids.length > 0) {
         const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
         if (allDepsApproved) {
-          await supabase.from('tasks').update({ status: 'ready' }).eq('id', t.id)
+          // Set dynamic due date (+Xhr after dep completion) when unlocking
+          const updateData: Record<string, unknown> = { status: 'ready' }
+          if (t.due_after_dep_hours) {
+            updateData.due_date = new Date(Date.now() + t.due_after_dep_hours * 60 * 60 * 1000).toISOString()
+          }
+          await supabase.from('tasks').update(updateData).eq('id', t.id)
           const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
           if (assignee) {
             const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()

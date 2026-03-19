@@ -50,6 +50,7 @@ export interface Episode {
   release_date: string
   footage_url: string | null
   notes: string | null
+  template_name: string | null
   created_by: string
   created_at: string
   published_at: string | null
@@ -68,6 +69,8 @@ export interface Task {
   dep_task_ids: string[]
   requires_approval: boolean
   approver_id: string | null
+  due_after_dep_hours: number | null
+  review_started_at: string | null
   created_at: string
   updated_at: string
   // Joined
@@ -107,11 +110,13 @@ export interface Client {
 export interface DbTaskTemplate {
   id: string
   client_id: string
+  template_name: string
   seq_id: number
   label: string
   assignee_id: string | null
   track: Track
   due_days: number | null
+  due_after_dep_hours: number | null
   note: string | null
   dep_seq_ids: number[]
   requires_approval: boolean
