@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import { Task, User, Comment, TaskStatus, Episode } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
-import { ApprovalModal } from './ApprovalModal'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
@@ -36,8 +35,6 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   const [newComment, setNewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
-  const [showApprovalModal, setShowApprovalModal] = useState(false)
-  const [approvalAction, setApprovalAction] = useState<'approve' | 'revision'>('approve')
   const commentEndRef = useRef<HTMLDivElement>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
@@ -155,6 +152,60 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
         }
       }
     }
+  }
+
+  async function handleApprove() {
+    setUpdatingStatus(true)
+    const { data } = await supabase
+      .from('tasks').update({ status: 'approved' }).eq('id', task.id)
+      .select('*, assignee:users(*)').single()
+    if (data) {
+      await checkAndUnlockDependencies(task.episode_id)
+      if (task.assignee_id !== currentUser.id) {
+        await sendNotification(supabase, {
+          userId: task.assignee_id, type: 'task_approved',
+          title: 'Task approved',
+          body: `"${task.label}" was approved by ${currentUser.name}`,
+          taskId: task.id, episodeId: task.episode_id,
+        })
+      }
+      fetch('/api/slack/notify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: [] }),
+      }).catch(() => {})
+      fetch('/api/episodes/check-triggers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
+      }).catch(() => {})
+      onUpdate(data as unknown as Task)
+      onClose()
+    }
+    setUpdatingStatus(false)
+  }
+
+  async function handleRevision() {
+    setUpdatingStatus(true)
+    const { data } = await supabase
+      .from('tasks').update({ status: 'revision' }).eq('id', task.id)
+      .select('*, assignee:users(*)').single()
+    if (data) {
+      const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
+      if (assignee) {
+        await sendNotification(supabase, {
+          userId: assignee.id, type: 'task_revision',
+          title: 'Task sent back for revision',
+          body: `"${task.label}" was sent back for revision by ${currentUser.name}`,
+          taskId: task.id, episodeId: task.episode_id,
+        })
+        fetch('/api/slack/notify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'revision', episodeId: task.episode_id, taskLabel: task.label, assigneeName: assignee.name }),
+        }).catch(() => {})
+      }
+      onUpdate(data as unknown as Task)
+      onClose()
+    }
+    setUpdatingStatus(false)
   }
 
   const nextStatus = NEXT_STATUS[task.status]
@@ -297,16 +348,18 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
             {canReview && (
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setApprovalAction('revision'); setShowApprovalModal(true) }}
-                  className="flex-1 py-2.5 px-4 bg-[#1e1e1e] hover:bg-[#333] border border-[#ff3c00]/40 text-[#ff3c00] font-semibold rounded-lg text-base transition-colors"
+                  onClick={handleRevision}
+                  disabled={updatingStatus}
+                  className="flex-1 py-2.5 px-4 bg-[#1e1e1e] hover:bg-[#333] border border-[#ff3c00]/40 text-[#ff3c00] font-semibold rounded-lg text-base transition-colors disabled:opacity-50"
                 >
                   Send Back
                 </button>
                 <button
-                  onClick={() => { setApprovalAction('approve'); setShowApprovalModal(true) }}
-                  className="flex-1 py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] text-white font-semibold rounded-lg text-base transition-colors"
+                  onClick={handleApprove}
+                  disabled={updatingStatus}
+                  className="flex-1 py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] text-white font-semibold rounded-lg text-base transition-colors disabled:opacity-50"
                 >
-                  Approve
+                  {updatingStatus ? 'Approving...' : 'Approve'}
                 </button>
               </div>
             )}
@@ -314,19 +367,6 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
         </div>
       </div>
 
-      {showApprovalModal && (
-        <ApprovalModal
-          task={task}
-          action={approvalAction}
-          currentUser={currentUser}
-          onClose={() => setShowApprovalModal(false)}
-          onConfirm={(updatedTask) => {
-            setShowApprovalModal(false)
-            onUpdate(updatedTask)
-            onClose()
-          }}
-        />
-      )}
     </>
   )
 }
