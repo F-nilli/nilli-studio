@@ -136,7 +136,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         label: template.label,
         assignee_id: template.assignee_id || currentUser.id,
         track: template.track,
-        status: template.dep_seq_ids.length === 0 ? 'ready' : 'locked',
+        status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
         due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
         note: template.note || null,
         dep_task_ids: [],
@@ -164,8 +164,8 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         if (assignee) {
           await supabase.from('notifications').insert({
             user_id: assignee.id, type: 'task_unlocked',
-            title: 'New task ready',
-            body: `"${task.label}" is ready for ${guestName} / ${selectedClient.label}`,
+            title: 'New task started',
+            body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
             task_id: task.id, episode_id: episode.id, read: false,
           })
         }

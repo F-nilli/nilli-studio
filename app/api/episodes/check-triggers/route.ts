@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       label: t.label,
       assignee_id: t.assignee_id || episode.created_by,
       track: t.track,
-      status: t.dep_seq_ids.length === 0 ? 'ready' : 'locked',
+      status: t.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
       due_date: dueDates[t.seq_id] || null,
       note: t.note || null,
       dep_task_ids: [],

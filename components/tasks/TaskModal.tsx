@@ -26,7 +26,6 @@ function getDomain(url: string) {
 const FOOTAGE_TRACKS = ['Trailer', 'Clips & Shorts', 'Long-form']
 
 const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
-  ready: 'in_progress',
   in_progress: 'in_review',
   revision: 'in_review',
 }
@@ -136,7 +135,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
         const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
         if (allDepsApproved) {
           // Set dynamic due date (+Xhr after dep completion) when unlocking
-          const updateData: Record<string, unknown> = { status: 'ready' }
+          const updateData: Record<string, unknown> = { status: 'in_progress' }
           if (t.due_after_dep_hours) {
             updateData.due_date = new Date(Date.now() + t.due_after_dep_hours * 60 * 60 * 1000).toISOString()
           }
@@ -147,8 +146,8 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
             await sendNotification(supabase, {
               userId: assignee.id,
               type: 'task_unlocked',
-              title: 'New task ready',
-              body: `"${t.label}" is now ready for ${episode ? `${episode.guest_name} / ${episode.client_label}` : ''}`,
+              title: 'New task started',
+              body: `"${t.label}" is now in progress for ${episode ? `${episode.guest_name} / ${episode.client_label}` : ''}`,
               taskId: t.id,
               episodeId,
             })

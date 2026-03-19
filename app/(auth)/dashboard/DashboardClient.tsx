@@ -238,8 +238,7 @@ function ReviewTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
 }
 
 function getActionLabel(task: Task): string {
-  if (task.status === 'ready') return 'Start'
-  if (task.status === 'in_progress') return task.requires_approval ? 'Submit for Review' : 'Mark Complete'
+  if (task.status === 'in_progress' || task.status === 'ready') return task.requires_approval ? 'Submit for Review' : 'Mark Complete'
   if (task.status === 'in_review') return 'Review'
   if (task.status === 'revision') return 'Resubmit'
   return ''
@@ -265,8 +264,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
     if (task.status === 'in_review') { onClick(); return }
 
     const rawNext: TaskStatus =
-      task.status === 'ready' ? 'in_progress' :
-      task.status === 'in_progress' ? 'in_review' :
+      (task.status === 'ready' || task.status === 'in_progress') ? 'in_review' :
       task.status === 'revision' ? 'in_review' : task.status
 
     // No approval needed: skip in_review, go straight to approved
