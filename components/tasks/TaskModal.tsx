@@ -116,6 +116,13 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     if (data) {
       onUpdate(data as unknown as Task)
       await checkAndUnlockDependencies(task.episode_id)
+      if (resolvedStatus === 'approved') {
+        fetch('/api/episodes/check-triggers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
+        }).catch(() => {})
+      }
     }
     setUpdatingStatus(false)
   }

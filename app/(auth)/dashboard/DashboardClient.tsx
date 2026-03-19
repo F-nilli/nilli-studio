@@ -285,6 +285,13 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
 
     if (data) {
       onUpdate(data as unknown as Task)
+      if (nextStatus === 'approved') {
+        fetch('/api/episodes/check-triggers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
+        }).catch(() => {})
+      }
       if (nextStatus === 'in_review' && task.requires_approval) {
         // Notify the specific approver only
         if (task.approver_id && task.approver_id !== currentUser.id) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, canManageTeam } from '@/lib/types'
+import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, canManageTeam } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
@@ -37,9 +37,10 @@ interface Props {
   clients: Client[]
   templates: DbTaskTemplate[]
   activity: ActivityEntry[]
+  triggers: PipelineTrigger[]
 }
 
-export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients, templates, activity }: Props) {
+export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients, templates, activity, triggers }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('team')
 
   const tabs = [
@@ -88,6 +89,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
           clients={clients}
           templates={templates}
           allUsers={allUsers}
+          triggers={triggers}
         />
       )}
       {activeTab === 'activity' && <ActivityTab activity={activity} />}
@@ -339,12 +341,13 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
 
 // ─── Clients Tab ──────────────────────────────────────────────────────────────
 
-function ClientsTab({ currentUser, clients: initialClients, templates: initialTemplates, allUsers }: {
-  currentUser: User; clients: Client[]; templates: DbTaskTemplate[]; allUsers: User[]
+function ClientsTab({ currentUser, clients: initialClients, templates: initialTemplates, allUsers, triggers: initialTriggers }: {
+  currentUser: User; clients: Client[]; templates: DbTaskTemplate[]; allUsers: User[]; triggers: PipelineTrigger[]
 }) {
   const supabase = createClient()
   const [clients, setClients] = useState<Client[]>(initialClients)
   const [templates, setTemplates] = useState<DbTaskTemplate[]>(initialTemplates)
+  const [triggers, setTriggers] = useState<PipelineTrigger[]>(initialTriggers)
   const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClients[0]?.id || null)
   const [addingClient, setAddingClient] = useState(false)
   const [newClientLabel, setNewClientLabel] = useState('')
@@ -587,6 +590,31 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
+  async function saveTrigger(update: { trigger_type: 'on_task' | 'on_project' | 'manual'; trigger_seq_id?: number | null; offset_days?: number }) {
+    if (!selectedClientId) return
+    if (update.trigger_type === 'manual') {
+      await supabase.from('pipeline_triggers').delete()
+        .eq('client_id', selectedClientId).eq('template_name', selectedTemplateName)
+      setTriggers(prev => prev.filter(t => !(t.client_id === selectedClientId && t.template_name === selectedTemplateName)))
+      return
+    }
+    const payload = {
+      client_id: selectedClientId,
+      template_name: selectedTemplateName,
+      trigger_type: update.trigger_type,
+      trigger_seq_id: update.trigger_seq_id ?? null,
+      offset_days: update.offset_days ?? 3,
+    }
+    const { data } = await supabase.from('pipeline_triggers')
+      .upsert(payload, { onConflict: 'client_id,template_name' }).select().single()
+    if (data) {
+      setTriggers(prev => [
+        ...prev.filter(t => !(t.client_id === selectedClientId && t.template_name === selectedTemplateName)),
+        data as PipelineTrigger,
+      ])
+    }
+  }
+
   async function toggleClientActive(clientId: string, active: boolean) {
     await supabase.from('clients').update({ active }).eq('id', clientId)
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, active } : c))
@@ -716,6 +744,65 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                 </form>
               )}
             </div>
+
+            {/* Auto-launch trigger — only for non-default pipelines */}
+            {selectedTemplateName !== 'Default' && (() => {
+              const trigger = triggers.find(t => t.client_id === selectedClientId && t.template_name === selectedTemplateName)
+              const triggerType = trigger?.trigger_type ?? 'manual'
+              const defaultTasks = templates
+                .filter(t => t.client_id === selectedClientId && (t.template_name || 'Default') === 'Default')
+                .sort((a, b) => a.seq_id - b.seq_id)
+              return (
+                <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-[#555] uppercase tracking-wider">Auto-launch</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['manual', 'on_task', 'on_project'] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => saveTrigger({ trigger_type: type, trigger_seq_id: trigger?.trigger_seq_id, offset_days: trigger?.offset_days ?? 3 })}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
+                          triggerType === type ? 'bg-[#ff3c00] text-white border-[#ff3c00]' : 'bg-[#1a1a1a] text-[#888] border-[#2e2e2e] hover:text-white'
+                        )}
+                      >
+                        {type === 'manual' ? 'Manual only' : type === 'on_task' ? 'When task completes' : 'When project completes'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {triggerType === 'on_task' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#666]">Trigger task:</span>
+                      <select
+                        value={trigger?.trigger_seq_id ?? ''}
+                        onChange={e => saveTrigger({ trigger_type: 'on_task', trigger_seq_id: e.target.value ? parseInt(e.target.value) : null, offset_days: trigger?.offset_days ?? 3 })}
+                        className="px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                      >
+                        <option value="">— pick a task</option>
+                        {defaultTasks.map(t => (
+                          <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label || 'Untitled'}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {triggerType !== 'manual' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#666]">Release date offset:</span>
+                      <span className="text-xs text-[#666]">+</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={trigger?.offset_days ?? 3}
+                        onChange={e => saveTrigger({ trigger_type: triggerType as 'on_task' | 'on_project', trigger_seq_id: trigger?.trigger_seq_id, offset_days: parseInt(e.target.value) || 0 })}
+                        className="w-12 px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] text-center"
+                      />
+                      <span className="text-xs text-[#666]">days after source release date</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             <div className="flex items-center justify-between">
               <div>

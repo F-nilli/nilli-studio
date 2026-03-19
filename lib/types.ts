@@ -51,9 +51,22 @@ export interface Episode {
   footage_url: string | null
   notes: string | null
   template_name: string | null
+  source_episode_id: string | null
   created_by: string
   created_at: string
   published_at: string | null
+  // Joined
+  source?: { id: string; guest_name: string; template_name: string | null }
+}
+
+export interface PipelineTrigger {
+  id: string
+  client_id: string
+  template_name: string
+  trigger_type: 'on_task' | 'on_project'
+  trigger_seq_id: number | null
+  offset_days: number
+  created_at: string
 }
 
 export interface Task {

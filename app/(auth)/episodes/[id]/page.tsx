@@ -11,7 +11,7 @@ export default async function EpisodeDetailPage({ params }: { params: Promise<{ 
 
   const [profileRes, episodeRes, tasksRes] = await Promise.all([
     supabase.from('users').select('*').eq('id', user.id).single(),
-    supabase.from('episodes').select('*').eq('id', id).single(),
+    supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').eq('id', id).single(),
     supabase
       .from('tasks')
       .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')

@@ -290,6 +290,18 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   </div>
                 </div>
 
+                {/* Spawned-from badge */}
+                {ep.source && (
+                  <Link
+                    href={`/episodes/${ep.source.id}`}
+                    onClick={e => e.stopPropagation()}
+                    className="flex items-center gap-1.5 text-xs text-[#f7931a]/70 hover:text-[#f7931a] transition-colors mb-3"
+                  >
+                    <span className="text-[10px]">↗</span>
+                    <span>From: {ep.source.template_name ?? 'Default'} — {ep.source.guest_name}</span>
+                  </Link>
+                )}
+
                 {/* Notes preview */}
                 {ep.notes && (
                   <p className="text-xs text-[#666] leading-relaxed mb-3 line-clamp-2">{ep.notes}</p>

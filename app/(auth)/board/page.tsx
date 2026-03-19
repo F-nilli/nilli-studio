@@ -23,7 +23,7 @@ export default async function BoardPage() {
 
   if (canSeeAllEpisodes(profile)) {
     const [episodesRes, tasksRes] = await Promise.all([
-      supabase.from('episodes').select('*').is('published_at', null).order('release_date', { ascending: true }),
+      supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').is('published_at', null).order('release_date', { ascending: true }),
       supabase.from('tasks').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('template_task_id', { ascending: true }),
     ])
     return (
@@ -58,7 +58,7 @@ export default async function BoardPage() {
   }
 
   const [episodesRes, tasksRes] = await Promise.all([
-    supabase.from('episodes').select('*').in('id', involvedEpisodeIds).is('published_at', null).order('release_date', { ascending: true }),
+    supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').in('id', involvedEpisodeIds).is('published_at', null).order('release_date', { ascending: true }),
     supabase.from('tasks').select('*, assignee:users(*)').in('episode_id', involvedEpisodeIds).order('template_task_id', { ascending: true }),
   ])
 
