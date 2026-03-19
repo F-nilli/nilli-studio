@@ -848,7 +848,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                     <option value="">— No approval</option>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
-                  <button onClick={() => removeTask(idx)} className="p-0.5 rounded text-[#555] hover:text-[#ff3c00] transition-colors">
+                  <button onClick={() => { if (confirm('Delete this task?')) removeTask(idx) }} className="p-0.5 rounded text-[#555] hover:text-[#ff3c00] transition-colors">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
