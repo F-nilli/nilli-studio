@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Task, User, Comment, TaskStatus, canApprove, Episode } from '@/lib/types'
+import { Task, User, Comment, TaskStatus, Episode } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { ApprovalModal } from './ApprovalModal'
@@ -42,7 +42,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   const commentEndRef = useRef<HTMLDivElement>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
-  const isReviewer = canApprove(currentUser)
+  const isReviewer = task.requires_approval
+    ? (currentUser.id === task.approver_id || currentUser.role === 'admin')
+    : false
   const overdue = isOverdue(task.due_date, task.status)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
 
@@ -73,24 +75,22 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   }
 
   async function updateStatus(newStatus: TaskStatus) {
-    if (newStatus === 'in_review') {
-      const { data: reviewers } = await supabase
-        .from('users')
-        .select('*')
-        .in('role', ['admin', 'ops_manager'])
-      for (const reviewer of reviewers || []) {
-        if (reviewer.id !== currentUser.id) {
-          await sendNotification(supabase, {
-            userId: reviewer.id,
-            type: 'task_submitted_review',
-            title: 'Task submitted for review',
-            body: `${currentUser.name} submitted "${task.label}" for review`,
-            taskId: task.id,
-            episodeId: task.episode_id,
-          })
-        }
+    // If task doesn't need approval, submitting goes straight to approved
+    const resolvedStatus: TaskStatus =
+      newStatus === 'in_review' && !task.requires_approval ? 'approved' : newStatus
+
+    if (resolvedStatus === 'in_review' && task.requires_approval) {
+      // Notify the specific approver only
+      if (task.approver_id && task.approver_id !== currentUser.id) {
+        await sendNotification(supabase, {
+          userId: task.approver_id,
+          type: 'task_submitted_review',
+          title: 'Task submitted for review',
+          body: `${currentUser.name} submitted "${task.label}" for review`,
+          taskId: task.id,
+          episodeId: task.episode_id,
+        })
       }
-      // Slack: review submitted block
       fetch('/api/slack/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +106,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     setUpdatingStatus(true)
     const { data } = await supabase
       .from('tasks')
-      .update({ status: newStatus })
+      .update({ status: resolvedStatus })
       .eq('id', task.id)
       .select('*, assignee:users(*)')
       .single()
@@ -272,10 +272,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                 className="w-full py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white font-semibold rounded-lg text-base transition-colors"
               >
                 {updatingStatus ? 'Updating...' : (
-                  task.status === 'in_progress' ? 'Submit for Review' :
-                  task.status === 'ready' ? 'Start Task' :
-                  task.status === 'revision' ? 'Resubmit for Review' :
-                  `Mark as ${STATUS_LABELS[nextStatus!]}`
+                  task.status === 'in_progress'
+                    ? (task.requires_approval ? 'Submit for Review' : 'Mark Complete')
+                  : task.status === 'ready' ? 'Start Task'
+                  : task.status === 'revision' ? 'Resubmit for Review'
+                  : `Mark as ${STATUS_LABELS[nextStatus!]}`
                 )}
               </button>
             )}

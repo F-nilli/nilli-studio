@@ -237,11 +237,12 @@ function ReviewTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
   )
 }
 
-const ACTION_LABELS: Partial<Record<TaskStatus, string>> = {
-  ready: 'Start',
-  in_progress: 'Submit for Review',
-  in_review: 'Review',
-  revision: 'Resubmit',
+function getActionLabel(task: Task): string {
+  if (task.status === 'ready') return 'Start'
+  if (task.status === 'in_progress') return task.requires_approval ? 'Submit for Review' : 'Mark Complete'
+  if (task.status === 'in_review') return 'Review'
+  if (task.status === 'revision') return 'Resubmit'
+  return ''
 }
 
 function TaskCard({ task, currentUser, onClick, onUpdate }: {
@@ -263,10 +264,14 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
     // in_review → open modal for approval/revision flow
     if (task.status === 'in_review') { onClick(); return }
 
-    const nextStatus: TaskStatus =
+    const rawNext: TaskStatus =
       task.status === 'ready' ? 'in_progress' :
       task.status === 'in_progress' ? 'in_review' :
       task.status === 'revision' ? 'in_review' : task.status
+
+    // No approval needed: skip in_review, go straight to approved
+    const nextStatus: TaskStatus =
+      rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
 
     setActing(true)
     const { data } = await supabase
@@ -278,18 +283,15 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
 
     if (data) {
       onUpdate(data as unknown as Task)
-      if (nextStatus === 'in_review') {
-        const { data: reviewers } = await supabase
-          .from('users').select('*').in('role', ['admin', 'ops_manager'])
-        for (const reviewer of reviewers || []) {
-          if (reviewer.id !== currentUser.id) {
-            await supabase.from('notifications').insert({
-              user_id: reviewer.id, type: 'task_submitted_review',
-              title: 'Task submitted for review',
-              body: `${currentUser.name} submitted "${task.label}" for review`,
-              task_id: task.id, episode_id: task.episode_id, read: false,
-            })
-          }
+      if (nextStatus === 'in_review' && task.requires_approval) {
+        // Notify the specific approver only
+        if (task.approver_id && task.approver_id !== currentUser.id) {
+          await supabase.from('notifications').insert({
+            user_id: task.approver_id, type: 'task_submitted_review',
+            title: 'Task submitted for review',
+            body: `${currentUser.name} submitted "${task.label}" for review`,
+            task_id: task.id, episode_id: task.episode_id, read: false,
+          })
         }
         fetch('/api/slack/notify', {
           method: 'POST',
@@ -351,7 +353,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
           disabled={acting}
           className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
         >
-          {acting ? '...' : ACTION_LABELS[task.status as TaskStatus]}
+          {acting ? '...' : getActionLabel(task)}
         </button>
       </div>
     </div>

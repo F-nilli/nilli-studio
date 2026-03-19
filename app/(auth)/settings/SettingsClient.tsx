@@ -384,6 +384,8 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       due_days: null,
       note: null,
       dep_seq_ids: [],
+      requires_approval: false,
+      approver_id: null,
       created_at: new Date().toISOString(),
     }
     setEditingTasks([...base, newTask])
@@ -399,9 +401,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     setSaving(true)
     const tasks = editingTasks.length > 0 ? editingTasks : clientTemplates
 
-    // Delete existing and re-insert
-    await supabase.from('task_templates').delete().eq('client_id', selectedClientId)
-
     const inserts = tasks.map((t, i) => ({
       client_id: selectedClientId,
       seq_id: i + 1,
@@ -411,13 +410,28 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       due_days: t.due_days,
       note: t.note,
       dep_seq_ids: t.dep_seq_ids || [],
+      requires_approval: t.requires_approval || false,
+      approver_id: t.requires_approval ? (t.approver_id || null) : null,
     }))
 
-    const { data: newTemplates } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
-    if (newTemplates) {
-      setTemplates(prev => [...prev.filter(t => t.client_id !== selectedClientId), ...newTemplates as unknown as DbTaskTemplate[]])
-      setEditingTasks([])
+    // Guard: don't wipe data if there's nothing valid to save
+    if (inserts.length === 0 || inserts.every(t => !t.label.trim())) {
+      setSaving(false)
+      showToast('Add at least one task before saving')
+      return
     }
+
+    // Delete existing and re-insert
+    await supabase.from('task_templates').delete().eq('client_id', selectedClientId)
+
+    const { data: newTemplates, error: insertError } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
+    if (insertError || !newTemplates) {
+      setSaving(false)
+      showToast('Save failed — please re-enter tasks and try again')
+      return
+    }
+    setTemplates(prev => [...prev.filter(t => t.client_id !== selectedClientId), ...newTemplates as unknown as DbTaskTemplate[]])
+    setEditingTasks([])
     const savedAt = new Date().toISOString()
     await supabase.from('clients').update({ last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null }).eq('id', selectedClientId)
     setClients(prev => prev.map(c => c.id === selectedClientId ? { ...c, last_saved_at: savedAt, last_saved_by_name: currentUser.name, slack_channel_id: channelId || null } : c))
@@ -525,13 +539,13 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_24px] gap-2 px-3 py-2 bg-[#101010] border-b border-[#2e2e2e]">
-                {['#', 'Task', 'Track', 'Assignee', 'Days', 'Deps', ''].map(h => (
+              <div className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_120px_24px] gap-2 px-3 py-2 bg-[#101010] border-b border-[#2e2e2e]">
+                {['#', 'Task', 'Track', 'Assignee', 'Days', 'Deps', 'Approver', ''].map(h => (
                   <span key={h} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
               </div>
               {currentTasks.map((task, idx) => (
-                <div key={task.id} className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_24px] gap-2 px-3 py-2 border-b border-[#242424] last:border-0 items-center">
+                <div key={task.id} className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_120px_24px] gap-2 px-3 py-2 border-b border-[#242424] last:border-0 items-center">
                   <span className="text-xs text-[#555] font-mono">{idx + 1}</span>
                   <input
                     value={task.label}
@@ -570,6 +584,19 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                     {currentTasks.filter((_, i) => i !== idx).map(t => (
                       <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label.slice(0, 24)}</option>
                     ))}
+                  </select>
+                  {/* Approver: "—" = no approval needed, else pick a team member */}
+                  <select
+                    value={task.requires_approval ? (task.approver_id || '') : ''}
+                    onChange={e => {
+                      const val = e.target.value
+                      updateTask(idx, 'requires_approval', val !== '')
+                      updateTask(idx, 'approver_id', val || null)
+                    }}
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                  >
+                    <option value="">— No approval</option>
+                    {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                   <button onClick={() => removeTask(idx)} className="p-0.5 rounded text-[#555] hover:text-[#ff3c00] transition-colors">
                     <Trash2 className="w-3.5 h-3.5" />

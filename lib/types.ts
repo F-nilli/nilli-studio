@@ -66,10 +66,13 @@ export interface Task {
   due_date: string | null
   note: string | null
   dep_task_ids: string[]
+  requires_approval: boolean
+  approver_id: string | null
   created_at: string
   updated_at: string
   // Joined
   assignee?: User
+  approver?: User
   episode?: Episode
 }
 
@@ -111,8 +114,11 @@ export interface DbTaskTemplate {
   due_days: number | null
   note: string | null
   dep_seq_ids: number[]
+  requires_approval: boolean
+  approver_id: string | null
   created_at: string
   assignee?: User
+  approver?: User
 }
 
 export interface ActivityEntry {

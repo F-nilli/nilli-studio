@@ -124,6 +124,8 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
         note: template.note || null,
         dep_task_ids: [],
+        requires_approval: template.requires_approval || false,
+        approver_id: template.requires_approval ? (template.approver_id || null) : null,
       }
     })
 
