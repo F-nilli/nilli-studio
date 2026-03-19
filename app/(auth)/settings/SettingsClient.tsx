@@ -609,7 +609,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
               <div className="grid grid-cols-[28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
-                {['#', 'Task', 'Track', 'Assignee', 'Days', 'Deps', 'Approver', ''].map(h => (
+                {['#', 'Task', 'Checklist', 'Assignee', 'Days', 'Deps', 'Approver', ''].map(h => (
                   <span key={h} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
               </div>
