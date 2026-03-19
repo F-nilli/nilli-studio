@@ -348,7 +348,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [newClientKey, setNewClientKey] = useState('')
   const [channelId, setChannelId] = useState(initialClients[0]?.slack_channel_id || '')
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState<{ msg: string; error?: boolean } | null>(null)
   const [renamingClient, setRenamingClient] = useState(false)
   const [clientNameInput, setClientNameInput] = useState('')
   const [clientMenuOpen, setClientMenuOpen] = useState<string | null>(null)
@@ -367,7 +367,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     .sort((a, b) => a.seq_id - b.seq_id)
   const [editingTasks, setEditingTasks] = useState<DbTaskTemplate[]>([])
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  function showToast(msg: string, error = false) { setToast({ msg, error }); setTimeout(() => setToast(null), 4000) }
 
   function selectClient(id: string) {
     setSelectedClientId(id)
@@ -469,7 +469,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
         requires_approval: t.requires_approval || false,
         approver_id: t.approver_id || null,
       }))
-      const { data: newTpls } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
+      const { data: newTpls } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
       if (newTpls) setTemplates(prev => [...prev, ...newTpls as unknown as DbTaskTemplate[]])
     }
     const newClientData = newClient as Client
@@ -516,7 +516,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     // Guard: don't wipe data if there's nothing valid to save
     if (inserts.length === 0 || inserts.every(t => !(t.label || '').trim())) {
       setSaving(false)
-      showToast('Add at least one task before saving')
+      showToast('Add at least one task before saving', true)
       return
     }
 
@@ -529,18 +529,18 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
     if (deleteError) {
       setSaving(false)
-      showToast(`Save failed: ${deleteError.message}`)
+      showToast(`Save failed: ${deleteError.message}`, true)
       return
     }
 
     const { data: newTemplates, error: insertError } = await supabase
       .from('task_templates')
       .insert(inserts)
-      .select('*, assignee:users(*)')
+      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
 
     if (insertError || !newTemplates) {
       setSaving(false)
-      showToast(`Save failed: ${insertError?.message || 'unknown error'}`)
+      showToast(`Save failed: ${insertError?.message || 'unknown error'}`, true)
       return
     }
 
@@ -577,8 +577,9 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   return (
     <div className="space-y-4">
       {toast && (
-        <div className="bg-[#141414] border border-[#2e2e2e] rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2">
-          <Check className="w-4 h-4 text-green-400" />{toast}
+        <div className={cn('rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2 border', toast.error ? 'bg-[#1a0a0a] border-[#ff3c00]/50' : 'bg-[#141414] border-[#2e2e2e]')}>
+          {toast.error ? <X className="w-4 h-4 text-[#ff3c00] shrink-0" /> : <Check className="w-4 h-4 text-green-400 shrink-0" />}
+          {toast.msg}
         </div>
       )}
       <div className="flex gap-5 items-start">
