@@ -47,7 +47,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
   ]
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-black text-white">Settings</h1>
         <p className="text-[#888] text-base mt-1">Manage your team, clients, and production history</p>
@@ -608,49 +608,49 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_120px_24px] gap-2 px-3 py-2 bg-[#101010] border-b border-[#2e2e2e]">
+              <div className="grid grid-cols-[28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
                 {['#', 'Task', 'Track', 'Assignee', 'Days', 'Deps', 'Approver', ''].map(h => (
                   <span key={h} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
               </div>
               {currentTasks.map((task, idx) => (
-                <div key={task.id} className="grid grid-cols-[24px_minmax(160px,2fr)_90px_120px_50px_100px_120px_24px] gap-2 px-3 py-2 border-b border-[#242424] last:border-0 items-center">
-                  <span className="text-xs text-[#555] font-mono">{idx + 1}</span>
+                <div key={task.id} className="grid grid-cols-[28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center">
+                  <span className="text-sm text-[#555] font-mono">{idx + 1}</span>
                   <input
                     value={task.label}
                     onChange={e => updateTask(idx, 'label', e.target.value)}
-                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
+                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
                   />
                   <select
                     value={task.track}
                     onChange={e => updateTask(idx, 'track', e.target.value as Track)}
-                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
                   >
                     {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <select
                     value={task.assignee_id || ''}
                     onChange={e => updateTask(idx, 'assignee_id', e.target.value || null)}
-                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
                   >
                     <option value="">Unassigned</option>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                   {/* Days: D-X mode or +Xhr-after-dep mode */}
-                  <div className="flex items-center gap-0.5 w-full">
+                  <div className="flex items-center gap-1 w-full">
                     {task.due_after_dep_hours != null ? (
                       <>
-                        <span className="text-[#555] text-xs shrink-0">+</span>
+                        <span className="text-[#555] text-sm shrink-0">+</span>
                         <input
                           type="number"
                           value={task.due_after_dep_hours ?? ''}
                           onChange={e => updateTask(idx, 'due_after_dep_hours', e.target.value ? parseInt(e.target.value) : null)}
-                          className="px-1 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs w-9 focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                          className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-12 focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
                         />
-                        <span className="text-[#555] text-xs shrink-0">h</span>
+                        <span className="text-[#555] text-sm shrink-0">h</span>
                         <button type="button" title="Switch to D-X mode"
                           onClick={() => updateTaskFields(idx, { due_after_dep_hours: null, due_days: null })}
-                          className="text-[#555] hover:text-white text-xs px-0.5 shrink-0">D</button>
+                          className="text-[#555] hover:text-white text-xs px-1 shrink-0">D</button>
                       </>
                     ) : (
                       <>
@@ -659,11 +659,11 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                           value={task.due_days ?? ''}
                           onChange={e => updateTask(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
                           placeholder="—"
-                          className="px-1 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                          className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
                         />
                         <button type="button" title="+Xhr after dep completion"
                           onClick={() => updateTaskFields(idx, { due_after_dep_hours: 24, due_days: null })}
-                          className="text-[#555] hover:text-white text-xs px-0.5 shrink-0">⚡</button>
+                          className="text-[#555] hover:text-white text-sm px-1 shrink-0">⚡</button>
                       </>
                     )}
                   </div>
@@ -672,10 +672,10 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                     multiple
                     value={(task.dep_seq_ids || []).map(String)}
                     onChange={e => updateTask(idx, 'dep_seq_ids', Array.from(e.target.selectedOptions).map(o => parseInt(o.value)))}
-                    className="px-1 py-0.5 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] h-8"
+                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] h-9 w-full"
                   >
                     {currentTasks.filter((_, i) => i !== idx).map(t => (
-                      <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label.slice(0, 24)}</option>
+                      <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label.slice(0, 28)}</option>
                     ))}
                   </select>
                   {/* Approver: "—" = no approval needed, else pick a team member */}
@@ -686,7 +686,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                       updateTask(idx, 'requires_approval', val !== '')
                       updateTask(idx, 'approver_id', val || null)
                     }}
-                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                    className="px-3 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] w-full"
                   >
                     <option value="">— No approval</option>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
