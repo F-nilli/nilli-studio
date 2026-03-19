@@ -6,7 +6,7 @@ import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, canManage
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 type Tab = 'team' | 'clients' | 'activity' | 'integrations'
@@ -351,8 +351,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [toast, setToast] = useState('')
   const [renamingClient, setRenamingClient] = useState(false)
   const [clientNameInput, setClientNameInput] = useState('')
-  const [duplicating, setDuplicating] = useState(false)
-  const [duplicateName, setDuplicateName] = useState('')
+  const [clientMenuOpen, setClientMenuOpen] = useState<string | null>(null)
 
   // Multi-template support
   const initialClientTpls = initialTemplates.filter(t => t.client_id === initialClients[0]?.id)
@@ -444,34 +443,54 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     showToast('Client renamed')
   }
 
-  async function handleDuplicatePipeline(e: React.FormEvent) {
-    e.preventDefault()
-    const name = duplicateName.trim()
-    if (!name || !selectedClientId) return
-    const tasks = editingTasks.length > 0 ? editingTasks : clientTemplates
-    const inserts = tasks.map((t, i) => ({
-      client_id: selectedClientId,
-      template_name: name,
-      seq_id: i + 1,
-      label: t.label,
-      assignee_id: t.assignee_id || null,
-      track: t.track,
-      due_days: t.due_after_dep_hours ? null : t.due_days,
-      due_after_dep_hours: t.due_after_dep_hours || null,
-      note: t.note,
-      dep_seq_ids: t.dep_seq_ids || [],
-      requires_approval: t.requires_approval || false,
-      approver_id: t.requires_approval ? (t.approver_id || null) : null,
-    }))
-    const { data: newTemplates } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
-    if (newTemplates) {
-      setTemplates(prev => [...prev, ...newTemplates as unknown as DbTaskTemplate[]])
-      setSelectedTemplateName(name)
-      setEditingTasks([])
+  async function handleDuplicateClient(clientId: string) {
+    setClientMenuOpen(null)
+    const client = clients.find(c => c.id === clientId)
+    if (!client) return
+    const { data: newClient } = await supabase.from('clients').insert({
+      key: client.key + '_copy_' + Date.now(),
+      label: 'Copy of ' + client.label,
+      active: client.active,
+    }).select().single()
+    if (!newClient) return
+    const allClientTpls = templates.filter(t => t.client_id === clientId)
+    if (allClientTpls.length > 0) {
+      const inserts = allClientTpls.map(t => ({
+        client_id: newClient.id,
+        template_name: t.template_name || 'Default',
+        seq_id: t.seq_id,
+        label: t.label,
+        assignee_id: t.assignee_id || null,
+        track: t.track,
+        due_days: t.due_days,
+        due_after_dep_hours: t.due_after_dep_hours || null,
+        note: t.note,
+        dep_seq_ids: t.dep_seq_ids || [],
+        requires_approval: t.requires_approval || false,
+        approver_id: t.approver_id || null,
+      }))
+      const { data: newTpls } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users(*)')
+      if (newTpls) setTemplates(prev => [...prev, ...newTpls as unknown as DbTaskTemplate[]])
     }
-    setDuplicating(false)
-    setDuplicateName('')
-    showToast(`Pipeline "${name}" created`)
+    const newClientData = newClient as Client
+    setClients(prev => [...prev, newClientData])
+    selectClient(newClient.id)
+    showToast(`"${newClientData.label}" created`)
+  }
+
+  async function handleDeleteClient(clientId: string) {
+    setClientMenuOpen(null)
+    const client = clients.find(c => c.id === clientId)
+    if (!client) return
+    if (!confirm(`Delete "${client.label}" and all its templates? This cannot be undone.`)) return
+    await supabase.from('task_templates').delete().eq('client_id', clientId)
+    await supabase.from('clients').delete().eq('id', clientId)
+    setTemplates(prev => prev.filter(t => t.client_id !== clientId))
+    const remaining = clients.filter(c => c.id !== clientId)
+    setClients(remaining)
+    if (remaining.length > 0) selectClient(remaining[0].id)
+    else setSelectedClientId(null)
+    showToast('Client deleted')
   }
 
   async function saveTemplate() {
@@ -547,18 +566,53 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
         {/* Client list */}
         <div className="w-48 shrink-0 space-y-1">
           <p className="text-xs font-semibold text-[#555] uppercase tracking-wide mb-2">Clients</p>
+          {/* Close menu on outside click */}
+          {clientMenuOpen && (
+            <div className="fixed inset-0 z-10" onClick={() => setClientMenuOpen(null)} />
+          )}
           {clients.map(c => (
-            <button
-              key={c.id}
-              onClick={() => selectClient(c.id)}
-              className={cn(
-                'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between gap-2',
-                selectedClientId === c.id ? 'bg-[#ff3c00]/10 text-white border border-[#ff3c00]/30' : 'text-[#888] hover:text-white hover:bg-[#1e1e1e]'
+            <div key={c.id} className="relative">
+              <div
+                onClick={() => selectClient(c.id)}
+                className={cn(
+                  'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between gap-1 cursor-pointer',
+                  selectedClientId === c.id ? 'bg-[#ff3c00]/10 text-white border border-[#ff3c00]/30' : 'text-[#888] hover:text-white hover:bg-[#1e1e1e]'
+                )}
+              >
+                <span className="truncate flex-1">{c.label}</span>
+                {!c.active && <span className="text-xs text-[#555] shrink-0">off</span>}
+                {selectedClientId === c.id && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setClientMenuOpen(clientMenuOpen === c.id ? null : c.id) }}
+                    className="p-0.5 rounded text-[#555] hover:text-white transition-colors shrink-0 z-20 relative"
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {clientMenuOpen === c.id && (
+                <div className="absolute left-0 top-full mt-1 w-40 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg shadow-xl z-20 overflow-hidden">
+                  <button
+                    onClick={() => { setClientMenuOpen(null); setClientNameInput(c.label); setRenamingClient(true) }}
+                    className="w-full text-left px-3 py-2 text-sm text-[#ccc] hover:bg-[#242424] hover:text-white flex items-center gap-2 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />Rename
+                  </button>
+                  <button
+                    onClick={() => handleDuplicateClient(c.id)}
+                    className="w-full text-left px-3 py-2 text-sm text-[#ccc] hover:bg-[#242424] hover:text-white flex items-center gap-2 transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />Duplicate
+                  </button>
+                  <button
+                    onClick={() => handleDeleteClient(c.id)}
+                    className="w-full text-left px-3 py-2 text-sm text-[#ff3c00] hover:bg-[#ff3c00]/10 flex items-center gap-2 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />Delete
+                  </button>
+                </div>
               )}
-            >
-              <span className="truncate">{c.label}</span>
-              {!c.active && <span className="text-xs text-[#555] shrink-0">off</span>}
-            </button>
+            </div>
           ))}
           <button
             onClick={() => setAddingClient(!addingClient)}
@@ -637,29 +691,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
-                    {/* Duplicate pipeline */}
-                    {duplicating ? (
-                      <form onSubmit={handleDuplicatePipeline} className="flex items-center gap-1.5">
-                        <input
-                          autoFocus
-                          value={duplicateName}
-                          onChange={e => setDuplicateName(e.target.value)}
-                          placeholder="New pipeline name"
-                          className="px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555] w-40"
-                        />
-                        <button type="submit" className="px-2 py-1 bg-[#ff3c00] text-white rounded-lg text-xs font-semibold">Duplicate</button>
-                        <button type="button" onClick={() => { setDuplicating(false); setDuplicateName('') }} className="text-[#555] hover:text-white text-xs">Cancel</button>
-                      </form>
-                    ) : (
-                      <button
-                        onClick={() => { setDuplicating(true); setDuplicateName(selectedTemplateName + ' copy') }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#555] hover:text-white hover:bg-[#1e1e1e] transition-colors text-xs"
-                        title="Duplicate this pipeline"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        Duplicate
-                      </button>
-                    )}
                   </div>
                 )}
                 <p className="text-sm text-[#555]">{currentTasks.length} tasks · {selectedTemplateName}</p>
