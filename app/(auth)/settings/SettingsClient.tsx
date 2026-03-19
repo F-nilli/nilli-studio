@@ -667,17 +667,33 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                       </>
                     )}
                   </div>
-                  {/* Deps: multi-select of earlier tasks */}
-                  <select
-                    multiple
-                    value={(task.dep_seq_ids || []).map(String)}
-                    onChange={e => updateTask(idx, 'dep_seq_ids', Array.from(e.target.selectedOptions).map(o => parseInt(o.value)))}
-                    className="px-2 py-1 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] h-9 w-full"
-                  >
-                    {currentTasks.filter((_, i) => i !== idx).map(t => (
-                      <option key={t.seq_id} value={t.seq_id}>{t.seq_id}. {t.label.slice(0, 28)}</option>
-                    ))}
-                  </select>
+                  {/* Deps: pill toggles */}
+                  <div className="flex flex-wrap gap-1">
+                    {currentTasks.filter((_, i) => i !== idx).length === 0 ? (
+                      <span className="text-xs text-[#444]">—</span>
+                    ) : (
+                      currentTasks.filter((_, i) => i !== idx).map(t => {
+                        const selected = (task.dep_seq_ids || []).includes(t.seq_id)
+                        return (
+                          <button
+                            key={t.seq_id}
+                            type="button"
+                            title={t.label}
+                            onClick={() => {
+                              const current = task.dep_seq_ids || []
+                              updateTask(idx, 'dep_seq_ids', selected ? current.filter(id => id !== t.seq_id) : [...current, t.seq_id])
+                            }}
+                            className={cn(
+                              'w-7 h-7 rounded text-xs font-bold transition-colors',
+                              selected ? 'bg-[#ff3c00] text-white' : 'bg-[#1e1e1e] text-[#555] hover:text-white border border-[#333]'
+                            )}
+                          >
+                            {t.seq_id}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
                   {/* Approver: "—" = no approval needed, else pick a team member */}
                   <select
                     value={task.requires_approval ? (task.approver_id || '') : ''}
