@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Episode, Task, User, Track, TaskStatus, canEditDates as canEditDatesRole, canApprove } from '@/lib/types'
+import { Episode, Task, User, Track, TaskStatus, Comment, canEditDates as canEditDatesRole, canApprove } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { TaskModal } from '@/components/tasks/TaskModal'
+import { CommentPanel } from '@/components/tasks/CommentPanel'
 import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { parseISO, format } from 'date-fns'
@@ -19,6 +20,7 @@ interface Props {
   episode: Episode
   initialTasks: Task[]
   taskComments: Record<string, TaskComment>
+  allUsers: User[]
 }
 
 const TRACK_ORDER: Track[] = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing']
@@ -93,17 +95,101 @@ function ProjectTimeline({ tracks, tasks }: { tracks: Track[]; tasks: Task[] }) 
 
 // ─── Main client ──────────────────────────────────────────────────────────────
 
-export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskComments }: Props) {
+export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskComments, allUsers }: Props) {
   const supabase = createClient()
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [activeTaskFilter, setActiveTaskFilter] = useState<Task | null>(null)
+  const [allComments, setAllComments] = useState<Comment[]>([])
+  const [lastRead, setLastRead] = useState<Record<string, string>>({})
 
   const canEditDates = canEditDatesRole(currentUser)
   const canEdit = canApprove(currentUser)
 
+  // Load last-read timestamps from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`lastRead:${episode.id}`)
+      if (stored) setLastRead(JSON.parse(stored))
+    } catch {}
+  }, [episode.id])
+
+  // Fetch all episode comments on mount
+  useEffect(() => {
+    async function fetchComments() {
+      const taskIds = initialTasks.map(t => t.id)
+      if (taskIds.length === 0) return
+      const { data } = await supabase
+        .from('comments')
+        .select('*, author:users(*)')
+        .in('task_id', taskIds)
+        .order('created_at', { ascending: true })
+      if (data) setAllComments(data as unknown as Comment[])
+    }
+    fetchComments()
+  }, [episode.id])
+
+  // Realtime: new comments
+  useEffect(() => {
+    const taskIds = new Set(initialTasks.map(t => t.id))
+    const channel = supabase
+      .channel(`comments-${episode.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' },
+        async (payload) => {
+          if (!taskIds.has(payload.new.task_id)) return
+          // Fetch with author join
+          const { data } = await supabase
+            .from('comments')
+            .select('*, author:users(*)')
+            .eq('id', payload.new.id)
+            .single()
+          if (data) setAllComments(prev => [...prev, data as unknown as Comment])
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [episode.id])
+
+  // Derived task comment counts (live)
+  const liveTaskComments = useMemo(() => {
+    if (allComments.length === 0) return taskComments
+    const result: Record<string, { count: number; latest: string }> = {}
+    for (const c of [...allComments].reverse()) {
+      if (!result[c.task_id]) result[c.task_id] = { count: 0, latest: c.body }
+      result[c.task_id].count++
+    }
+    return result
+  }, [allComments, taskComments])
+
+  // Unread dot: task has comments newer than lastRead[taskId]
+  function hasUnread(taskId: string): boolean {
+    const lastReadAt = lastRead[taskId]
+    if (!lastReadAt) return allComments.some(c => c.task_id === taskId)
+    return allComments.some(c => c.task_id === taskId && c.created_at > lastReadAt)
+  }
+
+  function markTaskRead(taskId: string) {
+    const now = new Date().toISOString()
+    setLastRead(prev => {
+      const next = { ...prev, [taskId]: now }
+      try { localStorage.setItem(`lastRead:${episode.id}`, JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
+
+  function handleTaskRowClick(task: Task) {
+    setSelectedTask(task)
+    setActiveTaskFilter(task)
+    markTaskRead(task.id)
+  }
+
+  function handleNewComment(comment: Comment) {
+    setAllComments(prev => [...prev, comment])
+    if (comment.task_id) markTaskRead(comment.task_id)
+  }
+
   useEffect(() => {
     const channel = supabase
-      .channel(`episode-${episode.id}`)
+      .channel(`tasks-${episode.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `episode_id=eq.${episode.id}` },
         (payload) => {
           setTasks(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t))
@@ -150,91 +236,111 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   )
 
   return (
-    <div className="max-w-5xl space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href={currentUser.role === 'admin' ? '/board' : '/dashboard'}
-          className="p-1.5 rounded-md hover:bg-[#1e1e1e] text-[#888] shrink-0"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-[#888] font-medium">{episode.client_label}</span>
-            <span className="text-[#444]">·</span>
-            <span className={cn('text-sm font-medium',
-              daysUntil < 0 ? 'text-[#ff3c00]' : daysUntil < 3 ? 'text-yellow-500' : 'text-[#888]'
-            )}>
-              {daysUntil < 0 ? `Released ${Math.abs(daysUntil)}d ago` :
-               daysUntil === 0 ? 'Releases today' :
-               `Releases in ${daysUntil}d · ${format(parseISO(episode.release_date), 'MMM d, yyyy')}`}
-            </span>
+    <div className="flex items-start gap-5">
+      {/* Main content */}
+      <div className="flex-1 min-w-0 space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <Link
+            href={currentUser.role === 'admin' ? '/board' : '/dashboard'}
+            className="p-1.5 rounded-md hover:bg-[#1e1e1e] text-[#888] shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-[#888] font-medium">{episode.client_label}</span>
+              <span className="text-[#444]">·</span>
+              <span className={cn('text-sm font-medium',
+                daysUntil < 0 ? 'text-[#ff3c00]' : daysUntil < 3 ? 'text-yellow-500' : 'text-[#888]'
+              )}>
+                {daysUntil < 0 ? `Released ${Math.abs(daysUntil)}d ago` :
+                 daysUntil === 0 ? 'Releases today' :
+                 `Releases in ${daysUntil}d · ${format(parseISO(episode.release_date), 'MMM d, yyyy')}`}
+              </span>
+            </div>
+            <h1 className="text-2xl font-black text-white">{episode.guest_name}</h1>
+            {episode.source_episode_id && episode.source?.guest_name && episode.template_name && episode.template_name !== 'Default' && (
+              <Link
+                href={`/episodes/${episode.source.id}`}
+                className="flex items-center gap-1 text-xs text-[#f7931a]/70 hover:text-[#f7931a] transition-colors mt-0.5"
+              >
+                <span className="text-[10px]">↗</span>
+                <span>Spawned from: {episode.source.template_name ?? 'Default'} — {episode.source.guest_name}</span>
+              </Link>
+            )}
           </div>
-          <h1 className="text-2xl font-black text-white">{episode.guest_name}</h1>
-          {episode.source_episode_id && episode.source?.guest_name && episode.template_name && episode.template_name !== 'Default' && (
-            <Link
-              href={`/episodes/${episode.source.id}`}
-              className="flex items-center gap-1 text-xs text-[#f7931a]/70 hover:text-[#f7931a] transition-colors mt-0.5"
+          {episode.footage_url && (
+            <a
+              href={episode.footage_url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors shrink-0"
             >
-              <span className="text-[10px]">↗</span>
-              <span>Spawned from: {episode.source.template_name ?? 'Default'} — {episode.source.guest_name}</span>
-            </Link>
+              <ExternalLink className="w-3.5 h-3.5" />Footage
+            </a>
           )}
         </div>
-        {episode.footage_url && (
-          <a
-            href={episode.footage_url} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors shrink-0"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />Footage
-          </a>
-        )}
+
+        {/* Brief & Notes */}
+        <BriefNotes
+          episodeId={episode.id}
+          initialNotes={episode.notes}
+          canEdit={canEdit}
+        />
+
+        {/* Two-column: task list + timeline */}
+        <div className="flex items-start gap-4">
+          {/* Task list */}
+          <div className="flex-1 min-w-0 space-y-4">
+            {tracks.map(track => {
+              const trackTasks = tasks.filter(t => t.track === track)
+              const trackColor = TRACK_COLORS[track]
+              const done = trackTasks.filter(t => t.status === 'approved' || t.status === 'done').length
+
+              return (
+                <div key={track}>
+                  <div className="h-8 flex items-center gap-2 mb-1.5">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: trackColor }} />
+                    <h2 className="text-sm font-bold text-white uppercase tracking-wide">{track}</h2>
+                    <span className="text-xs text-[#555]">{done}/{trackTasks.length}</span>
+                  </div>
+                  <div className="border border-[#2e2e2e] rounded-lg overflow-hidden divide-y divide-[#242424]">
+                    {trackTasks.map(task => (
+                      <EpisodeTaskRow
+                        key={task.id}
+                        task={task}
+                        canEditDates={canEditDates}
+                        taskComment={liveTaskComments[task.id] || null}
+                        hasUnread={hasUnread(task.id)}
+                        onDateChange={(oldDate, newDate) => handleDateChange(task.id, oldDate, newDate)}
+                        onClick={() => handleTaskRowClick(task)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Timeline sidebar */}
+          <ProjectTimeline tracks={tracks} tasks={tasks} />
+        </div>
       </div>
 
-      {/* Brief & Notes */}
-      <BriefNotes
-        episodeId={episode.id}
-        initialNotes={episode.notes}
-        canEdit={canEdit}
-      />
-
-      {/* Two-column: task list + timeline */}
-      <div className="flex items-start gap-4">
-
-        {/* Task list */}
-        <div className="flex-1 min-w-0 space-y-4">
-          {tracks.map(track => {
-            const trackTasks = tasks.filter(t => t.track === track)
-            const trackColor = TRACK_COLORS[track]
-            const done = trackTasks.filter(t => t.status === 'approved' || t.status === 'done').length
-
-            return (
-              <div key={track}>
-                <div className="h-8 flex items-center gap-2 mb-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: trackColor }} />
-                  <h2 className="text-sm font-bold text-white uppercase tracking-wide">{track}</h2>
-                  <span className="text-xs text-[#555]">{done}/{trackTasks.length}</span>
-                </div>
-                <div className="border border-[#2e2e2e] rounded-lg overflow-hidden divide-y divide-[#242424]">
-                  {trackTasks.map(task => (
-                    <EpisodeTaskRow
-                      key={task.id}
-                      task={task}
-                      canEditDates={canEditDates}
-                      taskComment={taskComments[task.id] || null}
-                      onDateChange={(oldDate, newDate) => handleDateChange(task.id, oldDate, newDate)}
-                      onClick={() => setSelectedTask(task)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Timeline sidebar */}
-        <ProjectTimeline tracks={tracks} tasks={tasks} />
+      {/* Comment panel */}
+      <div className="w-72 shrink-0 sticky top-6 self-start">
+        <CommentPanel
+          episodeId={episode.id}
+          episodeClientKey={episode.client_key}
+          episodeGuestName={episode.guest_name}
+          episodeClientLabel={episode.client_label}
+          allComments={allComments}
+          taskLabels={Object.fromEntries(tasks.map(t => [t.id, t.label]))}
+          currentUser={currentUser}
+          allUsers={allUsers}
+          activeTask={activeTaskFilter}
+          onClearFilter={() => setActiveTaskFilter(null)}
+          onNewComment={handleNewComment}
+        />
       </div>
 
       {selectedTask && (
@@ -359,11 +465,12 @@ interface TaskRowProps {
   task: Task
   canEditDates: boolean
   taskComment: TaskComment | null
+  hasUnread: boolean
   onDateChange: (oldDate: string | null, newDate: string) => void
   onClick: () => void
 }
 
-function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick }: TaskRowProps) {
+function EpisodeTaskRow({ task, canEditDates, taskComment, hasUnread, onDateChange, onClick }: TaskRowProps) {
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
   const [editingDate, setEditingDate] = useState(false)
@@ -417,18 +524,23 @@ function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick
       {/* Right side */}
       <div className="flex items-center gap-2 shrink-0">
 
-        {/* Comment bubble */}
-        {taskComment && commentPreview && (
+        {/* Comment bubble / unread dot */}
+        {taskComment && commentPreview ? (
           <button
             onClick={onClick}
-            className="flex items-center gap-1.5 bg-[#232323] border border-[#2e2e2e] rounded-full px-2 py-0.5 max-w-[200px] hover:border-[#2e2e2e] transition-colors"
+            className="flex items-center gap-1.5 bg-[#232323] border border-[#2e2e2e] rounded-full px-2 py-0.5 max-w-[200px] hover:border-[#444] transition-colors"
           >
-            <MessageSquare className="w-3 h-3 text-[#ff3c00] shrink-0" />
+            <MessageSquare className={cn('w-3 h-3 shrink-0', hasUnread ? 'text-[#f7931a]' : 'text-[#555]')} />
             <span className="text-xs text-[#666] shrink-0 font-medium">{taskComment.count}</span>
             <span className="text-[#2e2e2e] text-xs shrink-0">·</span>
             <span className="text-xs text-[#555] truncate">{commentPreview}</span>
+            {hasUnread && <span className="w-1.5 h-1.5 rounded-full bg-[#f7931a] shrink-0" />}
           </button>
-        )}
+        ) : hasUnread ? (
+          <button onClick={onClick} className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#f7931a]" />
+          </button>
+        ) : null}
 
         {overdue && !isLocked && <AlertCircle className="w-3.5 h-3.5 text-[#ff3c00]" />}
 
@@ -472,7 +584,7 @@ function EpisodeTaskRow({ task, canEditDates, taskComment, onDateChange, onClick
         </button>
         {task.assignee && (
           <button onClick={onClick}>
-            <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" />
+            <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" avatarUrl={task.assignee.avatar_url} />
           </button>
         )}
       </div>

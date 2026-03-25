@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { X, Send, Lock, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { X, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Task, User, Comment, TaskStatus, Episode } from '@/lib/types'
+import { Task, User, TaskStatus, Episode } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
@@ -31,11 +31,7 @@ const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
 
 export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Props) {
   const supabase = createClient()
-  const [comments, setComments] = useState<Comment[]>([])
-  const [newComment, setNewComment] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
-  const commentEndRef = useRef<HTMLDivElement>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
   const isReviewer = task.requires_approval
@@ -43,32 +39,6 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     : false
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
-
-  useEffect(() => { fetchComments() }, [task.id])
-  useEffect(() => { commentEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [comments])
-
-  async function fetchComments() {
-    const { data } = await supabase
-      .from('comments')
-      .select('*, author:users(*)')
-      .eq('task_id', task.id)
-      .order('created_at', { ascending: true })
-    if (data) setComments(data as unknown as Comment[])
-  }
-
-  async function submitComment(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newComment.trim()) return
-    setSubmitting(true)
-    await supabase.from('comments').insert({
-      task_id: task.id,
-      author_id: currentUser.id,
-      body: newComment.trim(),
-    })
-    setNewComment('')
-    setSubmitting(false)
-    fetchComments()
-  }
 
   async function updateStatus(newStatus: TaskStatus) {
     // If task doesn't need approval, submitting goes straight to approved
@@ -246,7 +216,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                 <p className="text-xs text-[#888] mb-1">Assignee</p>
                 {task.assignee && (
                   <div className="flex items-center gap-2">
-                    <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" />
+                    <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" avatarUrl={task.assignee.avatar_url} />
                     <span className="text-white font-medium">{task.assignee.name}</span>
                   </div>
                 )}
@@ -286,49 +256,10 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
               </div>
             )}
 
-            <div>
-              <h3 className="text-xs font-semibold text-[#888] uppercase tracking-wider mb-3">
-                Comments ({comments.length})
-              </h3>
-              <div className="space-y-3">
-                {comments.map(comment => (
-                  <div key={comment.id} className="flex gap-3">
-                    {comment.author && (
-                      <Avatar name={comment.author.name} color={comment.author.avatar_color} size="sm" />
-                    )}
-                    <div className="flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-semibold text-white">{comment.author?.name}</span>
-                        <span className="text-xs text-[#666]">{formatDate(comment.created_at)}</span>
-                      </div>
-                      <p className="text-base text-[#ccc] mt-0.5">{comment.body}</p>
-                    </div>
-                  </div>
-                ))}
-                <div ref={commentEndRef} />
-              </div>
-            </div>
           </div>
 
           {/* Footer */}
           <div className="border-t border-[#2e2e2e] p-4 space-y-3">
-            <form onSubmit={submitComment} className="flex gap-2">
-              <Avatar name={currentUser.name} color={currentUser.avatar_color} size="sm" />
-              <input
-                value={newComment}
-                onChange={e => setNewComment(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg text-base text-white placeholder-[#555] focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
-              />
-              <button
-                type="submit"
-                disabled={submitting || !newComment.trim()}
-                className="p-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-40 text-white rounded-lg transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-
             {canAction && (
               <button
                 onClick={() => updateStatus(nextStatus!)}

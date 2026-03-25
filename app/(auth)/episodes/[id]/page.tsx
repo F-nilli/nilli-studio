@@ -9,7 +9,7 @@ export default async function EpisodeDetailPage({ params }: { params: Promise<{ 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [profileRes, episodeRes, tasksRes] = await Promise.all([
+  const [profileRes, episodeRes, tasksRes, allUsersRes] = await Promise.all([
     supabase.from('users').select('*').eq('id', user.id).single(),
     supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').eq('id', id).single(),
     supabase
@@ -17,6 +17,7 @@ export default async function EpisodeDetailPage({ params }: { params: Promise<{ 
       .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
       .eq('episode_id', id)
       .order('template_task_id', { ascending: true }),
+    supabase.from('users').select('*').order('name', { ascending: true }),
   ])
 
   if (!episodeRes.data) notFound()
@@ -46,6 +47,7 @@ export default async function EpisodeDetailPage({ params }: { params: Promise<{ 
       episode={episodeRes.data as Episode}
       initialTasks={(tasksRes.data || []) as unknown as Task[]}
       taskComments={taskComments}
+      allUsers={(allUsersRes.data || []) as User[]}
     />
   )
 }

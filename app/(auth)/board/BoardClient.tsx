@@ -330,7 +330,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   </div>
                   <div className="flex -space-x-2 ml-auto">
                     {activeAssignees.slice(0, 5).map(u => (
-                      <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" />
+                      <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" avatarUrl={u.avatar_url} />
                     ))}
                     {activeAssignees.length > 5 && (
                       <div className="w-8 h-8 rounded-full bg-[#1e1e1e] flex items-center justify-center text-sm font-medium text-[#888] border-2 border-[#141414]">

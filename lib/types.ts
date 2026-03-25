@@ -39,6 +39,7 @@ export interface User {
   name: string
   role: UserRole
   avatar_color: string
+  avatar_url: string | null
   created_at: string
 }
 
@@ -108,6 +109,7 @@ export type NotificationType =
   | 'task_approved'
   | 'task_revision'
   | 'task_overdue'
+  | 'task_comment_mention'
 
 export interface Client {
   id: string

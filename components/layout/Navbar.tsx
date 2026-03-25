@@ -169,7 +169,7 @@ export function Navbar({ user }: NavbarProps) {
             onClick={() => setShowUserMenu(!showUserMenu)}
             className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
           >
-            <Avatar name={user.name} color={user.avatar_color} size="sm" />
+            <Avatar name={user.name} color={user.avatar_color} size="sm" avatarUrl={user.avatar_url} />
             <span className="text-base font-semibold text-white hidden sm:block">{user.name}</span>
             <ChevronDown className="w-4 h-4 text-[#888] hidden sm:block" />
           </button>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks } from '@/lib/slack'
+import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks } from '@/lib/slack'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate } = body
+  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody } = body
 
   const admin = createAdminClient()
 
@@ -40,6 +40,8 @@ export async function POST(request: Request) {
     blocks = buildRevisionBlocks({ clientLabel, guestName, taskLabel, assigneeName, dueDate })
   } else if (type === 'review_submitted') {
     blocks = buildReviewSubmittedBlocks({ clientLabel, guestName, taskLabel, assigneeName })
+  } else if (type === 'comment') {
+    blocks = buildCommentBlocks({ clientLabel, guestName, taskLabel, authorName, body: commentBody })
   } else {
     return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
   }

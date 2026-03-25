@@ -272,7 +272,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
     <div className="grid grid-cols-[1fr_140px_80px_100px] px-4 py-3 border-b border-[#242424] last:border-0 items-center hover:bg-[#111111] transition-colors group">
       {/* Name + email */}
       <div className="flex items-center gap-3 min-w-0">
-        <Avatar name={user.name} color={user.avatar_color} size="sm" />
+        <Avatar name={user.name} color={user.avatar_color} size="sm" avatarUrl={user.avatar_url} />
         <div className="min-w-0">
           <p className="text-sm font-medium text-white truncate">{user.name} {isSelf && <span className="text-[#555] text-xs">(you)</span>}</p>
           <p className="text-xs text-[#666] truncate">{user.email}</p>

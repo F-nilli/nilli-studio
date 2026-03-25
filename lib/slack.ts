@@ -86,6 +86,31 @@ export function buildRevisionBlocks({
   ]
 }
 
+export function buildCommentBlocks({
+  clientLabel,
+  guestName,
+  taskLabel,
+  authorName,
+  body,
+}: {
+  clientLabel: string
+  guestName: string
+  taskLabel: string
+  authorName: string
+  body: string
+}) {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${clientLabel} — ${guestName}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${authorName}* commented on *${taskLabel}*:\n${body}` },
+    },
+  ]
+}
+
 export function buildReviewSubmittedBlocks({
   clientLabel,
   guestName,
