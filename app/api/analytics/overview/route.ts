@@ -7,21 +7,21 @@ const TTL = 5 * 60 * 1000
 function getRangeStart(range: string): string | null {
   const now = new Date()
   switch (range) {
-    case 'month':
-      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    case 'week':
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    case 'thirty':
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
     case 'quarter':
       return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString()
-    case 'half':
-      return new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString()
     case 'year':
       return new Date(now.getFullYear(), 0, 1).toISOString()
-    default:
+    default: // 'all'
       return null
   }
 }
 
 export async function GET(req: NextRequest) {
-  const range = req.nextUrl.searchParams.get('range') ?? 'all'
+  const range = req.nextUrl.searchParams.get('range') ?? 'thirty'
   const cacheKey = `overview:${range}`
   const hit = cache.get(cacheKey)
   if (hit && Date.now() - hit.ts < TTL) return NextResponse.json(hit.data)
@@ -37,43 +37,37 @@ export async function GET(req: NextRequest) {
 
   const rangeStart = getRangeStart(range)
 
-  // Completed episodes in range
+  // Completed episodes: archived=true, completed_at IS NOT NULL, restored_at IS NULL
   let episodeQ = supabase
     .from('episodes')
-    .select('id, created_at, published_at, release_date')
-    .not('published_at', 'is', null)
-  if (rangeStart) episodeQ = episodeQ.gte('published_at', rangeStart)
+    .select('id, created_at, completed_at, release_date')
+    .eq('archived', true)
+    .not('completed_at', 'is', null)
+    .is('restored_at', null)
+  if (rangeStart) episodeQ = episodeQ.gte('completed_at', rangeStart)
   const { data: episodes } = await episodeQ
-  const completed = (episodes ?? []) as { id: string; created_at: string; published_at: string; release_date: string | null }[]
+  const completed = (episodes ?? []) as { id: string; created_at: string; completed_at: string; release_date: string | null }[]
 
-  // This month count (always, independent of range filter)
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-  const { count: thisMonthCount } = await supabase
-    .from('episodes')
-    .select('id', { count: 'exact', head: true })
-    .not('published_at', 'is', null)
-    .gte('published_at', monthStart)
-
-  // Avg turnaround: days from created_at to published_at
+  // Avg turnaround: days from created_at to completed_at
   let avgTurnaround: number | null = null
   if (completed.length > 0) {
     const totalDays = completed.reduce((sum, e) => {
-      return sum + (new Date(e.published_at).getTime() - new Date(e.created_at).getTime()) / 86400000
+      return sum + (new Date(e.completed_at).getTime() - new Date(e.created_at).getTime()) / 86400000
     }, 0)
     avgTurnaround = totalDays / completed.length
   }
 
-  // On-time delivery: published date <= release_date
+  // On-time delivery: completed_at date <= release_date
   let onTimePercent: number | null = null
   const withRelease = completed.filter(e => e.release_date)
   if (withRelease.length > 0) {
     const onTime = withRelease.filter(e =>
-      e.published_at.split('T')[0] <= e.release_date!
+      e.completed_at.split('T')[0] <= e.release_date!
     ).length
     onTimePercent = Math.round((onTime / withRelease.length) * 100)
   }
 
-  // Avg revision rounds per episode (from task_history if it exists)
+  // Avg revision rounds per episode
   let avgRevisionRounds: number | null = null
   if (completed.length > 0) {
     const episodeIds = completed.map(e => e.id)
@@ -96,7 +90,6 @@ export async function GET(req: NextRequest) {
 
   const data = {
     episodesDelivered: completed.length,
-    thisMonthCount: thisMonthCount ?? 0,
     avgTurnaround,
     onTimePercent,
     avgRevisionRounds,

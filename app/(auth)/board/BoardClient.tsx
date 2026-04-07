@@ -153,11 +153,26 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const canAct = canManageClients(currentUser)
 
   async function togglePublish(episodeId: string, publish: boolean) {
-    await supabase.from('episodes').update({ published_at: publish ? new Date().toISOString() : null }).eq('id', episodeId)
+    const now = new Date().toISOString()
     if (publish) {
+      await supabase.from('episodes').update({
+        published_at: now,
+        archived: true,
+        completed_at: now,
+        restored_at: null,
+      }).eq('id', episodeId)
       const ep = episodes.find(e => e.id === episodeId)
-      if (ep) setPublished(prev => [{ ...ep, published_at: new Date().toISOString() }, ...prev])
+      if (ep) setPublished(prev => [{ ...ep, published_at: now, archived: true, completed_at: now, restored_at: null }, ...prev])
     } else {
+      const ep = published.find(e => e.id === episodeId)
+      const newRestoreCount = (ep?.restore_count ?? 0) + 1
+      await supabase.from('episodes').update({
+        published_at: null,
+        archived: false,
+        completed_at: null,
+        restored_at: now,
+        restore_count: newRestoreCount,
+      }).eq('id', episodeId)
       setPublished(prev => prev.filter(e => e.id !== episodeId))
     }
   }
@@ -194,7 +209,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     if (!circleUndoInfo) return
     clearTimeout(circleUndoInfo.timer)
     const { id } = circleUndoInfo
-    await supabase.from('episodes').update({ published_at: null }).eq('id', id)
+    await supabase.from('episodes').update({ published_at: null, archived: false, completed_at: null }).eq('id', id)
     setPublished(prev => prev.filter(e => e.id !== id))
     setCircleArchivedIds(prev => { const n = new Set(prev); n.delete(id); return n })
     setCircleUndoInfo(null)

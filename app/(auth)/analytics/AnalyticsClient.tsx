@@ -4,18 +4,17 @@ import { useState, useEffect } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import type { User } from '@/lib/types'
 
-type Range = 'month' | 'quarter' | 'half' | 'year' | 'all'
+type Range = 'week' | 'thirty' | 'quarter' | 'year' | 'all'
 
 interface OverviewData {
   episodesDelivered: number
-  thisMonthCount: number
   avgTurnaround: number | null
   onTimePercent: number | null
   avgRevisionRounds: number | null
 }
 
 interface ChartsData {
-  monthlyOutput: { label: string; count: number; isCurrent: boolean }[]
+  monthlyOutput: { label: string; count: number; inRange: boolean }[]
   outputByClient: { clientKey: string; clientLabel: string; count: number; color: string }[]
   revisionByClient: { clientKey: string; clientLabel: string; avg: number; color: string }[]
   teamCompletion: {
@@ -31,14 +30,14 @@ interface ChartsData {
 }
 
 const RANGE_LABELS: Record<Range, string> = {
-  month: 'This month',
+  week: 'Last 7 days',
+  thirty: 'Last 30 days',
   quarter: 'Last 3 months',
-  half: 'Last 6 months',
   year: 'This year',
   all: 'All time',
 }
 
-const RANGES: Range[] = ['month', 'quarter', 'half', 'year', 'all']
+const RANGES: Range[] = ['week', 'thirty', 'quarter', 'year', 'all']
 
 const CARD_STYLE: React.CSSProperties = {
   background: '#1a1a1a',
@@ -48,7 +47,7 @@ const CARD_STYLE: React.CSSProperties = {
 }
 
 export function AnalyticsClient({ currentUser }: { currentUser: User }) {
-  const [range, setRange] = useState<Range>('all')
+  const [range, setRange] = useState<Range>('thirty')
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [charts, setCharts] = useState<ChartsData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,9 +93,9 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
                   fontSize: 12,
                   fontWeight: 500,
                   cursor: 'pointer',
-                  border: range === r ? '1px solid rgba(247,147,26,0.5)' : '1px solid rgba(255,255,255,0.08)',
-                  background: range === r ? 'rgba(247,147,26,0.12)' : 'rgba(255,255,255,0.04)',
-                  color: range === r ? '#f7931a' : 'rgba(255,255,255,0.45)',
+                  border: 'none',
+                  background: range === r ? '#f7931a' : 'rgba(255,255,255,0.06)',
+                  color: range === r ? '#000' : 'rgba(255,255,255,0.45)',
                   transition: 'all 150ms',
                 }}
               >
@@ -110,19 +109,19 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
           <MetricCard
             label="Episodes delivered"
-            value={loading ? null : overview ? String(overview.episodesDelivered) : '—'}
-            sub={loading ? null : overview ? `+${overview.thisMonthCount} this month` : null}
+            value={loading ? null : (!hasData ? '—' : String(overview!.episodesDelivered))}
+            sub="completed & archived"
             subColor="rgba(255,255,255,0.35)"
           />
           <MetricCard
             label="Avg turnaround"
-            value={loading ? null : overview?.avgTurnaround != null ? `${overview.avgTurnaround.toFixed(1)}d` : '—'}
+            value={loading ? null : (overview?.avgTurnaround != null ? `${overview.avgTurnaround.toFixed(1)}d` : '—')}
             sub="from creation to archive"
             subColor="rgba(255,255,255,0.35)"
           />
           <MetricCard
             label="On-time delivery"
-            value={loading ? null : overview?.onTimePercent != null ? `${overview.onTimePercent}%` : '—'}
+            value={loading ? null : (overview?.onTimePercent != null ? `${overview.onTimePercent}%` : '—')}
             sub="released by release date"
             subColor="rgba(255,255,255,0.35)"
             valueColor={
@@ -135,7 +134,7 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
           />
           <MetricCard
             label="Avg revision rounds"
-            value={loading ? null : overview?.avgRevisionRounds != null ? overview.avgRevisionRounds.toFixed(1) : '—'}
+            value={loading ? null : (overview?.avgRevisionRounds != null ? overview.avgRevisionRounds.toFixed(1) : '—')}
             sub="per episode"
             subColor="rgba(255,255,255,0.35)"
             valueColor={
@@ -158,7 +157,7 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
             marginBottom: 24,
           }}>
             <p style={{ fontSize: 15, marginBottom: 6 }}>No completed episodes in this period.</p>
-            <p style={{ fontSize: 13 }}>Data will appear here as episodes are archived.</p>
+            <p style={{ fontSize: 13 }}>Try selecting a broader time range.</p>
           </div>
         )}
 
@@ -173,7 +172,8 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
               ) : charts ? (
                 <VerticalBarChart
                   data={charts.monthlyOutput}
-                  getColor={d => d.isCurrent ? '#f7931a' : 'rgba(247,147,26,0.55)'}
+                  getColor={() => '#f7931a'}
+                  getOpacity={d => d.inRange ? 1 : 0.3}
                   getLabel={d => d.label}
                   getValue={d => d.count}
                   height={160}
@@ -329,7 +329,7 @@ function EmptyChart({ text = 'No data for this period' }: { text?: string }) {
 }
 
 function VerticalBarChart<T>({
-  data, getColor, getLabel, getValue, height, formatValue,
+  data, getColor, getLabel, getValue, height, formatValue, getOpacity,
 }: {
   data: T[]
   getColor: (d: T) => string
@@ -337,6 +337,7 @@ function VerticalBarChart<T>({
   getValue: (d: T) => number
   height: number
   formatValue: (v: number) => string
+  getOpacity?: (d: T) => number
 }) {
   const max = Math.max(...data.map(d => getValue(d)), 1)
 
@@ -345,6 +346,7 @@ function VerticalBarChart<T>({
       {data.map((d, i) => {
         const val = getValue(d)
         const barH = val > 0 ? Math.max((val / max) * height, 3) : 0
+        const opacity = getOpacity ? getOpacity(d) : 1
         return (
           <div
             key={i}
@@ -355,6 +357,7 @@ function VerticalBarChart<T>({
               alignItems: 'center',
               justifyContent: 'flex-end',
               minWidth: 0,
+              opacity,
             }}
           >
             <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4, visibility: val > 0 ? 'visible' : 'hidden' }}>

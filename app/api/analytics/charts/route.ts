@@ -7,17 +7,25 @@ const TTL = 5 * 60 * 1000
 function getRangeStart(range: string): string | null {
   const now = new Date()
   switch (range) {
-    case 'month':
-      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    case 'week':
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    case 'thirty':
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
     case 'quarter':
       return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString()
-    case 'half':
-      return new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString()
     case 'year':
       return new Date(now.getFullYear(), 0, 1).toISOString()
-    default:
+    default: // 'all'
       return null
   }
+}
+
+// Returns true if any day of the given month (1-indexed) falls within the selected range
+function isMonthInRange(year: number, month: number, rangeStart: string | null): boolean {
+  if (!rangeStart) return true
+  // Last millisecond of the month: day 0 of next month = last day of this month
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
+  return monthEnd.toISOString() >= rangeStart
 }
 
 const CLIENT_COLORS: Record<string, string> = {
@@ -45,7 +53,7 @@ type EpisodeRow = {
   client_key: string
   client_label: string
   created_at: string
-  published_at: string
+  completed_at: string
   release_date: string | null
 }
 
@@ -59,7 +67,7 @@ type TaskRow = {
 }
 
 export async function GET(req: NextRequest) {
-  const range = req.nextUrl.searchParams.get('range') ?? 'all'
+  const range = req.nextUrl.searchParams.get('range') ?? 'thirty'
   const cacheKey = `charts:${range}`
   const hit = cache.get(cacheKey)
   if (hit && Date.now() - hit.ts < TTL) return NextResponse.json(hit.data)
@@ -80,40 +88,43 @@ export async function GET(req: NextRequest) {
   const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1)
   const { data: recentEps } = await supabase
     .from('episodes')
-    .select('published_at')
-    .not('published_at', 'is', null)
-    .gte('published_at', twelveMonthsAgo.toISOString())
+    .select('completed_at')
+    .eq('archived', true)
+    .not('completed_at', 'is', null)
+    .is('restored_at', null)
+    .gte('completed_at', twelveMonthsAgo.toISOString())
 
-  const months: { label: string; year: number; month: number; isCurrent: boolean }[] = []
+  const months: { label: string; year: number; month: number }[] = []
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     months.push({
       label: d.toLocaleString('en-US', { month: 'short' }),
       year: d.getFullYear(),
       month: d.getMonth() + 1,
-      isCurrent: i === 0,
     })
   }
 
   const monthlyCountMap: Record<string, number> = {}
   for (const ep of recentEps ?? []) {
-    const d = new Date((ep as { published_at: string }).published_at)
+    const d = new Date((ep as { completed_at: string }).completed_at)
     const key = `${d.getFullYear()}-${d.getMonth() + 1}`
     monthlyCountMap[key] = (monthlyCountMap[key] ?? 0) + 1
   }
 
   const monthlyOutput = months.map(m => ({
     label: m.label,
-    isCurrent: m.isCurrent,
     count: monthlyCountMap[`${m.year}-${m.month}`] ?? 0,
+    inRange: isMonthInRange(m.year, m.month, rangeStart),
   }))
 
-  // ── 2. Completed episodes in range (powers most charts) ──────────
+  // ── 2. Completed episodes in range ───────────────────────────────
   let completedQ = supabase
     .from('episodes')
-    .select('id, client_key, client_label, created_at, published_at, release_date')
-    .not('published_at', 'is', null)
-  if (rangeStart) completedQ = completedQ.gte('published_at', rangeStart)
+    .select('id, client_key, client_label, created_at, completed_at, release_date')
+    .eq('archived', true)
+    .not('completed_at', 'is', null)
+    .is('restored_at', null)
+  if (rangeStart) completedQ = completedQ.gte('completed_at', rangeStart)
   const { data: completedEps } = await completedQ
   const completed = (completedEps ?? []) as EpisodeRow[]
 
@@ -137,7 +148,7 @@ export async function GET(req: NextRequest) {
   // ── 4. Turnaround by client ──────────────────────────────────────
   const clientDaysMap: Record<string, { label: string; totalDays: number; count: number }> = {}
   for (const ep of completed) {
-    const days = (new Date(ep.published_at).getTime() - new Date(ep.created_at).getTime()) / 86400000
+    const days = (new Date(ep.completed_at).getTime() - new Date(ep.created_at).getTime()) / 86400000
     if (!clientDaysMap[ep.client_key]) {
       clientDaysMap[ep.client_key] = { label: ep.client_label, totalDays: 0, count: 0 }
     }
@@ -154,7 +165,7 @@ export async function GET(req: NextRequest) {
     }))
     .sort((a, b) => b.avgDays - a.avgDays)
 
-  // ── 5. Revision rounds by client (from task_history) ─────────────
+  // ── 5. Revision rounds by client ─────────────────────────────────
   let revisionByClient: { clientKey: string; clientLabel: string; avg: number; color: string }[] = []
   if (completed.length > 0) {
     const episodeIds = completed.map(e => e.id)
@@ -171,7 +182,6 @@ export async function GET(req: NextRequest) {
         revMap[r.episode_id] = (revMap[r.episode_id] ?? 0) + 1
       }
 
-      // Group revision rounds by client
       const clientRevMap: Record<string, { label: string; total: number; episodes: number }> = {}
       for (const ep of completed) {
         if (!clientRevMap[ep.client_key]) {
@@ -196,7 +206,6 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 6. Team task completion ──────────────────────────────────────
-  // Try task_history for precise completion times; fall back to updated_at
   let teamCompletion: {
     userId: string
     name: string
@@ -216,7 +225,6 @@ export async function GET(req: NextRequest) {
   type TeamEntry = { completed: number; onTime: number; withDue: number }
 
   if (!histErr && histRows && histRows.length > 0) {
-    // Use task_history for precision
     const taskIds = [...new Set((histRows as HistRow[]).map(r => r.task_id))]
     const { data: taskData } = await supabase
       .from('tasks')
@@ -253,7 +261,7 @@ export async function GET(req: NextRequest) {
       onTimePercent: e.withDue > 0 ? Math.round((e.onTime / e.withDue) * 100) : null,
     })).sort((a, b) => b.totalCompleted - a.totalCompleted)
   } else {
-    // Fallback: use tasks.updated_at (imprecise)
+    // Fallback: use tasks.updated_at
     let taskQ = supabase
       .from('tasks')
       .select('id, assignee_id, due_date, updated_at, assignee:users!assignee_id(id, name, avatar_color, avatar_url, active)')
@@ -291,13 +299,12 @@ export async function GET(req: NextRequest) {
   const { count: overdueCount } = await supabase
     .from('episodes')
     .select('id', { count: 'exact', head: true })
-    .is('published_at', null)
+    .eq('archived', false)
     .lt('release_date', sevenDaysAgo)
 
   // ── 8. Studio insights ───────────────────────────────────────────
   const insights: { color: 'red' | 'green' | 'amber'; text: string }[] = []
 
-  // Insight: client with highest revision rate
   if (revisionByClient.length >= 2) {
     const studioAvg = revisionByClient.reduce((s, c) => s + c.avg, 0) / revisionByClient.length
     const worst = revisionByClient[0]
@@ -309,7 +316,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Insight: most reliable team member
   const teamWithOnTime = teamCompletion.filter(m => m.onTimePercent !== null && m.totalCompleted >= 3)
   if (teamWithOnTime.length > 0) {
     const best = [...teamWithOnTime].sort((a, b) => (b.onTimePercent ?? 0) - (a.onTimePercent ?? 0))[0]
@@ -320,7 +326,6 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Insight: lowest on-time rate
     const worst = [...teamWithOnTime].sort((a, b) => (a.onTimePercent ?? 100) - (b.onTimePercent ?? 100))[0]
     if ((worst.onTimePercent ?? 100) < 80 && worst.userId !== best.userId) {
       insights.push({
@@ -330,7 +335,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Insight: month-over-month output trend
   if (monthlyOutput.length >= 2) {
     const curr = monthlyOutput[monthlyOutput.length - 1].count
     const prev = monthlyOutput[monthlyOutput.length - 2].count
@@ -346,7 +350,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Insight: client with longest turnaround
   if (turnaroundByClient.length >= 2) {
     const avgAll = turnaroundByClient.reduce((s, c) => s + c.avgDays, 0) / turnaroundByClient.length
     const slowest = turnaroundByClient[0]
@@ -358,7 +361,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Insight: overdue episodes
   if ((overdueCount ?? 0) > 0) {
     insights.push({
       color: 'red',

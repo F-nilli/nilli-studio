@@ -60,6 +60,10 @@ export interface Episode {
   created_at: string
   published: boolean
   published_at: string | null
+  archived: boolean
+  completed_at: string | null
+  restored_at: string | null
+  restore_count: number
   // Joined
   source?: { id: string; guest_name: string; template_name: string | null }
 }
