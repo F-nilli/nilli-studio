@@ -13,6 +13,7 @@ import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { parseISO, format } from 'date-fns'
+import { Spinner } from '@/components/ui/Spinner'
 
 interface TaskComment { count: number; latest: string }
 
@@ -870,7 +871,14 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
               disabled={actionLoading}
               className="btn-primary flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
             >
-              {actionLoading ? '…' : actionLabel}
+              {actionLoading
+                ? <span className="flex items-center justify-center gap-1.5"><Spinner />{
+                    actionLabel === 'Submit for Review' ? 'Submitting…' :
+                    actionLabel === 'Mark Done' ? 'Saving…' :
+                    actionLabel === 'Start' ? 'Starting…' :
+                    actionLabel === 'Resubmit' ? 'Submitting…' : 'Updating…'
+                  }</span>
+                : actionLabel}
             </button>
           )}
           {showApproverActions && (
@@ -892,7 +900,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
                 disabled={actionLoading}
                 className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
               >
-                {actionLoading ? '…' : 'Approve'}
+                {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
               </button>
             </>
           )}
@@ -939,7 +947,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
               disabled={actionLoading}
               className="ml-auto py-1 px-3 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded transition-colors"
             >
-              {actionLoading ? 'Sending…' : 'Confirm Send Back'}
+              {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm Send Back'}
             </button>
           </div>
         </div>

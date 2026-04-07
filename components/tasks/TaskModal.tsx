@@ -9,6 +9,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
+import { Spinner } from '@/components/ui/Spinner'
 
 interface Props {
   task: Task
@@ -288,7 +289,14 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                 disabled={updatingStatus}
                 className="btn-primary w-full py-2.5 px-4 disabled:cursor-not-allowed cursor-pointer text-white font-semibold rounded-lg text-base"
               >
-                {updatingStatus ? 'Updating...' : (
+                {updatingStatus ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner />
+                    {task.status === 'in_progress' ? (task.approver_id ? 'Submitting...' : 'Saving...') :
+                     task.status === 'ready' ? 'Starting...' :
+                     task.status === 'revision' ? 'Submitting...' : 'Updating...'}
+                  </span>
+                ) : (
                   task.status === 'in_progress'
                     ? (task.approver_id ? 'Submit for Review' : 'Mark Done')
                   : task.status === 'ready' ? 'Start Task'
@@ -305,14 +313,14 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                   disabled={updatingStatus}
                   className="flex-1 py-2.5 px-4 bg-[#1a1a1a] hover:bg-[#222] border border-[#ff3c00]/30 hover:border-[#ff3c00]/60 text-[#ff6644] font-semibold rounded-lg text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Send Back
+                  {updatingStatus ? <span className="flex items-center justify-center gap-2"><Spinner />Sending...</span> : 'Send Back'}
                 </button>
                 <button
                   onClick={handleApprove}
                   disabled={updatingStatus}
                   className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {updatingStatus ? 'Approving...' : 'Approve'}
+                  {updatingStatus ? <span className="flex items-center justify-center gap-2"><Spinner />Approving...</span> : 'Approve'}
                 </button>
               </div>
             )}

@@ -167,6 +167,51 @@ h2 {
   border-radius: 12px;
 }
 
+/* ── Button press feedback ──────────────────────────────────────────────── */
+button,
+[role="button"] {
+  transition: transform 150ms ease, opacity 150ms ease, background-color 150ms ease,
+              border-color 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
+  transform: scale(0.96);
+  opacity: 0.85;
+  transition: transform 60ms ease, opacity 60ms ease;
+}
+
+/* Override for btn-primary / btn-green which use filter — keep transform too */
+.btn-primary:active:not(:disabled),
+.btn-green:active:not(:disabled) {
+  transform: scale(0.96);
+  filter: brightness(0.92);
+  transition: transform 60ms ease, filter 60ms ease;
+}
+
+/* Sidebar nav press feedback */
+.snav:active {
+  background: linear-gradient(to right, rgba(255,255,255,0.12), transparent);
+  transition: background 40ms;
+}
+.snav-active:active {
+  background: linear-gradient(to right, rgba(247,147,26,0.28) 0%, rgba(247,147,26,0.08) 60%, transparent 100%);
+}
+
+/* ── Spinner animation ──────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
 /* ── Global pointer cursor for all interactive elements ─────────────────── */
 button,
 a,

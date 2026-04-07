@@ -249,7 +249,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
       }
       if (failCount > 0) {
         setUploadToast(`${failCount} image${failCount > 1 ? 's' : ''} failed to upload — you can add them from the episode page`)
-        await new Promise(r => setTimeout(r, 3000))
+        await new Promise(r => setTimeout(r, 1500))
       }
     }
 

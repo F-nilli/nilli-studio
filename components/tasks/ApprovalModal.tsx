@@ -7,6 +7,7 @@ import { Task, User } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { sendNotification } from '@/lib/notifications'
 import { format } from 'date-fns'
+import { Spinner } from '@/components/ui/Spinner'
 
 interface Props {
   task: Task
@@ -260,7 +261,9 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
             onClick={handleConfirm} disabled={submitting}
             className="flex-1 py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] font-semibold rounded-lg text-base text-white transition-colors disabled:opacity-50"
           >
-            {submitting ? 'Saving...' : action === 'approve' ? 'Confirm Approval' : 'Send Back'}
+            {submitting
+              ? <span className="flex items-center justify-center gap-2"><Spinner />{action === 'approve' ? 'Approving...' : 'Sending...'}</span>
+              : action === 'approve' ? 'Confirm Approval' : 'Send Back'}
           </button>
         </div>
       </div>
