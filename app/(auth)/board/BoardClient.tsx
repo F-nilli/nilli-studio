@@ -734,22 +734,29 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
   async function doDelete(ids: string[]) {
     setDeleting(true)
     try {
-      const { data: taskData } = await supabase.from('tasks').select('id').in('episode_id', ids)
-      const taskIds = (taskData || []).map((t: { id: string }) => t.id)
-      if (taskIds.length > 0) await supabase.from('comments').delete().in('task_id', taskIds)
-      await supabase.from('comments').delete().in('episode_id', ids)
-      await supabase.from('message_notifications').delete().in('episode_id', ids)
-      await supabase.from('notifications').delete().in('episode_id', ids)
-      await supabase.from('activity_log').delete().in('episode_id', ids)
-      await supabase.from('tasks').delete().in('episode_id', ids)
-      await supabase.from('episodes').delete().in('id', ids)
-      // Fade out then remove from parent state
+      const res = await fetch('/api/episodes/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        console.error('[doDelete] API error:', data.error)
+        setToast(`Delete failed: ${data.error || 'Unknown error'}`)
+        return
+      }
+
+      // Only update local state after confirmed server-side deletion
       setFadingIds(new Set(ids))
       setTimeout(() => {
         onDeleteEpisodes(ids)
         setFadingIds(new Set())
         setToast(ids.length === 1 ? 'Episode deleted permanently' : `Deleted ${ids.length} episodes permanently`)
       }, 350)
+    } catch (err) {
+      console.error('[doDelete] Unexpected error:', err)
+      setToast('Delete failed — please try again')
     } finally {
       setDeleting(false)
       setBulkDeleteOpen(false)
