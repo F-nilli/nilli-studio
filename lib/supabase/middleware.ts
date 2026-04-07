@@ -27,19 +27,47 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  const publicPaths = ['/login', '/signup']
+  // Pages that don't require authentication
+  const publicPaths = ['/login', '/forgot-password', '/reset-password']
   const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
 
-  if (!user && !isPublicPath) {
+  // Not logged in → send to login
+  if (!user && !isPublicPath && pathname !== '/set-password') {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
+  // Logged in + on a public page → send to dashboard
   if (user && isPublicPath) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Logged in → check if they've set their password yet
+  if (user) {
+    const { data: profile } = await supabase
+      .from('users')
+      .select('password_changed')
+      .eq('id', user.id)
+      .single()
+
+    const passwordChanged = profile?.password_changed ?? true
+
+    if (!passwordChanged && pathname !== '/set-password') {
+      // Force to password setup before anything else
+      const url = request.nextUrl.clone()
+      url.pathname = '/set-password'
+      return NextResponse.redirect(url)
+    }
+
+    if (passwordChanged && pathname === '/set-password') {
+      // Already set — send to dashboard
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse

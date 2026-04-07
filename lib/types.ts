@@ -42,6 +42,7 @@ export interface User {
   avatar_url: string | null
   created_at: string
   active?: boolean
+  password_changed?: boolean
 }
 
 export interface Episode {

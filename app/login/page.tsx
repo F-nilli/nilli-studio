@@ -82,9 +82,8 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-[#555] mt-4">
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" className="text-[#ff3c00] hover:text-[#e63600]">Sign up</Link>
+        <p className="text-center text-sm text-[#444] mt-4">
+          Access is by invitation only.
         </p>
       </div>
     </div>
