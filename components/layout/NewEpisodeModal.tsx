@@ -278,10 +278,11 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#555] resize-none" style={inputStyle} />
                 </div>
 
-                {/* First task due dates */}
+                {/* Starting task due dates */}
                 {releaseDate && unlockedTemplates.length > 0 && (
                   <div>
-                    <p className="text-[13px] font-medium text-[#aaa] mb-2">First task due dates</p>
+                    <p className="text-[13px] font-medium text-[#aaa] mb-1">Starting task due dates</p>
+                    <p className="text-xs text-[#555] mb-2">Auto-calculated from release date. Adjust if this episode needs a faster turnaround.</p>
                     <div className="space-y-2">
                       {unlockedTemplates.map(t => {
                         const assignee = allUsers.find(u => u.id === t.assignee_id)
