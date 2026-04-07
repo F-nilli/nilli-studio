@@ -204,12 +204,12 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
     function resetIdle() {
       if (isIdleRef.current) {
         isIdleRef.current = false
-        channel.track({ userId: user.id, name: user.name, avatarColor: user.avatar_color, isIdle: false })
+        channel.track({ userId: user!.id, name: user!.name, avatarColor: user!.avatar_color, isIdle: false })
       }
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
       idleTimerRef.current = setTimeout(() => {
         isIdleRef.current = true
-        channel.track({ userId: user.id, name: user.name, avatarColor: user.avatar_color, isIdle: true })
+        channel.track({ userId: user!.id, name: user!.name, avatarColor: user!.avatar_color, isIdle: true })
       }, IDLE_TIMEOUT)
     }
     resetIdle()

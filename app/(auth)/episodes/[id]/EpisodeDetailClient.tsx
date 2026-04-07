@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Episode, Task, User, Track, Comment, canEditDates as canEditDatesRole, canApprove, canManageClients } from '@/lib/types'
+import { Episode, Task, User, Track, Comment, TaskStatus, canEditDates as canEditDatesRole, canApprove, canManageClients } from '@/lib/types'
 import { EpisodeImages } from '@/components/episodes/EpisodeImages'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
@@ -645,7 +645,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
   }
 
   async function handleStatusAction() {
-    const resolvedStatus =
+    const resolvedStatus: TaskStatus | null =
       task.status === 'ready' ? 'in_progress' :
       task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
       task.status === 'revision' ? 'in_review' :
@@ -695,7 +695,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
       } catch (depErr: unknown) {
         console.error('Dep unlock error:', depErr)
       }
-      if (resolvedStatus === 'approved' || resolvedStatus === 'done') {
+      if (resolvedStatus === 'done') {
         fetch('/api/episodes/check-triggers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
