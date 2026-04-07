@@ -121,10 +121,16 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
+  const [inviteUsername, setInviteUsername] = useState('')
+  const [invitePassword, setInvitePassword] = useState('')
+  const [inviteConfirm, setInviteConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [inviteRole, setInviteRole] = useState<UserRole>('member')
   const [inviteColor, setInviteColor] = useState(AVATAR_COLORS[1])
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
+  const [inviteSuccess, setInviteSuccess] = useState<{ name: string; email: string; password: string } | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState('')
   const [toastError, setToastError] = useState(false)
@@ -156,19 +162,28 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
+  function resetInviteForm() {
+    setInviteEmail(''); setInviteName(''); setInviteUsername('')
+    setInvitePassword(''); setInviteConfirm('')
+    setInviteRole('member'); setInviteColor(AVATAR_COLORS[1])
+    setInviteError(''); setInviteSuccess(null)
+    setShowPassword(false); setShowConfirm(false)
+  }
+
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
     setInviteError('')
+    if (invitePassword !== inviteConfirm) { setInviteError('Passwords do not match.'); return }
+    if (invitePassword.length < 8) { setInviteError('Password must be at least 8 characters.'); return }
     setInviteLoading(true)
     const res = await fetch('/api/admin/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: inviteEmail, name: inviteName, role: inviteRole, avatarColor: inviteColor }),
+      body: JSON.stringify({ email: inviteEmail, name: inviteName, username: inviteUsername, role: inviteRole, avatarColor: inviteColor, password: invitePassword }),
     })
     const data = await res.json()
     if (!res.ok) { setInviteError(data.error); setInviteLoading(false); return }
-    showToast(`${inviteName} invited — temp password: Nilli2026!`)
-    setInviteEmail(''); setInviteName(''); setInviteRole('member'); setShowInvite(false)
+    setInviteSuccess({ name: inviteName, email: inviteEmail, password: invitePassword })
     const { data: updatedUsers } = await supabase.from('users').select('*').order('name')
     if (updatedUsers) setUsers(updatedUsers as User[])
     setInviteLoading(false)
@@ -288,51 +303,118 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
       </div>
 
       {showInvite && isAdmin && (
-        <form onSubmit={handleInvite} className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
-          <h3 className="font-bold text-white">Invite new member</h3>
-          {inviteError && <p className="text-sm text-[#ff3c00]">{inviteError}</p>}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-[#888] mb-1 block">Full name</label>
-              <input value={inviteName} onChange={e => setInviteName(e.target.value)} required placeholder="Jane Smith"
-                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
-            </div>
-            <div>
-              <label className="text-xs text-[#888] mb-1 block">Email</label>
-              <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required placeholder="jane@studio.com"
-                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-[#888] mb-1 block">Role</label>
-              <select value={inviteRole} onChange={e => setInviteRole(e.target.value as UserRole)}
-                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]">
-                <option value="admin">Admin — Full access + user management</option>
-                <option value="ops_manager">Ops Manager — Full access, no user management</option>
-                <option value="member">Basic — Own tasks only</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-[#888] mb-1 block">Avatar colour</label>
-              <div className="flex gap-2 flex-wrap">
-                {AVATAR_COLORS.map(c => (
-                  <button key={c} type="button" onClick={() => setInviteColor(c)}
-                    className={cn('w-7 h-7 rounded-full border-2 transition-all', inviteColor === c ? 'border-white scale-110' : 'border-transparent')}
-                    style={{ backgroundColor: c }} />
-                ))}
+        <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+          <h3 className="font-bold text-white">Create new account</h3>
+
+          {inviteSuccess ? (
+            <div className="space-y-4">
+              <div className="bg-[#0d2b1a] border border-[#1a5c33] rounded-lg px-4 py-3">
+                <p className="text-sm text-[#4ade80] font-medium">Account created for {inviteSuccess.name}. Share these credentials privately:</p>
+              </div>
+              <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg p-4 font-mono text-sm space-y-1">
+                <p className="text-[#888]">Email: <span className="text-white">{inviteSuccess.email}</span></p>
+                <p className="text-[#888]">Temporary password: <span className="text-white">{inviteSuccess.password}</span></p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(`Email: ${inviteSuccess.email}\nTemporary password: ${inviteSuccess.password}`).then(() => showToast('Credentials copied'))}
+                  className="flex-1 px-4 py-2 bg-[#1e1e1e] hover:bg-[#2a2a2a] border border-[#2e2e2e] text-[#ccc] rounded-lg text-sm font-medium transition-colors"
+                >
+                  Copy credentials
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { resetInviteForm(); setShowInvite(false) }}
+                  className="flex-1 px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Done
+                </button>
               </div>
             </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button type="button" onClick={() => setShowInvite(false)}
-              className="px-4 py-2 text-sm text-[#888] hover:text-white transition-colors">Cancel</button>
-            <button type="submit" disabled={inviteLoading}
-              className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors">
-              {inviteLoading ? 'Inviting...' : 'Send invite'}
-            </button>
-          </div>
-        </form>
+          ) : (
+            <form onSubmit={handleInvite} className="space-y-4">
+              {inviteError && <p className="text-sm text-[#ff3c00]">{inviteError}</p>}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[#888] mb-1 block">Full name</label>
+                  <input value={inviteName} onChange={e => setInviteName(e.target.value)} required placeholder="Jane Smith"
+                    className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+                </div>
+                <div>
+                  <label className="text-xs text-[#888] mb-1 block">Username</label>
+                  <input
+                    value={inviteUsername}
+                    onChange={e => setInviteUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    required placeholder="e.g. eph (lowercase, no spaces)"
+                    className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[#888] mb-1 block">Email</label>
+                <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required placeholder="jane@studio.com"
+                  className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[#888] mb-1 block">Temporary password</label>
+                  <div className="relative">
+                    <input type={showPassword ? 'text' : 'password'} value={invitePassword} onChange={e => setInvitePassword(e.target.value)} required minLength={8} placeholder="Min 8 characters"
+                      className="w-full px-3 py-2 pr-10 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+                    <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#888] text-xs">
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[#888] mb-1 block">Confirm password</label>
+                  <div className="relative">
+                    <input type={showConfirm ? 'text' : 'password'} value={inviteConfirm} onChange={e => setInviteConfirm(e.target.value)} required minLength={8} placeholder="••••••••"
+                      className="w-full px-3 py-2 pr-10 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]" />
+                    <button type="button" onClick={() => setShowConfirm(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#888] text-xs">
+                      {showConfirm ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-[#555]">Share this password privately with the team member. They will be prompted to change it on first login.</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[#888] mb-1 block">Role</label>
+                  <select value={inviteRole} onChange={e => setInviteRole(e.target.value as UserRole)}
+                    className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]">
+                    <option value="admin">Admin — Full access + user management</option>
+                    <option value="ops_manager">Ops Manager — Full access, no user management</option>
+                    <option value="member">Basic — Own tasks only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[#888] mb-1 block">Avatar colour</label>
+                  <div className="flex gap-2 flex-wrap pt-1">
+                    {AVATAR_COLORS.map(c => (
+                      <button key={c} type="button" onClick={() => setInviteColor(c)}
+                        className={cn('w-7 h-7 rounded-full border-2 transition-all', inviteColor === c ? 'border-white scale-110' : 'border-transparent')}
+                        style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => { resetInviteForm(); setShowInvite(false) }}
+                  className="px-4 py-2 text-sm text-[#888] hover:text-white transition-colors">Cancel</button>
+                <button type="submit" disabled={inviteLoading}
+                  className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors">
+                  {inviteLoading ? 'Creating...' : 'Create account'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       )}
 
       {/* Users table */}

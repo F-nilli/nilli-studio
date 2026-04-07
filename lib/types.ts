@@ -37,6 +37,7 @@ export interface User {
   id: string
   email: string
   name: string
+  username?: string
   role: UserRole
   avatar_color: string
   avatar_url: string | null
