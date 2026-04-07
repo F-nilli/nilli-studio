@@ -50,6 +50,14 @@ export function fromDatetimeLocal(value: string): string {
   return new Date(value).toISOString()
 }
 
+// Strip minutes/seconds from a datetime-local string → force to :00
+export function roundToHour(value: string): string {
+  if (!value) return value
+  const d = new Date(value)
+  d.setMinutes(0, 0, 0)
+  return format(d, "yyyy-MM-dd'T'HH:mm")
+}
+
 export function isOverdue(
   dueDate: string | null,
   status: TaskStatus,

@@ -1279,9 +1279,13 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
               <div className="grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
-                {['', '#', 'Task', 'Checklist', 'Assignee', 'Days'].map((h, i) => (
+                {['', '#', 'Task', 'Checklist', 'Assignee'].map((h, i) => (
                   <span key={i} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
+                <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
+                  Days
+                  <InfoIcon text="Number of days before the release date this task should be completed. D-5 = 5 days before release, D-1 = 1 day before. Leave blank for tasks with no fixed deadline. Use negative numbers for post-release tasks (e.g. -1 = 1 day after release)." />
+                </span>
                 <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
                   Deps
                   <InfoIcon text="Task numbers that must be approved before this task unlocks. Example: entering '1, 2' means this task only becomes available after tasks 1 and 2 are approved." />

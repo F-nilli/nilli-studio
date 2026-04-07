@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Client, DbTaskTemplate } from '@/lib/types'
-import { cn, fromDatetimeLocal } from '@/lib/utils'
-import { subDays, parseISO, format } from 'date-fns'
+import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
+import { subDays, format } from 'date-fns'
 
 // ─── Helpers (same logic as NewEpisodeClient) ─────────────────────────────────
 
@@ -26,14 +26,15 @@ function getDownstreamSeqIds(seqId: number, templates: DbTaskTemplate[]): number
 
 function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<number, string> {
   if (!releaseDate || templates.length === 0) return {}
-  const release = parseISO(releaseDate)
+  const release = new Date(releaseDate)
+  const releaseHour = release.getHours()
   const fixedTasks = templates.filter(t => t.due_days !== null && !t.due_after_dep_hours)
   if (fixedTasks.length === 0) return {}
   const maxDays = Math.max(...fixedTasks.map(t => t.due_days as number))
   const result: Record<number, string> = {}
   for (const t of fixedTasks) {
     const d = subDays(release, maxDays - (t.due_days as number))
-    d.setHours(9, 0, 0, 0)
+    d.setHours(releaseHour, 0, 0, 0)
     result[t.seq_id] = format(d, "yyyy-MM-dd'T'HH:mm")
   }
   return result
@@ -106,15 +107,16 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   }, [releaseDate, clientId, selectedTemplateName])
 
   function handleDateChange(seqId: number, newValue: string) {
+    const rounded = roundToHour(newValue)
     const oldValue = taskDueDates[seqId]
-    if (!oldValue || !newValue) { setTaskDueDates(prev => ({ ...prev, [seqId]: newValue })); return }
-    const delta = new Date(newValue).getTime() - new Date(oldValue).getTime()
+    if (!oldValue || !rounded) { setTaskDueDates(prev => ({ ...prev, [seqId]: rounded })); return }
+    const delta = new Date(rounded).getTime() - new Date(oldValue).getTime()
     const downstream = getDownstreamSeqIds(seqId, clientTemplates).filter(id => {
       const t = clientTemplates.find(t => t.seq_id === id)
       return t && !t.due_after_dep_hours
     })
     setTaskDueDates(prev => {
-      const next = { ...prev, [seqId]: newValue }
+      const next = { ...prev, [seqId]: rounded }
       for (const id of downstream) {
         if (prev[id]) next[id] = format(new Date(new Date(prev[id]).getTime() + delta), "yyyy-MM-dd'T'HH:mm")
       }
@@ -257,7 +259,8 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                 {/* Release Date */}
                 <div>
                   <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Release Date & Time</label>
-                  <input type="datetime-local" value={releaseDate} onChange={e => setReleaseDate(e.target.value)} required
+                  <input type="datetime-local" value={releaseDate} step="3600"
+                    onChange={e => setReleaseDate(roundToHour(e.target.value))} required
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a]" style={inputStyle} />
                 </div>
 
@@ -288,7 +291,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                               <span className="text-sm text-white font-medium truncate">{t.label}</span>
                               <span className="text-xs text-[#555] shrink-0">{assignee?.name || '—'}</span>
                             </div>
-                            <input type="datetime-local" value={taskDueDates[t.seq_id] || ''} onChange={e => handleDateChange(t.seq_id, e.target.value)}
+                            <input type="datetime-local" step="3600" value={taskDueDates[t.seq_id] || ''} onChange={e => handleDateChange(t.seq_id, e.target.value)}
                               className="w-full px-2 py-1.5 text-white rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#f7931a]"
                               style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.07)' }} />
                           </div>

@@ -6,8 +6,8 @@ import { ArrowLeft, Upload, X } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate } from '@/lib/types'
-import { cn, fromDatetimeLocal } from '@/lib/utils'
-import { subDays, parseISO, format } from 'date-fns'
+import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
+import { subDays, format } from 'date-fns'
 
 interface Props {
   currentUser: User
@@ -33,7 +33,8 @@ function getDownstreamSeqIds(seqId: number, templates: DbTaskTemplate[]): number
 
 function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<number, string> {
   if (!releaseDate || templates.length === 0) return {}
-  const release = parseISO(releaseDate)
+  const release = new Date(releaseDate)
+  const releaseHour = release.getHours()
   // Only consider tasks with fixed D-X due dates (not dynamic +Xhr ones)
   const fixedTasks = templates.filter(t => t.due_days !== null && !t.due_after_dep_hours)
   if (fixedTasks.length === 0) return {}
@@ -41,7 +42,7 @@ function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<
   const result: Record<number, string> = {}
   for (const t of fixedTasks) {
     const d = subDays(release, maxDays - (t.due_days as number))
-    d.setHours(9, 0, 0, 0)
+    d.setHours(releaseHour, 0, 0, 0)
     result[t.seq_id] = format(d, "yyyy-MM-dd'T'HH:mm")
   }
   return result
@@ -58,6 +59,9 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
+  const [manuallyAdjusted, setManuallyAdjusted] = useState<Set<number>>(new Set())
+  const [cascadeShifts, setCascadeShifts] = useState<Record<number, number>>({})
+  const [releaseDateWarning, setReleaseDateWarning] = useState(false)
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -84,6 +88,8 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   useEffect(() => {
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
     setTaskDueDates(calcDueDates(releaseDate, clientTemplates))
+    setManuallyAdjusted(new Set())
+    setCascadeShifts({})
   }, [releaseDate, clientId, selectedTemplateName])
 
   function addImageFiles(files: File[]) {
@@ -119,19 +125,20 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   }
 
   function handleDateChange(seqId: number, newValue: string) {
+    const rounded = roundToHour(newValue)
     const oldValue = taskDueDates[seqId]
-    if (!oldValue || !newValue) {
-      setTaskDueDates(prev => ({ ...prev, [seqId]: newValue }))
+    if (!oldValue || !rounded) {
+      setTaskDueDates(prev => ({ ...prev, [seqId]: rounded }))
       return
     }
-    const delta = new Date(newValue).getTime() - new Date(oldValue).getTime()
+    const delta = new Date(rounded).getTime() - new Date(oldValue).getTime()
     // Only shift downstream tasks that have fixed D-X dates (not dynamic +Xhr ones)
     const downstream = getDownstreamSeqIds(seqId, clientTemplates).filter(id => {
       const t = clientTemplates.find(t => t.seq_id === id)
       return t && !t.due_after_dep_hours
     })
     setTaskDueDates(prev => {
-      const next = { ...prev, [seqId]: newValue }
+      const next = { ...prev, [seqId]: rounded }
       for (const id of downstream) {
         if (prev[id]) {
           const shifted = new Date(new Date(prev[id]).getTime() + delta)
@@ -140,6 +147,8 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
       }
       return next
     })
+    setManuallyAdjusted(prev => new Set([...prev, seqId]))
+    setCascadeShifts(prev => ({ ...prev, [seqId]: downstream.length }))
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -322,9 +331,23 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
             <div>
               <label className="block text-base font-medium text-[#ccc] mb-1.5">Release Date & Time</label>
               <input
-                type="datetime-local" value={releaseDate} onChange={e => setReleaseDate(e.target.value)} required
+                type="datetime-local"
+                value={releaseDate}
+                step="3600"
+                onChange={e => {
+                  const rounded = roundToHour(e.target.value)
+                  if (manuallyAdjusted.size > 0) {
+                    setReleaseDateWarning(true)
+                    setTimeout(() => setReleaseDateWarning(false), 4000)
+                  }
+                  setReleaseDate(rounded)
+                }}
+                required
                 className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
               />
+              {releaseDateWarning && (
+                <p className="text-xs text-amber-400 mt-1">Release date changed — task dates have been recalculated.</p>
+              )}
             </div>
 
             <div>
@@ -420,26 +443,31 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               )}
             </div>
 
-            {/* First task due dates (only fixed D-X tasks, not dynamic +Xhr) */}
+            {/* Starting task due dates (only fixed D-X tasks, not dynamic +Xhr) */}
             {releaseDate && unlockedTemplates.length > 0 && (
               <div>
-                <p className="text-base font-medium text-[#ccc] mb-2">Due dates for first tasks</p>
-                <p className="text-sm text-[#666] mb-3">Downstream tasks will shift automatically.</p>
+                <p className="text-base font-medium text-[#ccc] mb-1">Starting task due dates</p>
+                <p className="text-sm text-[#666] mb-3">Auto-calculated from release date. Adjust if this episode needs a faster turnaround.</p>
                 <div className="space-y-2">
                   {unlockedTemplates.map(t => {
                     const assignee = allUsers.find(u => u.id === t.assignee_id)
+                    const shiftCount = cascadeShifts[t.seq_id]
                     return (
                       <div key={t.seq_id} className="bg-[#1e1e1e] rounded-lg px-3 py-2.5">
                         <div className="flex items-center justify-between gap-3 mb-1.5">
-                          <span className="text-base text-white font-medium truncate">{t.label}</span>
+                          <span className="text-base text-white font-medium truncate max-w-[220px]">{t.label.length > 35 ? t.label.slice(0, 35) + '…' : t.label}</span>
                           <span className="text-sm text-[#666] shrink-0">{assignee?.name || '—'}</span>
                         </div>
                         <input
                           type="datetime-local"
+                          step="3600"
                           value={taskDueDates[t.seq_id] || ''}
                           onChange={e => handleDateChange(t.seq_id, e.target.value)}
                           className="w-full px-2.5 py-1.5 bg-[#141414] border border-[#2e2e2e] text-white rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
                         />
+                        {shiftCount !== undefined && shiftCount > 0 && (
+                          <p className="text-xs text-[#888] mt-1">{shiftCount} dependent task{shiftCount !== 1 ? 's' : ''} shifted</p>
+                        )}
                       </div>
                     )
                   })}

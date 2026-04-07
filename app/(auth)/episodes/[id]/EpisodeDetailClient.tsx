@@ -9,7 +9,7 @@ import { EpisodeImages } from '@/components/episodes/EpisodeImages'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { CommentPanel } from '@/components/tasks/CommentPanel'
-import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils'
+import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, roundToHour } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { parseISO, format } from 'date-fns'
@@ -1021,8 +1021,9 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
           <input
             ref={inputRef}
             type="datetime-local"
+            step="3600"
             value={dateValue}
-            onChange={e => setDateValue(e.target.value)}
+            onChange={e => setDateValue(roundToHour(e.target.value))}
             onKeyDown={e => {
               if (e.key === 'Enter') commitDate()
               if (e.key === 'Escape') { setDateValue(toDatetimeLocal(task.due_date)); setEditingDate(false) }
