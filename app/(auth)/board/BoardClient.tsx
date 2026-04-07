@@ -654,7 +654,8 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
 
   const [search, setSearch] = useState('')
   const [clientFilter, setClientFilter] = useState('')
-  const [yearFilter, setYearFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [templateFilter, setTemplateFilter] = useState('')
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -696,26 +697,24 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
     setOpenMenuId(epId)
   }
 
-  // Issue 2: derive distinct filter options
+  // Derive distinct filter options
   const clientOptions = [...new Set(publishedEpisodes.map(ep => ep.client_label))].sort()
-  const yearOptions = [...new Set(
-    publishedEpisodes
-      .filter(ep => ep.published_at)
-      .map(ep => new Date(ep.published_at!).getFullYear().toString())
-  )].sort((a, b) => Number(b) - Number(a))
   const templateOptions = [...new Set(
     publishedEpisodes.map(ep => ep.template_name).filter(Boolean) as string[]
   )].sort()
 
-  const hasActiveFilter = !!(clientFilter || yearFilter || templateFilter || search.trim())
+  const hasActiveFilter = !!(clientFilter || dateFrom || dateTo || templateFilter || search.trim())
 
   const filteredPublished = publishedEpisodes.filter(ep => {
     if (search && !ep.guest_name.toLowerCase().includes(search.toLowerCase()) &&
         !ep.client_label.toLowerCase().includes(search.toLowerCase())) return false
     if (clientFilter && ep.client_label !== clientFilter) return false
-    if (yearFilter && ep.published_at) {
-      if (new Date(ep.published_at).getFullYear().toString() !== yearFilter) return false
-    } else if (yearFilter && !ep.published_at) return false
+    if (dateFrom || dateTo) {
+      const epDate = ep.published_at ? ep.published_at.split('T')[0] : null
+      if (!epDate) return false
+      if (dateFrom && epDate < dateFrom) return false
+      if (dateTo && epDate > dateTo) return false
+    }
     if (templateFilter && ep.template_name !== templateFilter) return false
     return true
   })
@@ -824,21 +823,32 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
               </select>
             )}
 
-            {/* Year filter */}
-            {yearOptions.length > 0 && (
-              <select
-                value={yearFilter}
-                onChange={e => setYearFilter(e.target.value)}
-                className={cn(
-                  'bg-[#1a1a1a] border rounded-lg px-3 py-1.5 text-[13px] focus:outline-none focus:border-[#3a3a3a] appearance-none pr-6',
-                  yearFilter ? 'border-[#f7931a]/40 text-white' : 'border-[#2a2a2a] text-[#888]'
-                )}
-                style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%23666\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
-              >
-                <option value="">All years</option>
-                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            )}
+            {/* Date range filter */}
+            <div className={cn(
+              'flex items-center gap-1.5 border rounded-lg px-2.5 py-1',
+              (dateFrom || dateTo) ? 'border-[#f7931a]/40' : 'border-[#2a2a2a]'
+            )}>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="bg-transparent text-[13px] focus:outline-none w-[112px] text-[#888] [color-scheme:dark]"
+                placeholder="From"
+              />
+              <span className="text-[#444] text-xs">→</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="bg-transparent text-[13px] focus:outline-none w-[112px] text-[#888] [color-scheme:dark]"
+                placeholder="To"
+              />
+              {(dateFrom || dateTo) && (
+                <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-[#555] hover:text-white ml-0.5">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
 
             {/* Template / deliverable type filter */}
             {templateOptions.length > 0 && (
@@ -859,7 +869,7 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
             {/* Clear filters */}
             {hasActiveFilter && (
               <button
-                onClick={() => { setSearch(''); setClientFilter(''); setYearFilter(''); setTemplateFilter('') }}
+                onClick={() => { setSearch(''); setClientFilter(''); setDateFrom(''); setDateTo(''); setTemplateFilter('') }}
                 className="text-[13px] text-[#666] hover:text-white underline underline-offset-2 transition-colors"
               >
                 Clear filters
@@ -898,7 +908,7 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
             <div className="text-center py-10 text-[#555]">
               <p className="text-sm">No episodes match the current filters</p>
               <button
-                onClick={() => { setSearch(''); setClientFilter(''); setYearFilter(''); setTemplateFilter('') }}
+                onClick={() => { setSearch(''); setClientFilter(''); setDateFrom(''); setDateTo(''); setTemplateFilter('') }}
                 className="text-xs text-[#888] underline mt-1"
               >
                 Clear all filters
@@ -906,6 +916,22 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
             </div>
           ) : (
             <div className="border border-[#2e2e2e] rounded-xl overflow-visible divide-y divide-[#242424]">
+              {/* Select all header row */}
+              {selectionMode && (
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-[#111] rounded-t-xl">
+                  <button
+                    onClick={selectionCount < totalVisible ? selectAll : deselectAll}
+                    className="text-[13px] text-[#f7931a] hover:text-[#ff9d2e] font-medium transition-colors"
+                  >
+                    {selectionCount < totalVisible
+                      ? `Select all ${totalVisible} episode${totalVisible !== 1 ? 's' : ''}${hasActiveFilter ? ' matching filters' : ''}`
+                      : 'Deselect all'}
+                  </button>
+                  {selectionCount > 0 && selectionCount < totalVisible && (
+                    <span className="text-[12px] text-[#555]">{selectionCount} selected</span>
+                  )}
+                </div>
+              )}
               {filteredPublished.map(ep => {
                 const isSelected = selectedIds.has(ep.id)
                 const isFading = fadingIds.has(ep.id)
@@ -1018,7 +1044,7 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
               <span className="text-[13px] font-semibold text-white whitespace-nowrap">
                 {selectionCount} episode{selectionCount !== 1 ? 's' : ''} selected
               </span>
-              {hasSearchFilter && selectionCount > 0 && totalVisible < totalAll && (
+              {hasActiveFilter && selectionCount > 0 && totalVisible < totalAll && (
                 <span className="text-[12px] text-[#555] whitespace-nowrap">
                   ({totalAll} total in archive)
                 </span>
@@ -1028,7 +1054,7 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
                   onClick={selectAll}
                   className="text-[13px] text-[#f7931a] hover:text-[#ff5a00] underline underline-offset-2 transition-colors whitespace-nowrap"
                 >
-                  Select all {totalVisible}{hasSearchFilter && totalVisible < totalAll ? ' matching' : ''}
+                  Select all {totalVisible}{hasActiveFilter && totalVisible < totalAll ? ' matching' : ''}
                 </button>
               ) : totalVisible > 0 ? (
                 <button
