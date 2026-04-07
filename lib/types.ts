@@ -87,7 +87,6 @@ export interface Task {
   dep_task_ids: string[]
   requires_approval: boolean
   approver_id: string | null
-  due_after_dep_hours: number | null
   review_started_at: string | null
   created_at: string
   updated_at: string
@@ -137,7 +136,6 @@ export interface DbTaskTemplate {
   assignee_id: string | null
   track: Track
   due_days: number | null
-  due_after_dep_hours: number | null
   note: string | null
   dep_seq_ids: number[]
   requires_approval: boolean

@@ -109,12 +109,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
       if (t.status === 'locked' && t.dep_task_ids.length > 0) {
         const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
         if (allDepsApproved) {
-          // Set dynamic due date (+Xhr after dep completion) when unlocking
-          const updateData: Record<string, unknown> = { status: 'in_progress' }
-          if (t.due_after_dep_hours) {
-            updateData.due_date = new Date(Date.now() + t.due_after_dep_hours * 60 * 60 * 1000).toISOString()
-          }
-          await supabase.from('tasks').update(updateData).eq('id', t.id)
+          await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
           const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
           if (assignee) {
             const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()

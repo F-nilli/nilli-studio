@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate } from '@/lib/types'
 import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
+import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
 interface Props {
@@ -36,7 +37,7 @@ function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<
   const release = new Date(releaseDate)
   const releaseHour = release.getHours()
   // Only consider tasks with fixed D-X due dates (not dynamic +Xhr ones)
-  const fixedTasks = templates.filter(t => t.due_days !== null && !t.due_after_dep_hours)
+  const fixedTasks = templates.filter(t => t.due_days !== null)
   if (fixedTasks.length === 0) return {}
   const maxDays = Math.max(...fixedTasks.map(t => t.due_days as number))
   const result: Record<number, string> = {}
@@ -83,7 +84,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
 
   const selectedClient = clients.find(c => c.id === clientId)
   const clientTemplates = templates.filter(t => t.client_id === clientId && (t.template_name || 'Default') === selectedTemplateName)
-  const unlockedTemplates = clientTemplates.filter(t => t.dep_seq_ids.length === 0 && !t.due_after_dep_hours)
+  const unlockedTemplates = clientTemplates.filter(t => t.dep_seq_ids.length === 0)
 
   useEffect(() => {
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
@@ -132,11 +133,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
       return
     }
     const delta = new Date(rounded).getTime() - new Date(oldValue).getTime()
-    // Only shift downstream tasks that have fixed D-X dates (not dynamic +Xhr ones)
-    const downstream = getDownstreamSeqIds(seqId, clientTemplates).filter(id => {
-      const t = clientTemplates.find(t => t.seq_id === id)
-      return t && !t.due_after_dep_hours
-    })
+    const downstream = getDownstreamSeqIds(seqId, clientTemplates)
     setTaskDueDates(prev => {
       const next = { ...prev, [seqId]: rounded }
       for (const id of downstream) {
@@ -207,7 +204,6 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         dep_task_ids: [],
         requires_approval: template.requires_approval || false,
         approver_id: resolvedApproverId,
-        due_after_dep_hours: template.due_after_dep_hours || null,
       }
     })
 
@@ -330,20 +326,16 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
 
             <div>
               <label className="block text-base font-medium text-[#ccc] mb-1.5">Release Date & Time</label>
-              <input
-                type="datetime-local"
+              <DateHourPicker
                 value={releaseDate}
-                step="3600"
-                onChange={e => {
-                  const rounded = roundToHour(e.target.value)
+                onChange={v => {
                   if (manuallyAdjusted.size > 0) {
                     setReleaseDateWarning(true)
                     setTimeout(() => setReleaseDateWarning(false), 4000)
                   }
-                  setReleaseDate(rounded)
+                  setReleaseDate(v)
                 }}
-                required
-                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                className="w-full"
               />
               {releaseDateWarning && (
                 <p className="text-xs text-amber-400 mt-1">Release date changed — task dates have been recalculated.</p>
@@ -458,12 +450,10 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                           <span className="text-base text-white font-medium truncate max-w-[220px]">{t.label.length > 35 ? t.label.slice(0, 35) + '…' : t.label}</span>
                           <span className="text-sm text-[#666] shrink-0">{assignee?.name || '—'}</span>
                         </div>
-                        <input
-                          type="datetime-local"
-                          step="3600"
+                        <DateHourPicker
                           value={taskDueDates[t.seq_id] || ''}
-                          onChange={e => handleDateChange(t.seq_id, e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-[#141414] border border-[#2e2e2e] text-white rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00]"
+                          onChange={v => handleDateChange(t.seq_id, v)}
+                          className="w-full"
                         />
                         {shiftCount !== undefined && shiftCount > 0 && (
                           <p className="text-xs text-[#888] mt-1">{shiftCount} dependent task{shiftCount !== 1 ? 's' : ''} shifted</p>
@@ -486,9 +476,6 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
                       <div key={t.seq_id} className="flex items-center gap-2 text-base text-[#888] bg-[#1e1e1e] rounded-md px-3 py-1.5">
                         <span className="text-[#555] text-sm w-5 shrink-0">{t.seq_id}.</span>
                         <span className="flex-1 truncate">{t.label}</span>
-                        {t.due_after_dep_hours && (
-                          <span className="text-xs text-[#555] shrink-0">+{t.due_after_dep_hours}h</span>
-                        )}
                         <span className="text-sm text-[#666] shrink-0">{assignee?.name || '—'}</span>
                       </div>
                     )

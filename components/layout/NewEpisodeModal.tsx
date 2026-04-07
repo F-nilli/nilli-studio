@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Client, DbTaskTemplate } from '@/lib/types'
 import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
+import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
 // ─── Helpers (same logic as NewEpisodeClient) ─────────────────────────────────
@@ -28,7 +29,7 @@ function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<
   if (!releaseDate || templates.length === 0) return {}
   const release = new Date(releaseDate)
   const releaseHour = release.getHours()
-  const fixedTasks = templates.filter(t => t.due_days !== null && !t.due_after_dep_hours)
+  const fixedTasks = templates.filter(t => t.due_days !== null)
   if (fixedTasks.length === 0) return {}
   const maxDays = Math.max(...fixedTasks.map(t => t.due_days as number))
   const result: Record<number, string> = {}
@@ -99,7 +100,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   const clientPipelineNames = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
   const selectedClient = clients.find(c => c.id === clientId)
   const clientTemplates = templates.filter(t => t.client_id === clientId && (t.template_name || 'Default') === selectedTemplateName)
-  const unlockedTemplates = clientTemplates.filter(t => t.dep_seq_ids.length === 0 && !t.due_after_dep_hours)
+  const unlockedTemplates = clientTemplates.filter(t => t.dep_seq_ids.length === 0)
 
   useEffect(() => {
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
@@ -111,10 +112,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
     const oldValue = taskDueDates[seqId]
     if (!oldValue || !rounded) { setTaskDueDates(prev => ({ ...prev, [seqId]: rounded })); return }
     const delta = new Date(rounded).getTime() - new Date(oldValue).getTime()
-    const downstream = getDownstreamSeqIds(seqId, clientTemplates).filter(id => {
-      const t = clientTemplates.find(t => t.seq_id === id)
-      return t && !t.due_after_dep_hours
-    })
+    const downstream = getDownstreamSeqIds(seqId, clientTemplates)
     setTaskDueDates(prev => {
       const next = { ...prev, [seqId]: rounded }
       for (const id of downstream) {
@@ -159,7 +157,6 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       dep_task_ids: [],
       requires_approval: t.requires_approval || false,
       approver_id: t.requires_approval ? (t.approver_id || null) : null,
-      due_after_dep_hours: t.due_after_dep_hours || null,
     }))
 
     const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
@@ -259,9 +256,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                 {/* Release Date */}
                 <div>
                   <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Release Date & Time</label>
-                  <input type="datetime-local" value={releaseDate} step="3600"
-                    onChange={e => setReleaseDate(roundToHour(e.target.value))} required
-                    className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a]" style={inputStyle} />
+                  <DateHourPicker value={releaseDate} onChange={setReleaseDate} className="w-full" />
                 </div>
 
                 {/* Footage URL */}
@@ -292,9 +287,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                               <span className="text-sm text-white font-medium truncate">{t.label}</span>
                               <span className="text-xs text-[#555] shrink-0">{assignee?.name || '—'}</span>
                             </div>
-                            <input type="datetime-local" step="3600" value={taskDueDates[t.seq_id] || ''} onChange={e => handleDateChange(t.seq_id, e.target.value)}
-                              className="w-full px-2 py-1.5 text-white rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#f7931a]"
-                              style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.07)' }} />
+                            <DateHourPicker value={taskDueDates[t.seq_id] || ''} onChange={v => handleDateChange(t.seq_id, v)} className="w-full" />
                           </div>
                         )
                       })}

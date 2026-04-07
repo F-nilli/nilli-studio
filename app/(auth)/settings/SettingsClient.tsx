@@ -833,7 +833,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       assignee_id: null,
       track: 'Long-form',
       due_days: null,
-      due_after_dep_hours: null,
       note: null,
       dep_seq_ids: [],
       requires_approval: false,
@@ -878,7 +877,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
         assignee_id: t.assignee_id || null,
         track: t.track,
         due_days: t.due_days,
-        due_after_dep_hours: t.due_after_dep_hours || null,
         note: t.note,
         dep_seq_ids: t.dep_seq_ids || [],
         requires_approval: t.requires_approval || false,
@@ -919,8 +917,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       label: t.label,
       assignee_id: t.assignee_id || null,
       track: t.track,
-      due_days: t.due_after_dep_hours ? null : t.due_days,
-      due_after_dep_hours: t.due_after_dep_hours || null,
+      due_days: t.due_days,
       note: t.note,
       dep_seq_ids: t.dep_seq_ids || [],
       requires_approval: t.requires_approval || false,
@@ -1306,7 +1303,6 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                       allTasks={currentTasks}
                       allUsers={allUsers}
                       onUpdate={updateTask}
-                      onUpdateFields={updateTaskFields}
                       onRemove={removeTask}
                     />
                   ))}
@@ -1328,13 +1324,12 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
 // ─── Sortable Task Row ─────────────────────────────────────────────────────────
 
-function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onUpdateFields, onRemove }: {
+function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: {
   task: DbTaskTemplate
   idx: number
   allTasks: DbTaskTemplate[]
   allUsers: User[]
   onUpdate: (idx: number, field: keyof DbTaskTemplate, value: unknown) => void
-  onUpdateFields: (idx: number, fields: Partial<DbTaskTemplate>) => void
   onRemove: (idx: number) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
@@ -1386,34 +1381,13 @@ function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onUpdateFiel
 
       {/* Days */}
       <div className="flex items-center gap-1 w-full">
-        {task.due_after_dep_hours != null ? (
-          <>
-            <span className="text-[#555] text-sm shrink-0">+</span>
-            <input
-              type="number"
-              value={task.due_after_dep_hours ?? ''}
-              onChange={e => onUpdate(idx, 'due_after_dep_hours', e.target.value ? parseInt(e.target.value) : null)}
-              className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-12 focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
-            />
-            <span className="text-[#555] text-sm shrink-0">h</span>
-            <button type="button" title="Switch to D-X mode"
-              onClick={() => onUpdateFields(idx, { due_after_dep_hours: null, due_days: null })}
-              className="text-[#555] hover:text-white text-xs px-1 shrink-0">D</button>
-          </>
-        ) : (
-          <>
-            <input
-              type="number"
-              value={task.due_days ?? ''}
-              onChange={e => onUpdate(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
-              placeholder="—"
-              className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
-            />
-            <button type="button" title="+Xhr after dep completion"
-              onClick={() => onUpdateFields(idx, { due_after_dep_hours: 24, due_days: null })}
-              className="text-[#555] hover:text-white text-sm px-1 shrink-0">⚡</button>
-          </>
-        )}
+        <input
+          type="number"
+          value={task.due_days ?? ''}
+          onChange={e => onUpdate(idx, 'due_days', e.target.value ? parseInt(e.target.value) : null)}
+          placeholder="—"
+          className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+        />
       </div>
 
       {/* Deps */}

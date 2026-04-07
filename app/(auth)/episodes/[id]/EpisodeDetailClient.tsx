@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -9,7 +9,8 @@ import { EpisodeImages } from '@/components/episodes/EpisodeImages'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { CommentPanel } from '@/components/tasks/CommentPanel'
-import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, roundToHour } from '@/lib/utils'
+import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils'
+import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { parseISO, format } from 'date-fns'
@@ -59,11 +60,7 @@ async function checkAndUnlockDependencies(supabase: SupabaseClientType, episodeI
     if (t.status === 'locked' && t.dep_task_ids.length > 0) {
       const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
       if (allDepsApproved) {
-        const updateData: Record<string, unknown> = { status: 'in_progress' }
-        if (t.due_after_dep_hours) {
-          updateData.due_date = new Date(Date.now() + t.due_after_dep_hours * 60 * 60 * 1000).toISOString()
-        }
-        await supabase.from('tasks').update(updateData).eq('id', t.id)
+        await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
         const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
         if (assignee) {
           const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()
@@ -224,9 +221,6 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
             return {
               ...t,
               status: 'in_progress' as const,
-              due_date: t.due_after_dep_hours
-                ? new Date(Date.now() + t.due_after_dep_hours * 3600 * 1000).toISOString()
-                : t.due_date,
             }
           }
           return t
@@ -601,8 +595,6 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
   const [sendBackOpen, setSendBackOpen] = useState(false)
   const [sendBackDate, setSendBackDate] = useState('')
   const [sendBackReason, setSendBackReason] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-
   const isAssignee = task.assignee_id === currentUser.id
   const isApprover = task.requires_approval &&
     (currentUser.id === task.approver_id || currentUser.role === 'admin')
@@ -633,10 +625,6 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
   useEffect(() => {
     if (!editingDate) setDateValue(toDatetimeLocal(task.due_date))
   }, [task.due_date, editingDate])
-
-  useEffect(() => {
-    if (editingDate) inputRef.current?.focus()
-  }, [editingDate])
 
   function commitDate() {
     if (dateValue && dateValue !== toDatetimeLocal(task.due_date)) {
@@ -1017,18 +1005,16 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
       {/* Date edit inline */}
       {editingDate && !isLocked && (
-        <div className="px-3 pb-3 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-          <input
-            ref={inputRef}
-            type="datetime-local"
-            step="3600"
+        <div className="px-3 pb-3 flex items-center gap-1.5" onClick={e => e.stopPropagation()}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commitDate()
+            if (e.key === 'Escape') { setDateValue(toDatetimeLocal(task.due_date)); setEditingDate(false) }
+          }}>
+          <DateHourPicker
             value={dateValue}
-            onChange={e => setDateValue(roundToHour(e.target.value))}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitDate()
-              if (e.key === 'Escape') { setDateValue(toDatetimeLocal(task.due_date)); setEditingDate(false) }
-            }}
-            className="flex-1 px-2 py-0.5 bg-[#1e1e1e] border border-[#ff3c00]/60 text-white rounded text-xs focus:outline-none"
+            onChange={setDateValue}
+            autoFocus
+            className="flex-1"
           />
           <button onClick={commitDate} className="p-0.5 rounded bg-[#ff3c00] text-white shrink-0">
             <Check className="w-3 h-3" />

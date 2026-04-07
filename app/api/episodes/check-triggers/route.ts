@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     )
 
     // Calculate due dates (same D-X logic as NewEpisodeClient)
-    const fixedTasks = pipelineTemplates.filter((t: { due_days: number | null; due_after_dep_hours: number | null }) => t.due_days !== null && !t.due_after_dep_hours)
+    const fixedTasks = pipelineTemplates.filter((t: { due_days: number | null }) => t.due_days !== null)
     const dueDates: Record<number, string> = {}
     if (fixedTasks.length > 0) {
       const release = parseISO(newReleaseDate)
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     // Create tasks
     const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
 
-    const taskInserts = pipelineTemplates.map((t: { seq_id: number; label: string; assignee_id: string | null; track: string; dep_seq_ids: number[]; due_after_dep_hours: number | null; requires_approval: boolean; approver_id: string | null; note: string | null }) => {
+    const taskInserts = pipelineTemplates.map((t: { seq_id: number; label: string; assignee_id: string | null; track: string; dep_seq_ids: number[]; requires_approval: boolean; approver_id: string | null; note: string | null }) => {
       let resolvedApproverId: string | null = null
       if (t.requires_approval && t.approver_id) {
         if (isUuid(t.approver_id)) {
@@ -125,7 +125,6 @@ export async function POST(req: NextRequest) {
         dep_task_ids: [],
         requires_approval: t.requires_approval || false,
         approver_id: resolvedApproverId,
-        due_after_dep_hours: t.due_after_dep_hours || null,
       }
     })
 
