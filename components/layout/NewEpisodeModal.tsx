@@ -30,11 +30,11 @@ function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<
   const release = new Date(releaseDate)
   const releaseHour = release.getHours()
   const fixedTasks = templates.filter(t => t.due_days !== null)
-  if (fixedTasks.length === 0) return {}
-  const maxDays = Math.max(...fixedTasks.map(t => t.due_days as number))
+  const maxDays = fixedTasks.length > 0 ? Math.max(...fixedTasks.map(t => t.due_days as number)) : 0
   const result: Record<number, string> = {}
-  for (const t of fixedTasks) {
-    const d = subDays(release, maxDays - (t.due_days as number))
+  for (const t of templates) {
+    const days = t.due_days ?? 0
+    const d = subDays(release, maxDays - days)
     d.setHours(releaseHour, 0, 0, 0)
     result[t.seq_id] = format(d, "yyyy-MM-dd'T'HH:mm")
   }
@@ -105,7 +105,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   useEffect(() => {
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
     setTaskDueDates(calcDueDates(releaseDate, clientTemplates))
-  }, [releaseDate, clientId, selectedTemplateName])
+  }, [releaseDate, clientId, selectedTemplateName, templates])
 
   function handleDateChange(seqId: number, newValue: string) {
     const rounded = roundToHour(newValue)
