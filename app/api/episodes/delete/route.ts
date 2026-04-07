@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
   if (e1) { console.error('[delete] message_notifications:', e1.message); return NextResponse.json({ error: e1.message }, { status: 500 }) }
 
   const { error: e2 } = await admin.from('comment_reads').delete().in('episode_id', ids)
-  if (e2) { console.error('[delete] comment_reads:', e2.message); return NextResponse.json({ error: e2.message }, { status: 500 }) }
+  if (e2 && !e2.message.includes('schema cache')) { console.error('[delete] comment_reads:', e2.message); return NextResponse.json({ error: e2.message }, { status: 500 }) }
+  if (e2) console.warn('[delete] comment_reads skipped (table not yet in schema cache):', e2.message)
 
   if (taskIds.length > 0) {
     const { error: e3 } = await admin.from('comments').delete().in('task_id', taskIds)
