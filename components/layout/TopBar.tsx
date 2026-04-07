@@ -10,7 +10,6 @@ import { NotificationDrawer } from './NotificationDrawer'
 import { MessagesDrawer } from './MessagesDrawer'
 import { NewEpisodeModal, type CreatedEpisode } from './NewEpisodeModal'
 import { cn } from '@/lib/utils'
-import { InfoIcon } from '@/components/ui/InfoIcon'
 import type { User, NotificationType } from '@/lib/types'
 
 const SIDEBAR_EXPANDED = 240
@@ -393,7 +392,6 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
                 <span className="text-[12px] text-[#666]">
                   {onlineCount === 0 ? 'Just you' : `${onlineCount + 1} online`}
                 </span>
-                <InfoIcon text="Shows team members currently active in the app. Someone is considered online if they have been active in the last 10 minutes. Goes idle after 10 minutes of no activity." />
               </div>
               {showPresenceTooltip && onlineCount > 0 && (
                 <div className="absolute right-0 top-full mt-1.5 bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl shadow-2xl z-50 overflow-hidden min-w-[140px]">
