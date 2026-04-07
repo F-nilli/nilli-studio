@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Navbar } from '@/components/layout/Navbar'
+import { SidebarLayout } from '@/components/layout/SidebarLayout'
 import type { User } from '@/lib/types'
 
 export default async function AuthLayout({
@@ -21,12 +21,5 @@ export default async function AuthLayout({
 
   if (!profile) redirect('/login')
 
-  return (
-    <div className="min-h-screen bg-transparent">
-      <Navbar user={profile as User} />
-      <main className="px-8 py-8">
-        {children}
-      </main>
-    </div>
-  )
+  return <SidebarLayout user={profile as User}>{children}</SidebarLayout>
 }

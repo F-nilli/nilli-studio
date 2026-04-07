@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   // Get the task that was just approved
   const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single()
-  if (!task || task.status !== 'approved') return NextResponse.json({ triggered: false })
+  if (!task || (task.status !== 'approved' && task.status !== 'done')) return NextResponse.json({ triggered: false })
 
   // Get the source episode
   const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()
@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
       .order('seq_id', { ascending: true })
     if (!pipelineTemplates || pipelineTemplates.length === 0) continue
 
+    // Load all users for approver_id resolution (UUID or name fallback)
+    const { data: allUsers } = await supabase.from('users').select('id, name')
+
     // Calculate new release date
     const newReleaseDate = format(
       addDays(parseISO(episode.release_date), trigger.offset_days),
@@ -97,20 +100,34 @@ export async function POST(req: NextRequest) {
     if (!newEpisode) continue
 
     // Create tasks
-    const taskInserts = pipelineTemplates.map((t: { seq_id: number; label: string; assignee_id: string | null; track: string; dep_seq_ids: number[]; due_after_dep_hours: number | null; requires_approval: boolean; approver_id: string | null; note: string | null }) => ({
-      episode_id: newEpisode.id,
-      template_task_id: t.seq_id,
-      label: t.label,
-      assignee_id: t.assignee_id || episode.created_by,
-      track: t.track,
-      status: t.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
-      due_date: dueDates[t.seq_id] || null,
-      note: t.note || null,
-      dep_task_ids: [],
-      requires_approval: t.requires_approval || false,
-      approver_id: t.requires_approval ? (t.approver_id || null) : null,
-      due_after_dep_hours: t.due_after_dep_hours || null,
-    }))
+    const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+
+    const taskInserts = pipelineTemplates.map((t: { seq_id: number; label: string; assignee_id: string | null; track: string; dep_seq_ids: number[]; due_after_dep_hours: number | null; requires_approval: boolean; approver_id: string | null; note: string | null }) => {
+      let resolvedApproverId: string | null = null
+      if (t.requires_approval && t.approver_id) {
+        if (isUuid(t.approver_id)) {
+          resolvedApproverId = t.approver_id
+        } else {
+          const match = (allUsers || []).find(u => u.name.toLowerCase() === t.approver_id!.toLowerCase())
+          if (match) resolvedApproverId = match.id
+          else console.warn(`check-triggers: approver '${t.approver_id}' not found for task '${t.label}'`)
+        }
+      }
+      return {
+        episode_id: newEpisode.id,
+        template_task_id: t.seq_id,
+        label: t.label,
+        assignee_id: t.assignee_id || episode.created_by,
+        track: t.track,
+        status: t.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
+        due_date: dueDates[t.seq_id] || null,
+        note: t.note || null,
+        dep_task_ids: [],
+        requires_approval: t.requires_approval || false,
+        approver_id: resolvedApproverId,
+        due_after_dep_hours: t.due_after_dep_hours || null,
+      }
+    })
 
     const { data: createdTasks } = await supabase.from('tasks').insert(taskInserts).select()
     if (!createdTasks) continue

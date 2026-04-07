@@ -2,13 +2,13 @@ import { cn } from '@/lib/utils'
 import { TaskStatus } from '@/lib/types'
 
 const STATUS_STYLES: Record<string, string> = {
-  locked:     'bg-[#1e1e1e] text-[#666]',
-  ready:      'bg-blue-500/20 text-blue-400',
-  in_progress:'bg-yellow-500/20 text-yellow-400',
-  in_review:  'bg-purple-500/20 text-purple-400',
-  approved:   'bg-green-500/20 text-green-400',
-  revision:   'bg-[#ff3c00]/20 text-[#ff6633]',
-  done:       'bg-green-500/20 text-green-300',
+  locked:     'bg-gradient-to-r from-white/5 to-white/[0.03] text-[#555] border border-white/[0.06]',
+  ready:      'bg-gradient-to-r from-blue-500/25 to-blue-500/10 text-blue-300 border border-blue-500/20',
+  in_progress:'bg-gradient-to-r from-amber-500/25 to-amber-500/10 text-amber-300 border border-amber-500/20',
+  in_review:  'bg-gradient-to-r from-purple-500/25 to-purple-500/10 text-purple-300 border border-purple-500/20',
+  approved:   'bg-gradient-to-r from-green-500/25 to-green-500/10 text-green-300 border border-green-500/20',
+  revision:   'bg-gradient-to-r from-[#ff3c00]/25 to-[#ff3c00]/10 text-[#ff7a5c] border border-[#ff3c00]/20',
+  done:       'bg-gradient-to-r from-green-500/20 to-green-500/8 text-green-400 border border-green-500/15',
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -23,7 +23,7 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', STATUS_STYLES[status] || 'bg-[#1e1e1e] text-[#666]', className)}>
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold', STATUS_STYLES[status] || 'bg-[#1e1e1e] text-[#555]', className)}>
       {STATUS_LABELS[status] || status}
     </span>
   )

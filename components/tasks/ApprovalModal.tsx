@@ -71,6 +71,16 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
         .from('tasks').update({ status: 'approved' }).eq('id', task.id)
         .select('*, assignee:users(*)').single()
 
+      if (updatedTask) {
+        supabase.from('task_history').insert({
+          task_id: task.id,
+          episode_id: task.episode_id,
+          from_status: task.status,
+          to_status: 'approved',
+          changed_by: currentUser.id,
+        }).then(() => {})
+      }
+
       for (const nextTask of nextTasks) {
         await supabase.from('tasks')
           .update({ status: 'ready', due_date: dueDates[nextTask.id] || null })
@@ -90,7 +100,7 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
       // Check for any other newly unlockable tasks
       const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', task.episode_id)
       if (allTasks) {
-        const approvedIds = new Set([...allTasks.filter(t => t.status === 'approved' || t.id === task.id).map(t => t.id)])
+        const approvedIds = new Set([...allTasks.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id)])
         for (const t of allTasks) {
           if (t.status === 'locked' && t.dep_task_ids.length > 0) {
             if (t.dep_task_ids.every((depId: string) => approvedIds.has(depId))) {
@@ -129,6 +139,16 @@ export function ApprovalModal({ task, action, currentUser, onClose, onConfirm }:
       const { data: updatedTask } = await supabase
         .from('tasks').update({ status: 'revision', due_date: revisedTaskDueDate || null })
         .eq('id', task.id).select('*, assignee:users(*)').single()
+
+      if (updatedTask) {
+        supabase.from('task_history').insert({
+          task_id: task.id,
+          episode_id: task.episode_id,
+          from_status: task.status,
+          to_status: 'revision',
+          changed_by: currentUser.id,
+        }).then(() => {})
+      }
 
       const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
       if (assignee) {

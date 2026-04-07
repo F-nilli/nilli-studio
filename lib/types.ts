@@ -41,6 +41,7 @@ export interface User {
   avatar_color: string
   avatar_url: string | null
   created_at: string
+  active?: boolean
 }
 
 export interface Episode {
@@ -55,6 +56,7 @@ export interface Episode {
   source_episode_id: string | null
   created_by: string
   created_at: string
+  published: boolean
   published_at: string | null
   // Joined
   source?: { id: string; guest_name: string; template_name: string | null }
@@ -95,9 +97,11 @@ export interface Task {
 
 export interface Comment {
   id: string
-  task_id: string
+  task_id: string | null
+  episode_id: string | null
   author_id: string
   body: string
+  internal: boolean
   created_at: string
   // Joined
   author?: User
@@ -161,4 +165,23 @@ export interface Notification {
   episode_id: string | null
   read: boolean
   created_at: string
+}
+
+export type MessageNotificationType = 'mention' | 'task_comment'
+
+export interface MessageNotification {
+  id: string
+  user_id: string
+  author_id: string
+  comment_id: string
+  task_id: string | null
+  episode_id: string
+  type: MessageNotificationType
+  read: boolean
+  created_at: string
+  // joined
+  author?: User
+  comment?: { body: string }
+  task?: { label: string }
+  episode?: { guest_name: string; client_label: string }
 }

@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, canManageTeam } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
+import { InfoIcon } from '@/components/ui/InfoIcon'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical, UserMinus, UserCheck, AlertTriangle } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -29,6 +30,14 @@ const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 const TRACKS: Track[] = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing']
 
 const AVATAR_COLORS = ['#ff3c00', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+
+type PresenceStatus = 'online' | 'idle'
+
+interface ActionTarget {
+  user: User
+  action: 'deactivate' | 'delete'
+  tasks: { id: string; label: string }[]
+}
 
 interface Props {
   currentUser: User
@@ -53,18 +62,18 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-black text-white">Settings</h1>
-        <p className="text-[#888] text-base mt-1">Manage your team, clients, and production history</p>
+        <h1 className="text-[26px] font-bold text-white">Settings</h1>
+        <p className="text-[#888] text-[15px] mt-1">Manage your team, clients, and production history</p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-[#2e2e2e]">
+      <div className="flex gap-1 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
+              'flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold tracking-[0.06em] transition-colors border-b-2 -mb-px',
               activeTab === tab.id
                 ? 'border-[#ff3c00] text-white'
                 : 'border-transparent text-[#666] hover:text-[#ccc]'
@@ -108,6 +117,7 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   const supabase = createClient()
   const isAdmin = canManageTeam(currentUser)
   const [users, setUsers] = useState<User[]>(allUsers)
+  const [taskCounts, setTaskCounts] = useState<Record<string, number>>(taskCountByUser)
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
@@ -117,11 +127,34 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   const [inviteError, setInviteError] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState('')
+  const [toastError, setToastError] = useState(false)
+  const [onlineStatus, setOnlineStatus] = useState<Record<string, PresenceStatus>>({})
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
+  const [reassigneeId, setReassigneeId] = useState('')
+  const [updateTemplates, setUpdateTemplates] = useState(true)
+  const [modalLoading, setModalLoading] = useState(false)
 
-  function showToast(msg: string) {
+  function showToast(msg: string, isError = false) {
     setToast(msg)
+    setToastError(isError)
     setTimeout(() => setToast(''), 3000)
   }
+
+  // ── Presence subscription ─────────────────────────────────────────────────
+  useEffect(() => {
+    const ch = supabase.channel('online-users')
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<{ userId: string; isIdle?: boolean }>()
+      const next: Record<string, PresenceStatus> = {}
+      for (const presences of Object.values(state)) {
+        const p = (presences as { userId: string; isIdle?: boolean }[])[0]
+        if (p?.userId) next[p.userId] = p.isIdle ? 'idle' : 'online'
+      }
+      setOnlineStatus(next)
+    })
+    ch.subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -142,20 +175,18 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   }
 
   async function handleRoleChange(userId: string, newRole: UserRole) {
-    setActionLoading(userId + '-role')
-    await supabase.from('users').update({ role: newRole }).eq('id', userId)
+    const prevUsers = users
+    const userName = users.find(u => u.id === userId)?.name ?? 'user'
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u))
+    setActionLoading(userId + '-role')
+    const { error } = await supabase.from('users').update({ role: newRole }).eq('id', userId)
     setActionLoading(null)
-    showToast('Role updated')
-  }
-
-  async function handleRemove(userId: string) {
-    if (!confirm('Remove this user? This cannot be undone.')) return
-    setActionLoading(userId + '-remove')
-    await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
-    setUsers(prev => prev.filter(u => u.id !== userId))
-    setActionLoading(null)
-    showToast('User removed')
+    if (error) {
+      setUsers(prevUsers)
+      showToast('Failed to update role. Please try again.', true)
+    } else {
+      showToast(`Role updated for ${userName}`)
+    }
   }
 
   async function handleResetPassword(userId: string) {
@@ -165,16 +196,87 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
     showToast('Password reset email sent')
   }
 
+  async function openActionModal(user: User, action: 'deactivate' | 'delete') {
+    setReassigneeId('')
+    setUpdateTemplates(true)
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('id, label')
+      .eq('assignee_id', user.id)
+      .in('status', ['ready', 'in_progress', 'in_review', 'revision'])
+    setActionTarget({ user, action, tasks: tasks ?? [] })
+  }
+
+  async function handleConfirmAction() {
+    if (!actionTarget) return
+    const { user, action, tasks } = actionTarget
+    setModalLoading(true)
+
+    // Reassign active tasks
+    if (tasks.length > 0 && reassigneeId) {
+      await supabase.from('tasks').update({ assignee_id: reassigneeId }).in('id', tasks.map(t => t.id))
+      setTaskCounts(prev => ({
+        ...prev,
+        [user.id]: 0,
+        [reassigneeId]: (prev[reassigneeId] || 0) + tasks.length,
+      }))
+    }
+
+    // Also update task templates so future episodes assign to the new person
+    if (reassigneeId && updateTemplates) {
+      await supabase.from('task_templates').update({ assignee_id: reassigneeId }).eq('assignee_id', user.id)
+    }
+
+    if (action === 'deactivate') {
+      const { error } = await supabase.from('users').update({ active: false }).eq('id', user.id)
+      if (error) {
+        showToast('Failed to deactivate user. Please try again.', true)
+      } else {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, active: false } : u))
+        showToast(`${user.name} has been deactivated`)
+      }
+    } else {
+      const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        showToast('Failed to delete user. Please try again.', true)
+      } else {
+        setUsers(prev => prev.filter(u => u.id !== user.id))
+        showToast(`${user.name} has been removed`)
+      }
+    }
+
+    setModalLoading(false)
+    setActionTarget(null)
+  }
+
+  async function handleReactivate(userId: string) {
+    setActionLoading(userId + '-reactivate')
+    const { error } = await supabase.from('users').update({ active: true }).eq('id', userId)
+    setActionLoading(null)
+    if (error) {
+      showToast('Failed to reactivate user.', true)
+    } else {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, active: true } : u))
+      const userName = users.find(u => u.id === userId)?.name ?? 'user'
+      showToast(`${userName} has been reactivated`)
+    }
+  }
+
+  const activeUsers = users.filter(u => u.active !== false)
+  const inactiveUsers = users.filter(u => u.active === false)
+  const otherActiveUsers = activeUsers.filter(u => u.id !== currentUser.id)
+
   return (
     <div className="space-y-4">
       {toast && (
         <div className="bg-[#141414] border border-[#2e2e2e] rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2">
-          <Check className="w-4 h-4 text-green-400" />{toast}
+          {toastError ? <X className="w-4 h-4 text-red-400" /> : <Check className="w-4 h-4 text-green-400" />}
+          {toast}
         </div>
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[#888]">{users.length} members</p>
+        <p className="text-sm text-[#888]">{activeUsers.length} members</p>
         {isAdmin && (
           <button
             onClick={() => setShowInvite(!showInvite)}
@@ -234,54 +336,128 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
       )}
 
       {/* Users table */}
-      <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_140px_80px_100px] px-4 py-2 bg-[#101010] border-b border-[#2e2e2e]">
-          <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Member</span>
-          <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Role</span>
-          <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Tasks</span>
-          <span className="text-xs font-semibold text-[#555] uppercase tracking-wide">Actions</span>
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b" style={{ background: '#1a1a1a', borderColor: 'rgba(255,255,255,0.08)' }}>
+          <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Member</span>
+          <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Role</span>
+          <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Tasks</span>
+          <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Actions</span>
         </div>
-        {users.map(u => (
+
+        {activeUsers.map(u => (
           <UserRow
             key={u.id}
             user={u}
             isSelf={u.id === currentUser.id}
             isAdmin={isAdmin}
-            activeTasks={taskCountByUser[u.id] || 0}
+            activeTasks={taskCounts[u.id] || 0}
             actionLoading={actionLoading}
+            presenceStatus={onlineStatus[u.id]}
             onRoleChange={handleRoleChange}
-            onRemove={handleRemove}
             onResetPassword={handleResetPassword}
+            onDeactivate={() => openActionModal(u, 'deactivate')}
+            onDelete={() => openActionModal(u, 'delete')}
           />
         ))}
+
+        {inactiveUsers.length > 0 && (
+          <>
+            <div className="px-4 py-2" style={{ background: '#111', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+              <span className="text-[11px] font-semibold text-[#444] uppercase tracking-widest">
+                Deactivated ({inactiveUsers.length})
+              </span>
+            </div>
+            {inactiveUsers.map(u => (
+              <UserRow
+                key={u.id}
+                user={u}
+                isSelf={false}
+                isAdmin={isAdmin}
+                activeTasks={0}
+                actionLoading={actionLoading}
+                presenceStatus={undefined}
+                inactive
+                onRoleChange={handleRoleChange}
+                onResetPassword={handleResetPassword}
+                onDeactivate={() => {}}
+                onDelete={() => openActionModal(u, 'delete')}
+                onReactivate={() => handleReactivate(u.id)}
+              />
+            ))}
+          </>
+        )}
       </div>
+
+      {/* Action confirmation modal */}
+      {actionTarget && (
+        <UserActionModal
+          target={actionTarget}
+          otherUsers={otherActiveUsers}
+          reassigneeId={reassigneeId}
+          onReassigneeChange={setReassigneeId}
+          updateTemplates={updateTemplates}
+          onUpdateTemplatesChange={setUpdateTemplates}
+          loading={modalLoading}
+          onConfirm={handleConfirmAction}
+          onCancel={() => setActionTarget(null)}
+        />
+      )}
     </div>
   )
 }
 
-function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChange, onRemove, onResetPassword }: {
+function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceStatus, inactive, onRoleChange, onResetPassword, onDeactivate, onDelete, onReactivate }: {
   user: User; isSelf: boolean; isAdmin: boolean; activeTasks: number
   actionLoading: string | null
+  presenceStatus: PresenceStatus | undefined
+  inactive?: boolean
   onRoleChange: (id: string, role: UserRole) => void
-  onRemove: (id: string) => void
   onResetPassword: (id: string) => void
+  onDeactivate: () => void
+  onDelete: () => void
+  onReactivate?: () => void
 }) {
   const [showRoleMenu, setShowRoleMenu] = useState(false)
 
   return (
-    <div className="grid grid-cols-[1fr_140px_80px_100px] px-4 py-3 border-b border-[#242424] last:border-0 items-center hover:bg-[#111111] transition-colors group">
-      {/* Name + email */}
+    <div
+      className={cn(
+        'grid grid-cols-[1fr_140px_80px_120px] px-4 border-b last:border-0 items-center hover:bg-white/[0.02] transition-colors group',
+        inactive && 'opacity-50'
+      )}
+      style={{ minHeight: '56px', borderColor: 'rgba(255,255,255,0.06)' }}
+    >
+      {/* Name + email + presence */}
       <div className="flex items-center gap-3 min-w-0">
-        <Avatar name={user.name} color={user.avatar_color} size="sm" avatarUrl={user.avatar_url} />
+        {/* Avatar with presence dot */}
+        <div className="relative inline-flex shrink-0">
+          <Avatar name={user.name} color={user.avatar_color} size="sm" avatarUrl={user.avatar_url} />
+          {presenceStatus && (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-[#161616]"
+              style={{ background: presenceStatus === 'online' ? '#22c55e' : '#f59e0b' }}
+              title={presenceStatus === 'online' ? 'Online' : 'Idle'}
+            >
+              {presenceStatus === 'online' && (
+                <span className="absolute inset-0 rounded-full animate-ping" style={{ background: '#22c55e', opacity: 0.6 }} />
+              )}
+            </span>
+          )}
+        </div>
+
         <div className="min-w-0">
-          <p className="text-sm font-medium text-white truncate">{user.name} {isSelf && <span className="text-[#555] text-xs">(you)</span>}</p>
-          <p className="text-xs text-[#666] truncate">{user.email}</p>
+          <p className="text-[14px] font-medium text-white truncate">
+            {user.name}
+            {isSelf && <span className="text-[#555] text-[12px] ml-1">(you)</span>}
+            {inactive && <span className="text-[#555] text-[11px] ml-1.5">Deactivated</span>}
+          </p>
+          <p className="text-[13px] text-[#666] truncate">{user.email}</p>
         </div>
       </div>
 
       {/* Role */}
       <div className="relative">
-        {isAdmin && !isSelf ? (
+        {isAdmin && !isSelf && !inactive ? (
           <>
             <button
               onClick={() => setShowRoleMenu(!showRoleMenu)}
@@ -325,16 +501,167 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, onRoleChan
       {/* Actions */}
       {isAdmin && !isSelf && (
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onResetPassword(user.id)} disabled={actionLoading === user.id + '-reset'} title="Send password reset"
-            className="p-1 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
-            <RefreshCw className="w-3 h-3" />
-          </button>
-          <button onClick={() => onRemove(user.id)} disabled={actionLoading === user.id + '-remove'} title="Remove user"
-            className="p-1 rounded hover:bg-[#ff3c00]/20 text-[#555] hover:text-[#ff3c00] transition-colors">
-            <Trash2 className="w-3 h-3" />
+          {!inactive && (
+            <button onClick={() => onResetPassword(user.id)} disabled={actionLoading === user.id + '-reset'}
+              title="Send password reset"
+              className="p-1.5 rounded hover:bg-[#1e1e1e] text-[#555] hover:text-white transition-colors">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!inactive ? (
+            <button onClick={onDeactivate} title="Deactivate user"
+              className="p-1.5 rounded hover:bg-amber-500/10 text-[#555] hover:text-amber-400 transition-colors">
+              <UserMinus className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <button onClick={onReactivate} disabled={actionLoading === user.id + '-reactivate'}
+              title="Reactivate user"
+              className="p-1.5 rounded hover:bg-emerald-500/10 text-[#555] hover:text-emerald-400 transition-colors">
+              <UserCheck className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={onDelete} title="Delete user permanently"
+            className="p-1.5 rounded hover:bg-[#ff3c00]/20 text-[#555] hover:text-[#ff3c00] transition-colors">
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+function UserActionModal({ target, otherUsers, reassigneeId, onReassigneeChange, updateTemplates, onUpdateTemplatesChange, loading, onConfirm, onCancel }: {
+  target: ActionTarget
+  otherUsers: User[]
+  reassigneeId: string
+  onReassigneeChange: (id: string) => void
+  updateTemplates: boolean
+  onUpdateTemplatesChange: (v: boolean) => void
+  loading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const { user, action, tasks } = target
+  const hasTasks = tasks.length > 0
+  const isDelete = action === 'delete'
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div
+        className="w-full max-w-[440px] mx-4 rounded-2xl"
+        style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <h2 className="text-[16px] font-bold text-white">
+            {isDelete ? 'Delete' : 'Deactivate'} {user.name}
+          </h2>
+          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-white/5 text-[#555] hover:text-white transition-colors cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-4">
+          {isDelete && (
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg" style={{ background: 'rgba(255,60,0,0.08)', border: '1px solid rgba(255,60,0,0.2)' }}>
+              <AlertTriangle className="w-4 h-4 text-[#ff3c00] shrink-0 mt-0.5" />
+              <p className="text-sm text-[#ff3c00]">This permanently deletes the user and cannot be undone.</p>
+            </div>
+          )}
+
+          {hasTasks ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[#aaa]">
+                {user.name} has <span className="text-white font-semibold">{tasks.length} active task{tasks.length !== 1 ? 's' : ''}</span>.
+                Reassign them before {isDelete ? 'deleting' : 'deactivating'}.
+              </p>
+              <div>
+                <label className="text-[12px] text-[#888] mb-1.5 block font-medium">Reassign all tasks to</label>
+                <select
+                  value={reassigneeId}
+                  onChange={e => onReassigneeChange(e.target.value)}
+                  className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a]"
+                  style={{ background: '#222', border: '1px solid rgba(255,255,255,0.1)' }}
+                >
+                  <option value="">Select team member…</option>
+                  {otherUsers.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Template update checkbox — only relevant when a reassignee is chosen */}
+              {reassigneeId && (
+                <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+                  <input
+                    type="checkbox"
+                    checked={updateTemplates}
+                    onChange={e => onUpdateTemplatesChange(e.target.checked)}
+                    className="mt-0.5 accent-[#f7931a] w-3.5 h-3.5 shrink-0 cursor-pointer"
+                  />
+                  <span className="text-[13px] text-[#aaa] group-hover:text-white transition-colors leading-snug">
+                    Also update task templates
+                    <span className="block text-[11px] text-[#555] mt-0.5">
+                      Future episodes for all clients will assign these task slots to {otherUsers.find(u => u.id === reassigneeId)?.name ?? 'the new member'} instead
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              {/* Task list preview */}
+              <div className="max-h-[120px] overflow-y-auto space-y-1">
+                {tasks.map(t => (
+                  <div key={t.id} className="flex items-center gap-2 px-2 py-1 rounded" style={{ background: '#1a1a1a' }}>
+                    <span className="w-1 h-1 rounded-full bg-[#555] shrink-0" />
+                    <span className="text-[12px] text-[#888] truncate">{t.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-[#aaa]">
+              {isDelete
+                ? `${user.name} has no active tasks and will be permanently removed from the system.`
+                : `${user.name} has no active tasks. They will be prevented from logging in.`}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 pb-6">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-[#aaa] hover:text-white transition-colors cursor-pointer"
+            style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading || (hasTasks && !reassigneeId)}
+            className={cn(
+              'flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-40 cursor-pointer',
+              isDelete ? 'bg-[#ff3c00] hover:bg-[#e63600]' : 'bg-[#2a2a2a] hover:bg-[#333]',
+            )}
+            style={{ border: isDelete ? '1px solid #ff3c00' : '1px solid rgba(255,255,255,0.15)' }}
+          >
+            {loading ? 'Processing…' : isDelete ? 'Delete permanently' : 'Deactivate'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -838,11 +1165,14 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-xs text-[#555] shrink-0">
+                  Slack Channel ID
+                  <InfoIcon text="The Slack channel where production notifications for this client will be posted. To find it: open Slack → right-click the channel → View channel details → scroll to the bottom. Starts with C (channel) or U (direct message)." maxWidth={280} />
+                </span>
                 <input
                   value={channelId}
                   onChange={e => setChannelId(e.target.value)}
-                  placeholder="#channel-id"
-                  title="Slack Channel ID"
+                  placeholder="C0123456789"
                   className="px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555] w-32"
                 />
                 <label className="flex items-center gap-2 text-sm text-[#888] cursor-pointer">
@@ -867,9 +1197,18 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
               <div className="grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
-                {['', '#', 'Task', 'Checklist', 'Assignee', 'Days', 'Deps', 'Approver', ''].map((h, i) => (
+                {['', '#', 'Task', 'Checklist', 'Assignee', 'Days'].map((h, i) => (
                   <span key={i} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
+                <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
+                  Deps
+                  <InfoIcon text="Task numbers that must be approved before this task unlocks. Example: entering '1, 2' means this task only becomes available after tasks 1 and 2 are approved." />
+                </span>
+                <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
+                  Approver
+                  <InfoIcon text="The approver must sign off on this task before any dependent tasks unlock. Approval tasks have a 12-hour SLA. Leave empty if no approval is required for this task." />
+                </span>
+                <span />
               </div>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={currentTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>

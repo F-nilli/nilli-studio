@@ -41,11 +41,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
 
   async function updateStatus(newStatus: TaskStatus) {
-    // If task doesn't need approval, submitting goes straight to approved
+    // Tasks with no approver go straight to 'done'; tasks with an approver go to 'in_review'
     const resolvedStatus: TaskStatus =
-      newStatus === 'in_review' && !task.requires_approval ? 'approved' : newStatus
+      newStatus === 'in_review' && !task.approver_id ? 'done' : newStatus
 
-    if (resolvedStatus === 'in_review' && task.requires_approval) {
+    if (resolvedStatus === 'in_review' && task.approver_id) {
       // Notify the specific approver only
       if (task.approver_id && task.approver_id !== currentUser.id) {
         await sendNotification(supabase, {
@@ -80,9 +80,16 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
       .single()
 
     if (data) {
+      supabase.from('task_history').insert({
+        task_id: task.id,
+        episode_id: task.episode_id,
+        from_status: task.status,
+        to_status: resolvedStatus,
+        changed_by: currentUser.id,
+      }).then(() => {})
       onUpdate(data as unknown as Task)
       await checkAndUnlockDependencies(task.episode_id)
-      if (resolvedStatus === 'approved') {
+      if (resolvedStatus === 'approved' || resolvedStatus === 'done') {
         fetch('/api/episodes/check-triggers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -96,7 +103,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   async function checkAndUnlockDependencies(episodeId: string) {
     const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', episodeId)
     if (!allTasks) return
-    const approvedIds = new Set(allTasks.filter(t => t.status === 'approved').map(t => t.id))
+    const approvedIds = new Set(allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id))
     for (const t of allTasks) {
       if (t.status === 'locked' && t.dep_task_ids.length > 0) {
         const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
@@ -130,6 +137,13 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
       .from('tasks').update({ status: 'approved' }).eq('id', task.id)
       .select('*, assignee:users(*)').single()
     if (data) {
+      supabase.from('task_history').insert({
+        task_id: task.id,
+        episode_id: task.episode_id,
+        from_status: task.status,
+        to_status: 'approved',
+        changed_by: currentUser.id,
+      }).then(() => {})
       await checkAndUnlockDependencies(task.episode_id)
       if (task.assignee_id !== currentUser.id) {
         await sendNotification(supabase, {
@@ -159,6 +173,13 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
       .from('tasks').update({ status: 'revision' }).eq('id', task.id)
       .select('*, assignee:users(*)').single()
     if (data) {
+      supabase.from('task_history').insert({
+        task_id: task.id,
+        episode_id: task.episode_id,
+        from_status: task.status,
+        to_status: 'revision',
+        changed_by: currentUser.id,
+      }).then(() => {})
       const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
       if (assignee) {
         await sendNotification(supabase, {
@@ -186,11 +207,12 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     <>
       <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
         <div
-          className="bg-[#141414] border border-[#2e2e2e] w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col shadow-2xl"
+          className="w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col"
+          style={{ background: '#222222', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 60px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.05) inset' }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-start justify-between p-5 border-b border-[#2e2e2e]">
+          <div className="flex items-start justify-between p-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: trackColor }} />
@@ -244,13 +266,13 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                 )}
 
             {task.note && (
-              <div className="bg-[#ff3c00]/10 border border-[#ff3c00]/20 rounded-lg p-3">
+              <div className="border border-[#ff3c00]/15 rounded-lg p-3" style={{ background: 'linear-gradient(135deg, rgba(255,60,0,0.1), rgba(255,60,0,0.04))' }}>
                 <p className="text-base text-[#ff9980]">{task.note}</p>
               </div>
             )}
 
             {task.status === 'locked' && (
-              <div className="flex items-center gap-2 text-base text-[#666] bg-[#1e1e1e] rounded-lg p-3">
+              <div className="flex items-center gap-2 text-base text-[#555] bg-[#141414] border border-[#1e1e1e] rounded-lg p-3">
                 <Lock className="w-4 h-4" />
                 <span>Waiting for dependencies to be approved</span>
               </div>
@@ -259,16 +281,16 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
           </div>
 
           {/* Footer */}
-          <div className="border-t border-[#2e2e2e] p-4 space-y-3">
+          <div className="border-t p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
             {canAction && (
               <button
                 onClick={() => updateStatus(nextStatus!)}
                 disabled={updatingStatus}
-                className="w-full py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white font-semibold rounded-lg text-base transition-colors"
+                className="btn-primary w-full py-2.5 px-4 disabled:cursor-not-allowed cursor-pointer text-white font-semibold rounded-lg text-base"
               >
                 {updatingStatus ? 'Updating...' : (
                   task.status === 'in_progress'
-                    ? (task.requires_approval ? 'Submit for Review' : 'Mark Complete')
+                    ? (task.approver_id ? 'Submit for Review' : 'Mark Done')
                   : task.status === 'ready' ? 'Start Task'
                   : task.status === 'revision' ? 'Resubmit for Review'
                   : `Mark as ${STATUS_LABELS[nextStatus!]}`
@@ -281,14 +303,14 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                 <button
                   onClick={handleRevision}
                   disabled={updatingStatus}
-                  className="flex-1 py-2.5 px-4 bg-[#1e1e1e] hover:bg-[#333] border border-[#ff3c00]/40 text-[#ff3c00] font-semibold rounded-lg text-base transition-colors disabled:opacity-50"
+                  className="flex-1 py-2.5 px-4 bg-[#1a1a1a] hover:bg-[#222] border border-[#ff3c00]/30 hover:border-[#ff3c00]/60 text-[#ff6644] font-semibold rounded-lg text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Send Back
                 </button>
                 <button
                   onClick={handleApprove}
                   disabled={updatingStatus}
-                  className="flex-1 py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] text-white font-semibold rounded-lg text-base transition-colors disabled:opacity-50"
+                  className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base disabled:cursor-not-allowed cursor-pointer"
                 >
                   {updatingStatus ? 'Approving...' : 'Approve'}
                 </button>

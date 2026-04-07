@@ -4,13 +4,20 @@ import { BoardClient } from './BoardClient'
 import type { User, Episode, Task } from '@/lib/types'
 import { canSeeAllEpisodes } from '@/lib/types'
 
-export default async function BoardPage() {
+export default async function BoardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ member?: string }>
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
   if (!profile) redirect('/login')
+
+  const params = await searchParams
+  const memberFilterId = params.member || null
 
   const usersRes = await supabase.from('users').select('*')
 
@@ -33,6 +40,7 @@ export default async function BoardPage() {
         tasks={(tasksRes.data || []) as unknown as Task[]}
         allUsers={(usersRes.data || []) as User[]}
         publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
+        memberFilterId={memberFilterId}
       />
     )
   }
@@ -53,6 +61,7 @@ export default async function BoardPage() {
         tasks={[]}
         allUsers={(usersRes.data || []) as User[]}
         publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
+        memberFilterId={memberFilterId}
       />
     )
   }
@@ -69,6 +78,7 @@ export default async function BoardPage() {
       tasks={(tasksRes.data || []) as unknown as Task[]}
       allUsers={(usersRes.data || []) as User[]}
       publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
+      memberFilterId={memberFilterId}
     />
   )
 }

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Upload, X } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate } from '@/lib/types'
@@ -58,6 +58,12 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [imageWarning, setImageWarning] = useState('')
+  const [uploadToast, setUploadToast] = useState('')
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-template support
   const clientPipelineNames = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
@@ -79,6 +85,38 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
     setTaskDueDates(calcDueDates(releaseDate, clientTemplates))
   }, [releaseDate, clientId, selectedTemplateName])
+
+  function addImageFiles(files: File[]) {
+    const MAX_MB = 10
+    const typed = files.filter(f => ['image/jpeg', 'image/png', 'image/webp'].includes(f.type))
+    const tooBig = typed.filter(f => f.size > MAX_MB * 1024 * 1024)
+    const valid = typed.filter(f => f.size <= MAX_MB * 1024 * 1024)
+
+    if (tooBig.length > 0) {
+      const names = tooBig.map(f => f.name).join(', ')
+      setImageWarning(`${tooBig.length === 1 ? `"${names}" is` : `${tooBig.length} images are`} too large (max 10MB each) and were not added`)
+    }
+
+    if (!valid.length) return
+    setImageFiles(prev => {
+      const all = [...prev, ...valid]
+      const totalMB = all.reduce((s, f) => s + f.size, 0) / (1024 * 1024)
+      if (!tooBig.length) setImageWarning(totalMB > 50 ? 'Total size is large — consider compressing images' : '')
+      return all
+    })
+    setImagePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))])
+  }
+
+  function removeImageFile(idx: number) {
+    URL.revokeObjectURL(imagePreviews[idx])
+    setImageFiles(prev => {
+      const next = prev.filter((_, i) => i !== idx)
+      const totalMB = next.reduce((s, f) => s + f.size, 0) / (1024 * 1024)
+      setImageWarning(totalMB > 50 ? 'Total size is large — consider compressing images' : '')
+      return next
+    })
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
 
   function handleDateChange(seqId: number, newValue: string) {
     const oldValue = taskDueDates[seqId]
@@ -130,6 +168,24 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
 
     const taskInserts = clientTemplates.map(template => {
       const rawDate = taskDueDates[template.seq_id]
+
+      // Resolve approver_id: the template may store a UUID or a legacy username/name string
+      let resolvedApproverId: string | null = null
+      if (template.requires_approval && template.approver_id) {
+        const val = template.approver_id
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+        if (isUuid) {
+          resolvedApproverId = val
+        } else {
+          const match = allUsers.find(u => u.name.toLowerCase() === val.toLowerCase())
+          if (match) {
+            resolvedApproverId = match.id
+          } else {
+            console.warn(`Warning: approver '${val}' not found in users table for task '${template.label}'`)
+          }
+        }
+      }
+
       return {
         episode_id: episode.id,
         template_task_id: template.seq_id,
@@ -141,7 +197,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         note: template.note || null,
         dep_task_ids: [],
         requires_approval: template.requires_approval || false,
-        approver_id: template.requires_approval ? (template.approver_id || null) : null,
+        approver_id: resolvedApproverId,
         due_after_dep_hours: template.due_after_dep_hours || null,
       }
     })
@@ -169,6 +225,31 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
             task_id: task.id, episode_id: episode.id, read: false,
           })
         }
+      }
+    }
+
+    // Upload reference images
+    if (imageFiles.length > 0) {
+      let failCount = 0
+      for (const file of imageFiles) {
+        const path = `${episode.id}/${Date.now()}-${file.name}`
+        const { error: uploadError } = await supabase.storage
+          .from('episode-references')
+          .upload(path, file)
+        if (uploadError) { failCount++; continue }
+        const { data: urlData } = supabase.storage
+          .from('episode-references')
+          .getPublicUrl(path)
+        await supabase.from('episode_images').insert({
+          episode_id: episode.id,
+          url: urlData.publicUrl,
+          filename: file.name,
+          uploaded_by: currentUser.id,
+        })
+      }
+      if (failCount > 0) {
+        setUploadToast(`${failCount} image${failCount > 1 ? 's' : ''} failed to upload — you can add them from the episode page`)
+        await new Promise(r => setTimeout(r, 3000))
       }
     }
 
@@ -270,6 +351,75 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               />
             </div>
 
+            {/* Reference Images */}
+            <div>
+              <label className="block text-base font-medium text-[#ccc] mb-1">
+                Reference Images <span className="text-[#666] font-normal">(optional)</span>
+              </label>
+              <p className="text-sm text-[#555] mb-2">Upload mood boards, direction examples, or references for the team</p>
+
+              {/* Drop zone */}
+              <div
+                onClick={() => imageInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setIsDragging(false)
+                  addImageFiles(Array.from(e.dataTransfer.files))
+                }}
+                className="cursor-pointer flex flex-col items-center justify-center gap-1.5 rounded-lg py-6 transition-colors"
+                style={{
+                  border: `2px dashed ${isDragging ? 'rgba(247,147,26,0.5)' : 'rgba(255,255,255,0.15)'}`,
+                  background: isDragging ? 'rgba(247,147,26,0.04)' : 'transparent',
+                  borderRadius: 8,
+                }}
+              >
+                <Upload className="w-5 h-5 text-[#555]" />
+                <p className="text-sm text-[#666]">Drop images here or click to browse</p>
+                <p className="text-xs text-[#444]">JPG, PNG, WebP · Max 10MB per image</p>
+              </div>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={e => {
+                  addImageFiles(Array.from(e.target.files || []))
+                  e.target.value = ''
+                }}
+              />
+
+              {/* Warnings */}
+              {imageWarning && (
+                <p className="text-xs text-amber-400 mt-2">{imageWarning}</p>
+              )}
+
+              {/* Thumbnail previews */}
+              {imagePreviews.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto mt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {imagePreviews.map((src, idx) => (
+                    <div key={idx} className="relative shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt={imageFiles[idx]?.name || 'Preview'}
+                        style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImageFile(idx)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#333] border border-[#555] flex items-center justify-center text-[#aaa] hover:text-white hover:bg-[#444] transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* First task due dates (only fixed D-X tasks, not dynamic +Xhr) */}
             {releaseDate && unlockedTemplates.length > 0 && (
               <div>
@@ -332,6 +482,16 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
           </>
         )}
       </form>
+
+      {/* Upload failure toast */}
+      {uploadToast && (
+        <div
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl max-w-sm"
+          style={{ background: '#1e1e1e', border: '1px solid rgba(245,158,11,0.3)' }}
+        >
+          <p className="text-sm text-amber-400">{uploadToast}</p>
+        </div>
+      )}
     </div>
   )
 }
