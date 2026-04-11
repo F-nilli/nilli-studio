@@ -610,6 +610,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     ''
 
   const [actionError, setActionError] = useState<string | null>(null)
+  const [sendingBack, setSendingBack] = useState(false)
 
   // Close send back form if status changes (e.g., via realtime)
   useEffect(() => {
@@ -741,11 +742,15 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
   async function handleSendBack() {
     setActionLoading(true)
+    setSendingBack(true)
     setActionError(null)
+
+    // Convert bare date string (yyyy-MM-dd) to proper UTC ISO via local midnight
+    const dueDateIso = sendBackDate ? fromDatetimeLocal(sendBackDate + 'T00:00') : null
 
     const { data, error } = await supabase
       .from('tasks')
-      .update({ status: 'revision', due_date: sendBackDate || null })
+      .update({ status: 'revision', due_date: dueDateIso })
       .eq('id', task.id)
       .select('*')
       .single()
@@ -761,9 +766,11 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
       onTaskUpdate(data as unknown as Task)
       const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
       if (assignee) {
+        // Use parseISO so date-only strings are treated as local midnight, not UTC midnight
+        const dueDateLabel = sendBackDate ? format(parseISO(sendBackDate), 'MMM d, yyyy') : ''
         const noteBody = sendBackReason
-          ? `"${task.label}" was sent back: ${sendBackReason}${sendBackDate ? `. Due: ${format(new Date(sendBackDate), 'MMM d, yyyy')}` : ''}`
-          : `"${task.label}" was sent back for revision by ${currentUser.name}${sendBackDate ? `. Due: ${format(new Date(sendBackDate), 'MMM d, yyyy')}` : ''}`
+          ? `"${task.label}" was sent back: ${sendBackReason}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
+          : `"${task.label}" was sent back for revision by ${currentUser.name}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
         await sendNotification(supabase, {
           userId: assignee.id,
           type: 'task_revision',
@@ -779,7 +786,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
             episodeId: task.episode_id,
             taskLabel: task.label,
             assigneeName: assignee.name,
-            dueDate: sendBackDate ? format(new Date(sendBackDate), 'MMM d') : undefined,
+            dueDate: sendBackDate ? format(parseISO(sendBackDate), 'MMM d') : undefined,
           }),
         }).catch(() => {})
       }
@@ -788,6 +795,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
       setSendBackReason('')
     }
     setActionLoading(false)
+    setSendingBack(false)
   }
 
   const commentCount = taskComment?.count ?? 0
@@ -888,7 +896,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
                 disabled={actionLoading}
                 className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
               >
-                {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
+                {actionLoading && !sendingBack ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
               </button>
             </>
           )}
