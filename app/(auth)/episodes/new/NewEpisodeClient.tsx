@@ -36,12 +36,10 @@ function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<
   if (!releaseDate || templates.length === 0) return {}
   const release = new Date(releaseDate)
   const releaseHour = release.getHours()
-  const fixedTasks = templates.filter(t => t.due_days !== null)
-  const maxDays = fixedTasks.length > 0 ? Math.max(...fixedTasks.map(t => t.due_days as number)) : 0
   const result: Record<number, string> = {}
   for (const t of templates) {
     const days = t.due_days ?? 0
-    const d = subDays(release, maxDays - days)
+    const d = subDays(release, days)
     d.setHours(releaseHour, 0, 0, 0)
     result[t.seq_id] = format(d, "yyyy-MM-dd'T'HH:mm")
   }

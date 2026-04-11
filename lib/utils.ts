@@ -79,16 +79,14 @@ export function calculateDueDates(
   templates: TaskTemplate[]
 ): Record<number, Date | null> {
   const release = parseISO(releaseDate)
-  const dueDaysValues = templates.map(t => t.dueDays).filter((d): d is number => d !== null)
-  const maxDays = Math.max(...dueDaysValues, 0)
 
   const result: Record<number, Date | null> = {}
   for (const t of templates) {
     if (t.dueDays === null) {
       result[t.id] = null
     } else {
-      // due_date = release_date - (max_days - task.dueDays) days
-      const d = subDays(release, maxDays - t.dueDays)
+      // due_date = release_date - task.dueDays days
+      const d = subDays(release, t.dueDays)
       d.setHours(9, 0, 0, 0)
       result[t.id] = d
     }
