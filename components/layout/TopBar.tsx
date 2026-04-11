@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Search, X, Bell, MessageSquare, ChevronLeft, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { playCoinSound } from '@/lib/notification-sound'
 import { NotificationDrawer } from './NotificationDrawer'
 import { MessagesDrawer } from './MessagesDrawer'
 import { NewEpisodeModal, type CreatedEpisode } from './NewEpisodeModal'
@@ -110,8 +111,18 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
     fetchCounts()
     const channel = supabase
       .channel(`topbar-badges-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, () => {
+        setTaskNotifCount(c => c + 1)
+        playCoinSound()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, () => {
+        setMsgNotifCount(c => c + 1)
+        playCoinSound()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [user?.id])

@@ -22,6 +22,19 @@ export async function sendNotification(
     episode_id: payload.episodeId || null,
     read: false,
   })
+
+  // Fire push in background — non-blocking
+  fetch('/api/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: payload.userId,
+      title: payload.title,
+      body: payload.body,
+      url: payload.episodeId ? `/episodes/${payload.episodeId}` : '/',
+      tag: payload.type,
+    }),
+  }).catch(() => {})
 }
 
 export async function sendNotifications(

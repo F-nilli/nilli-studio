@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendPushToUser } from '@/lib/push'
 
 export async function POST(request: NextRequest) {
   // Verify session
@@ -58,6 +59,21 @@ export async function POST(request: NextRequest) {
 
   if (inserts.length > 0) {
     await admin.from('message_notifications').insert(inserts)
+
+    // Send push notifications
+    const authorName = allUsers.find(u => u.id === authorId)?.name ?? 'Someone'
+    await Promise.allSettled(
+      inserts.map(ins => {
+        const i = ins as { user_id: string; type: string }
+        const title = i.type === 'mention' ? `${authorName} mentioned you` : `${authorName} commented on your task`
+        return sendPushToUser(i.user_id, {
+          title,
+          body: body.slice(0, 100),
+          url: episodeId ? `/episodes/${episodeId}` : '/',
+          tag: 'comment',
+        })
+      })
+    )
   }
 
   return NextResponse.json({ ok: true })
