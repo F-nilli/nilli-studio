@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, AlertCircle, ChevronRight, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
-import { Episode, Task, User, TaskStatus, canCreateProject, canManageClients } from '@/lib/types'
+import { Episode, Task, User, TaskStatus, canCreateProject, canManageClients, canSeeAllEpisodes } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, isOverdue, formatDate } from '@/lib/utils'
 import { parseISO, differenceInDays, differenceInHours, format } from 'date-fns'
@@ -135,6 +135,8 @@ function CompletionCircle({ filling, filled }: { filling: boolean; filled: boole
 export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedEpisodes: initialPublished, memberFilterId }: Props) {
   const [filter, setFilter] = useState<'all' | 'active' | 'overdue' | 'archive'>('all')
   const [published, setPublished] = useState<Episode[]>(initialPublished)
+  const [liveEpisodes, setLiveEpisodes] = useState<Episode[]>(episodes)
+  const [liveTasks, setLiveTasks] = useState<Task[]>(tasks)
   // Circle completion animation state
   const [circleCompletingId, setCircleCompletingId] = useState<string | null>(null)
   const [circleCompletedIds, setCircleCompletedIds] = useState<Set<string>>(new Set())
@@ -149,6 +151,71 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const supabase = createClient()
   const router = useRouter()
 
+  // Realtime: episode inserts, updates (archive/restore), deletes
+  useEffect(() => {
+    const channel = supabase
+      .channel('board-episodes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'episodes' }, async (payload) => {
+        if (payload.eventType === 'INSERT') {
+          if (!canSeeAllEpisodes(currentUser)) return
+          const { data } = await supabase
+            .from('episodes')
+            .select('*, source:episodes!source_episode_id(id, guest_name, template_name)')
+            .eq('id', payload.new.id)
+            .single()
+          if (data && !(data as unknown as Episode).published_at) {
+            setLiveEpisodes(prev =>
+              [...prev, data as unknown as Episode]
+                .sort((a, b) => new Date(a.release_date).getTime() - new Date(b.release_date).getTime())
+            )
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Episode
+          if (updated.published_at) {
+            // Episode archived → remove from board, add to archive list
+            setLiveEpisodes(prev => prev.filter(e => e.id !== updated.id))
+            setPublished(prev => prev.some(e => e.id === updated.id) ? prev : [updated, ...prev])
+          } else {
+            // Episode updated or restored from archive
+            setLiveEpisodes(prev => {
+              if (prev.some(e => e.id === updated.id)) {
+                return prev.map(e => e.id === updated.id ? { ...e, ...updated } : e)
+              }
+              return [...prev, updated].sort((a, b) => new Date(a.release_date).getTime() - new Date(b.release_date).getTime())
+            })
+            setPublished(prev => prev.filter(e => e.id !== updated.id))
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = (payload.old as { id: string }).id
+          setLiveEpisodes(prev => prev.filter(e => e.id !== deletedId))
+          setPublished(prev => prev.filter(e => e.id !== deletedId))
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [currentUser.id])
+
+  // Realtime: task updates → live episode card counts
+  useEffect(() => {
+    const channel = supabase
+      .channel('board-tasks')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, (payload) => {
+        setLiveTasks(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t))
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, async (payload) => {
+        const newTask = payload.new as Task
+        if (!canSeeAllEpisodes(currentUser) && newTask.assignee_id !== currentUser.id) return
+        const { data } = await supabase
+          .from('tasks')
+          .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
+          .eq('id', newTask.id)
+          .single()
+        if (data) setLiveTasks(prev => [...prev, data as unknown as Task])
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [currentUser.id])
+
   const memberFilter = memberFilterId ? allUsers.find(u => u.id === memberFilterId) ?? null : null
   const canAct = canManageClients(currentUser)
 
@@ -161,7 +228,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
         completed_at: now,
         restored_at: null,
       }).eq('id', episodeId)
-      const ep = episodes.find(e => e.id === episodeId)
+      const ep = liveEpisodes.find(e => e.id === episodeId)
       if (ep) setPublished(prev => [{ ...ep, published_at: now, archived: true, completed_at: now, restored_at: null }, ...prev])
     } else {
       const ep = published.find(e => e.id === episodeId)
@@ -215,11 +282,11 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     setCircleUndoInfo(null)
   }
 
-  const episodesWithTasks = episodes
+  const episodesWithTasks = liveEpisodes
     .filter(ep => !circleArchivedIds.has(ep.id))
     .map(ep => ({
       ...ep,
-      tasks: tasks.filter(t => t.episode_id === ep.id),
+      tasks: liveTasks.filter(t => t.episode_id === ep.id),
     }))
 
   // Summary bar stats
@@ -267,7 +334,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[26px] font-bold text-white">Production Board</h1>
-          <p className="text-[#888] text-[15px] mt-1">{episodes.length} episode{episodes.length !== 1 ? 's' : ''}</p>
+          <p className="text-[#888] text-[15px] mt-1">{liveEpisodes.length} episode{liveEpisodes.length !== 1 ? 's' : ''}</p>
         </div>
         {canCreateProject(currentUser) && (
           <Link
@@ -304,7 +371,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       )}
 
       {/* Summary bar */}
-      {episodes.length > 0 && (
+      {liveEpisodes.length > 0 && (
         <div className="grid grid-cols-4 gap-4">
           {/* Active */}
           <div className="rounded-xl p-4" style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)' }}>
