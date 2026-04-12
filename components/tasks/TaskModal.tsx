@@ -34,8 +34,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   const supabase = createClient()
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [sendingBack, setSendingBack] = useState(false)
-  const [noteText, setNoteText] = useState('')
-  // { user: who to address the note to, taskId: which task to post it on }
+  const [noteText, setNoteText] = useState('')         // note for approve / submit action
+  const [sendBackNote, setSendBackNote] = useState('') // note for send back action (→ assignee)
+  // downstream task assignee for approve action
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
@@ -51,6 +52,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   // Eagerly determine who the note is for and where to post it
   useEffect(() => {
     setNoteText('')
+    setSendBackNote('')
     setNextUserForNote(null)
 
     async function compute() {
@@ -90,6 +92,27 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     compute()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.status])
+
+  async function maybePostSendBackNote() {
+    if (!sendBackNote.trim() || !task.assignee || task.assignee_id === currentUser.id) return
+    const assignee = task.assignee as User
+    const body = `→ ${assignee.name}: ${sendBackNote.trim()}`
+    const { data: comment } = await supabase
+      .from('comments')
+      .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+      .select('id').single()
+    if (comment) {
+      fetch('/api/notifications/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commentId: comment.id, authorId: currentUser.id,
+          taskId: task.id, episodeId: task.episode_id,
+          body, assigneeId: task.assignee_id,
+        }),
+      }).catch(() => {})
+    }
+  }
 
   async function maybePostNote() {
     if (!noteText.trim() || !nextUserForNote) return
@@ -233,6 +256,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   async function handleRevision() {
     setUpdatingStatus(true)
     setSendingBack(true)
+    await maybePostSendBackNote()
 
     const { data, error } = await supabase
       .from('tasks').update({ status: 'revision' }).eq('id', task.id)
@@ -268,8 +292,6 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     setUpdatingStatus(false)
     setSendingBack(false)
   }
-
-  const firstName = nextUserForNote?.user.name.split(' ')[0]
 
   return (
     <>
@@ -350,29 +372,13 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
           {/* Footer */}
           <div className="border-t p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
 
-            {/* Inline note box — shown when there's a next person to notify */}
-            {nextUserForNote && (canAction || canReview) && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Avatar
-                    name={nextUserForNote.user.name}
-                    color={nextUserForNote.user.avatar_color}
-                    size="sm"
-                    avatarUrl={nextUserForNote.user.avatar_url}
-                  />
-                  <span className="text-xs text-[#666]">
-                    Leave a note for <span className="text-[#aaa] font-medium">{firstName}</span>{' '}
-                    <span className="text-[#444]">(optional)</span>
-                  </span>
-                </div>
-                <textarea
-                  value={noteText}
-                  onChange={e => { if (e.target.value.length <= 300) setNoteText(e.target.value) }}
-                  placeholder={`Note for ${firstName}…`}
-                  rows={2}
-                  className="w-full px-2.5 py-2 bg-[#141414] border border-[#2e2e2e] rounded-lg text-sm text-white placeholder-[#444] resize-none focus:outline-none focus:ring-1 focus:ring-[#ff3c00] leading-relaxed"
-                />
-              </div>
+            {/* Assignee action: single note for approver */}
+            {canAction && nextUserForNote && (
+              <NoteField
+                user={nextUserForNote.user}
+                value={noteText}
+                onChange={setNoteText}
+              />
             )}
 
             {canAction && (
@@ -398,6 +404,26 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
               </button>
             )}
 
+            {/* Reviewer: two note fields aligned above their respective buttons */}
+            {canReview && (task.assignee || nextUserForNote) && (
+              <div className="grid grid-cols-2 gap-2">
+                {task.assignee && task.assignee_id !== currentUser.id ? (
+                  <NoteField
+                    user={task.assignee as User}
+                    value={sendBackNote}
+                    onChange={setSendBackNote}
+                  />
+                ) : <div />}
+                {nextUserForNote ? (
+                  <NoteField
+                    user={nextUserForNote.user}
+                    value={noteText}
+                    onChange={setNoteText}
+                  />
+                ) : <div />}
+              </div>
+            )}
+
             {canReview && (
               <div className="flex gap-2">
                 <button
@@ -420,5 +446,27 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
         </div>
       </div>
     </>
+  )
+}
+
+function NoteField({ user, value, onChange }: { user: User; value: string; onChange: (v: string) => void }) {
+  const firstName = user.name.split(' ')[0]
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5">
+        <Avatar name={user.name} color={user.avatar_color} size="sm" avatarUrl={user.avatar_url} />
+        <span className="text-xs text-[#666]">
+          Note for <span className="text-[#aaa] font-medium">{firstName}</span>{' '}
+          <span className="text-[#444]">(optional)</span>
+        </span>
+      </div>
+      <textarea
+        value={value}
+        onChange={e => { if (e.target.value.length <= 300) onChange(e.target.value) }}
+        placeholder={`Note for ${firstName}…`}
+        rows={2}
+        className="w-full px-2.5 py-2 bg-[#141414] border border-[#2e2e2e] rounded-lg text-sm text-white placeholder-[#444] resize-none focus:outline-none focus:ring-1 focus:ring-[#ff3c00] leading-relaxed"
+      />
+    </div>
   )
 }
