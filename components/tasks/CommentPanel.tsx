@@ -375,6 +375,7 @@ export function CommentPanel({
           const taskTrack = comment.task_id ? taskTracks[comment.task_id] : null
           const trackColor = taskTrack ? TRACK_COLORS[taskTrack] : '#888'
           const commentUnread = comment.task_id ? hasUnread(comment.task_id) : false
+          const isHandoff = comment.body.startsWith('→ ')
 
           return (
             <div
@@ -396,6 +397,9 @@ export function CommentPanel({
                 />
               </div>
               <div className={cn('max-w-[84%] flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
+                {isHandoff && (
+                  <span className="text-[10px] text-[#555] mb-0.5">↗ handoff note</span>
+                )}
                 {/* Task pill (ALL tab only) */}
                 {activeTab === 'all' && taskLabel && (
                   <span
@@ -430,8 +434,8 @@ export function CommentPanel({
                       : 'text-[#d0d0d0]'
                 )}
                 style={!comment.internal ? (isOwn
-                  ? { background: '#2d1f0e', border: '1px solid rgba(247,147,26,0.2)' }
-                  : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)' }
+                  ? { background: '#2d1f0e', border: '1px solid rgba(247,147,26,0.2)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
+                  : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
                 ) : {}}
                 >
                   {renderBody(comment.body)}

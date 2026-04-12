@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users } from 'lucide-react'
 import { differenceInDays, differenceInHours, format, parseISO } from 'date-fns'
@@ -11,6 +11,7 @@ import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
+import { HandoffNotePopup } from '@/components/tasks/HandoffNotePopup'
 import type { EpisodeProgress } from './page'
 
 const ACTIVE_STATUSES: TaskStatus[] = ['ready', 'in_progress', 'in_review', 'revision']
@@ -860,13 +861,54 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
 }) {
   const supabase = createClient()
   const [acting, setActing] = useState(false)
+  const [popup, setPopup] = useState<{ nextUser: User; actionLabel: string; sendLabel: string } | null>(null)
+  const pendingAction = useRef<(() => Promise<void>) | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseISO(task.due_date), new Date()) : null
   const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
-  async function handleAction(e: React.MouseEvent) {
-    e.stopPropagation()
+  async function getUnlockingAssignee(): Promise<User | null> {
+    const { data: allTasks } = await supabase.from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
+    if (!allTasks) return null
+    const approvedIds = new Set([
+      ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
+      task.id,
+    ])
+    const unlocking = allTasks.find(t =>
+      t.status === 'locked' && t.dep_task_ids.length > 0 &&
+      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+    )
+    if (!unlocking || unlocking.assignee_id === currentUser.id) return null
+    const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
+    return (data as User) ?? null
+  }
+
+  async function executeWithNote(note: string) {
+    const currentPopup = popup
+    setPopup(null)
+    if (note && currentPopup) {
+      const body = `→ ${currentPopup.nextUser.name}: ${note}`
+      const { data: comment } = await supabase
+        .from('comments')
+        .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+        .select('id').single()
+      if (comment) {
+        fetch('/api/notifications/comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            commentId: comment.id, authorId: currentUser.id,
+            taskId: task.id, episodeId: task.episode_id,
+            body, assigneeId: currentPopup.nextUser.id,
+          }),
+        }).catch(() => {})
+      }
+    }
+    await pendingAction.current?.()
+  }
+
+  async function doAction() {
     if (task.status === 'in_review') { onClick(); return }
 
     const rawNext: TaskStatus =
@@ -914,6 +956,38 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
     setActing(false)
   }
 
+  async function handleAction(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (task.status === 'in_review') { onClick(); return }
+
+    const rawNext: TaskStatus =
+      task.status === 'ready' || task.status === 'in_progress' ? 'in_review' :
+      task.status === 'revision' ? 'in_review' : task.status
+    const nextStatus: TaskStatus =
+      rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
+
+    let nextUser: User | null = null
+    if (nextStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
+      const approver = (task as Task & { approver?: User }).approver
+      nextUser = approver ?? null
+      if (!nextUser) {
+        const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
+        nextUser = data as User ?? null
+      }
+    } else if (nextStatus === 'approved') {
+      nextUser = await getUnlockingAssignee()
+    }
+
+    if (nextUser) {
+      const label = nextStatus === 'in_review' ? 'Submitting for review' : 'Marking done'
+      const sendLabel = nextStatus === 'in_review' ? 'Submit' : 'Done'
+      pendingAction.current = doAction
+      setPopup({ nextUser, actionLabel: label, sendLabel })
+    } else {
+      await doAction()
+    }
+  }
+
   return (
     <div
       onClick={onClick}
@@ -957,14 +1031,28 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
             </div>
           )}
         </div>
-        <button
-          onClick={handleAction}
-          disabled={acting}
-          className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
-        >
-          {acting ? '...' : getActionLabel(task)}
-        </button>
+        {!popup && (
+          <button
+            onClick={handleAction}
+            disabled={acting}
+            className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
+          >
+            {acting ? '...' : getActionLabel(task)}
+          </button>
+        )}
       </div>
+      {popup && (
+        <div className="mt-3" onClick={e => e.stopPropagation()}>
+          <HandoffNotePopup
+            actionLabel={popup.actionLabel}
+            sendLabel={popup.sendLabel}
+            nextUser={popup.nextUser}
+            onSkip={() => executeWithNote('')}
+            onSend={(note) => executeWithNote(note)}
+            onCancel={() => { setPopup(null); pendingAction.current = null }}
+          />
+        </div>
+      )}
     </div>
   )
 }

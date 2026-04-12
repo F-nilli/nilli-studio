@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -15,6 +15,7 @@ import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { parseISO, format } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
+import { HandoffNotePopup } from '@/components/tasks/HandoffNotePopup'
 
 interface TaskComment { count: number; latest: string }
 
@@ -611,6 +612,8 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [sendingBack, setSendingBack] = useState(false)
+  const [popup, setPopup] = useState<{ nextUser: User; actionLabel: string; sendLabel: string } | null>(null)
+  const pendingAction = useRef<(() => Promise<void>) | null>(null)
 
   // Close send back form if status changes (e.g., via realtime)
   useEffect(() => {
@@ -632,6 +635,87 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
       onDateChange(task.due_date, dateValue)
     }
     setEditingDate(false)
+  }
+
+  async function getUnlockingAssignee(): Promise<User | null> {
+    const { data: allTasks } = await supabase
+      .from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
+    if (!allTasks) return null
+    const approvedIds = new Set([
+      ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
+      task.id,
+    ])
+    const unlocking = allTasks.find(t =>
+      t.status === 'locked' && t.dep_task_ids.length > 0 &&
+      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+    )
+    if (!unlocking || unlocking.assignee_id === currentUser.id) return null
+    const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
+    return (data as User) ?? null
+  }
+
+  async function executeWithNote(note: string) {
+    const currentPopup = popup
+    setPopup(null)
+    if (note && currentPopup) {
+      const body = `→ ${currentPopup.nextUser.name}: ${note}`
+      const { data: comment } = await supabase
+        .from('comments')
+        .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+        .select('id').single()
+      if (comment) {
+        fetch('/api/notifications/comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            commentId: comment.id, authorId: currentUser.id,
+            taskId: task.id, episodeId: task.episode_id,
+            body, assigneeId: currentPopup.nextUser.id,
+          }),
+        }).catch(() => {})
+      }
+    }
+    await pendingAction.current?.()
+  }
+
+  async function handleStatusActionWithPopup() {
+    const resolvedStatus: TaskStatus | null =
+      task.status === 'ready' ? 'in_progress' :
+      task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
+      task.status === 'revision' ? 'in_review' :
+      null
+    if (!resolvedStatus) return
+
+    let nextUser: User | null = null
+    if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
+      const approver = task.approver as User | undefined
+      nextUser = approver ?? null
+      if (!nextUser) {
+        const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
+        nextUser = data as User ?? null
+      }
+    } else if (resolvedStatus === 'done') {
+      nextUser = await getUnlockingAssignee()
+    }
+
+    if (nextUser) {
+      const label = resolvedStatus === 'in_review' ? 'Submitting for review' : 'Marking done'
+      const sendLabel = resolvedStatus === 'in_review' ? 'Submit' : 'Done'
+      pendingAction.current = handleStatusAction
+      setPopup({ nextUser, actionLabel: label, sendLabel })
+    } else {
+      await handleStatusAction()
+    }
+  }
+
+  async function handleApproveWithPopup() {
+    const nextUser = await getUnlockingAssignee()
+    if (nextUser) {
+      pendingAction.current = handleApprove
+      setPopup({ nextUser, actionLabel: 'Approving task', sendLabel: 'Approve' })
+    } else {
+      await handleApprove()
+    }
   }
 
   async function handleStatusAction() {
@@ -858,12 +942,26 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
         )}
       </button>
 
+      {/* Handoff note popup */}
+      {popup && (
+        <div className="px-4 pb-4" onClick={e => e.stopPropagation()}>
+          <HandoffNotePopup
+            actionLabel={popup.actionLabel}
+            sendLabel={popup.sendLabel}
+            nextUser={popup.nextUser}
+            onSkip={() => executeWithNote('')}
+            onSend={(note) => executeWithNote(note)}
+            onCancel={() => { setPopup(null); pendingAction.current = null }}
+          />
+        </div>
+      )}
+
       {/* Inline action buttons */}
-      {(showAssigneeAction || showApproverActions) && (
+      {!popup && (showAssigneeAction || showApproverActions) && (
         <div className="px-4 pb-4 flex items-center gap-2" onClick={e => e.stopPropagation()}>
           {showAssigneeAction && (
             <button
-              onClick={handleStatusAction}
+              onClick={handleStatusActionWithPopup}
               disabled={actionLoading}
               className="btn-primary flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
             >
@@ -892,7 +990,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
                 Send Back
               </button>
               <button
-                onClick={handleApprove}
+                onClick={handleApproveWithPopup}
                 disabled={actionLoading}
                 className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
               >

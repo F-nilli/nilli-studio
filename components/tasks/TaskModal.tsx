@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { X, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Task, User, TaskStatus, Episode } from '@/lib/types'
@@ -10,6 +10,7 @@ import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { Spinner } from '@/components/ui/Spinner'
+import { HandoffNotePopup } from '@/components/tasks/HandoffNotePopup'
 
 interface Props {
   task: Task
@@ -34,6 +35,8 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   const supabase = createClient()
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [sendingBack, setSendingBack] = useState(false)
+  const [popup, setPopup] = useState<{ nextUser: User; actionLabel: string; sendLabel: string } | null>(null)
+  const pendingAction = useRef<(() => Promise<void>) | null>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
   const isReviewer = task.requires_approval
@@ -41,6 +44,82 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     : false
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
+
+  async function getUnlockingAssignee(): Promise<User | null> {
+    const { data: allTasks } = await supabase.from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
+    if (!allTasks) return null
+    const approvedIds = new Set([
+      ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
+      task.id,
+    ])
+    const unlocking = allTasks.find(t =>
+      t.status === 'locked' && t.dep_task_ids.length > 0 &&
+      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+    )
+    if (!unlocking || unlocking.assignee_id === currentUser.id) return null
+    const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
+    return (data as User) ?? null
+  }
+
+  async function executeWithNote(note: string) {
+    const currentPopup = popup
+    setPopup(null)
+    if (note && currentPopup) {
+      const body = `→ ${currentPopup.nextUser.name}: ${note}`
+      const { data: comment } = await supabase
+        .from('comments')
+        .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+        .select('id').single()
+      if (comment) {
+        fetch('/api/notifications/comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            commentId: comment.id, authorId: currentUser.id,
+            taskId: task.id, episodeId: task.episode_id,
+            body, assigneeId: currentPopup.nextUser.id,
+          }),
+        }).catch(() => {})
+      }
+    }
+    await pendingAction.current?.()
+  }
+
+  async function updateStatusWithPopup(newStatus: TaskStatus) {
+    const resolvedStatus: TaskStatus =
+      newStatus === 'in_review' && !task.approver_id ? 'done' : newStatus
+
+    let nextUser: User | null = null
+    if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
+      const approver = task.approver as User | undefined
+      nextUser = approver ?? null
+      if (!nextUser) {
+        const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
+        nextUser = data as User ?? null
+      }
+    } else if (resolvedStatus === 'done') {
+      nextUser = await getUnlockingAssignee()
+    }
+
+    if (nextUser) {
+      const label = resolvedStatus === 'in_review' ? 'Submitting for review' : 'Marking done'
+      const sendLabel = resolvedStatus === 'in_review' ? 'Submit' : 'Done'
+      pendingAction.current = () => updateStatus(newStatus)
+      setPopup({ nextUser, actionLabel: label, sendLabel })
+    } else {
+      await updateStatus(newStatus)
+    }
+  }
+
+  async function handleApproveWithPopup() {
+    const nextUser = await getUnlockingAssignee()
+    if (nextUser) {
+      pendingAction.current = handleApprove
+      setPopup({ nextUser, actionLabel: 'Approving task', sendLabel: 'Approve' })
+    } else {
+      await handleApprove()
+    }
+  }
 
   async function updateStatus(newStatus: TaskStatus) {
     // Tasks with no approver go straight to 'done'; tasks with an approver go to 'in_review'
@@ -281,9 +360,20 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
 
           {/* Footer */}
           <div className="border-t p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-            {canAction && (
+            {popup && (
+              <HandoffNotePopup
+                actionLabel={popup.actionLabel}
+                sendLabel={popup.sendLabel}
+                nextUser={popup.nextUser}
+                onSkip={() => executeWithNote('')}
+                onSend={(note) => executeWithNote(note)}
+                onCancel={() => { setPopup(null); pendingAction.current = null }}
+              />
+            )}
+
+            {!popup && canAction && (
               <button
-                onClick={() => updateStatus(nextStatus!)}
+                onClick={() => updateStatusWithPopup(nextStatus!)}
                 disabled={updatingStatus}
                 className="btn-primary w-full py-2.5 px-4 disabled:cursor-not-allowed cursor-pointer text-white font-semibold rounded-lg text-base"
               >
@@ -304,7 +394,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
               </button>
             )}
 
-            {canReview && (
+            {!popup && canReview && (
               <div className="flex gap-2">
                 <button
                   onClick={handleRevision}
@@ -314,7 +404,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                   {updatingStatus ? <span className="flex items-center justify-center gap-2"><Spinner />Sending...</span> : 'Send Back'}
                 </button>
                 <button
-                  onClick={handleApprove}
+                  onClick={handleApproveWithPopup}
                   disabled={updatingStatus}
                   className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base disabled:cursor-not-allowed cursor-pointer"
                 >
