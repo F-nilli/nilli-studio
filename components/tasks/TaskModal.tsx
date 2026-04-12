@@ -33,6 +33,7 @@ const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
 export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Props) {
   const supabase = createClient()
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [sendingBack, setSendingBack] = useState(false)
 
   const isAssignee = task.assignee_id === currentUser.id
   const isReviewer = task.requires_approval
@@ -165,6 +166,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
 
   async function handleRevision() {
     setUpdatingStatus(true)
+    setSendingBack(true)
     const { data } = await supabase
       .from('tasks').update({ status: 'revision' }).eq('id', task.id)
       .select('*, assignee:users(*)').single()
@@ -193,6 +195,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
       onClose()
     }
     setUpdatingStatus(false)
+    setSendingBack(false)
   }
 
   const nextStatus = NEXT_STATUS[task.status]
@@ -315,7 +318,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                   disabled={updatingStatus}
                   className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {updatingStatus ? <span className="flex items-center justify-center gap-2"><Spinner />Approving...</span> : 'Approve'}
+                  {updatingStatus && !sendingBack ? <span className="flex items-center justify-center gap-2"><Spinner />Approving...</span> : 'Approve'}
                 </button>
               </div>
             )}
