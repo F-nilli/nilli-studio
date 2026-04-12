@@ -67,8 +67,24 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
             const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
             if (data) setNextUserForNote({ user: data as User, taskId: task.id })
           }
+        } else if (resolvedStatus === 'done') {
+          // No approver — note goes to downstream unlocking task's assignee
+          const { data: allTasks } = await supabase
+            .from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
+          if (!allTasks) return
+          const approvedIds = new Set([
+            ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
+            task.id,
+          ])
+          const unlocking = allTasks.find(t =>
+            t.status === 'locked' && t.dep_task_ids.length > 0 &&
+            t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+          )
+          if (unlocking && unlocking.assignee_id !== currentUser.id) {
+            const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
+            if (data) setNextUserForNote({ user: data as User, taskId: unlocking.id })
+          }
         }
-        // For 'done' with no approver — no downstream note shown here (rare path)
       } else if (canReview) {
         // Note goes to downstream task's assignee (the task that will be unlocked by this approval)
         const { data: allTasks } = await supabase
