@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -15,7 +15,6 @@ import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { parseISO, format } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
-import { HandoffNotePopup } from '@/components/tasks/HandoffNotePopup'
 
 interface TaskComment { count: number; latest: string }
 
@@ -612,8 +611,8 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [sendingBack, setSendingBack] = useState(false)
-  const [popup, setPopup] = useState<{ nextUser: User; actionLabel: string; sendLabel: string } | null>(null)
-  const pendingAction = useRef<(() => Promise<void>) | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
 
   // Close send back form if status changes (e.g., via realtime)
   useEffect(() => {
@@ -630,6 +629,47 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     if (!editingDate) setDateValue(toDatetimeLocal(task.due_date))
   }, [task.due_date, editingDate])
 
+  // Eagerly determine next person for inline note
+  useEffect(() => {
+    setNoteText('')
+    setNextUserForNote(null)
+    async function compute() {
+      if (showAssigneeAction) {
+        const resolvedStatus =
+          task.status === 'ready' ? 'in_progress' :
+          task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
+          task.status === 'revision' ? 'in_review' : null
+        if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
+          const approver = task.approver as User | undefined
+          if (approver?.name) {
+            setNextUserForNote({ user: approver, taskId: task.id })
+          } else {
+            const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
+            if (data) setNextUserForNote({ user: data as User, taskId: task.id })
+          }
+        }
+      } else if (showApproverActions) {
+        const { data: allTasks } = await supabase
+          .from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
+        if (!allTasks) return
+        const approvedIds = new Set([
+          ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
+          task.id,
+        ])
+        const unlocking = allTasks.find(t =>
+          t.status === 'locked' && t.dep_task_ids.length > 0 &&
+          t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+        )
+        if (unlocking && unlocking.assignee_id !== currentUser.id) {
+          const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
+          if (data) setNextUserForNote({ user: data as User, taskId: unlocking.id })
+        }
+      }
+    }
+    compute()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.status])
+
   function commitDate() {
     if (dateValue && dateValue !== toDatetimeLocal(task.due_date)) {
       onDateChange(task.due_date, dateValue)
@@ -637,85 +677,23 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     setEditingDate(false)
   }
 
-  async function getUnlockingAssignee(): Promise<User | null> {
-    const { data: allTasks } = await supabase
-      .from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
-    if (!allTasks) return null
-    const approvedIds = new Set([
-      ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
-      task.id,
-    ])
-    const unlocking = allTasks.find(t =>
-      t.status === 'locked' && t.dep_task_ids.length > 0 &&
-      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
-    )
-    if (!unlocking || unlocking.assignee_id === currentUser.id) return null
-    const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
-    return (data as User) ?? null
-  }
-
-  async function executeWithNote(note: string) {
-    const currentPopup = popup
-    setPopup(null)
-    if (note && currentPopup) {
-      const body = `→ ${currentPopup.nextUser.name}: ${note}`
-      const { data: comment } = await supabase
-        .from('comments')
-        .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
-        .select('id').single()
-      if (comment) {
-        fetch('/api/notifications/comment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commentId: comment.id, authorId: currentUser.id,
-            taskId: task.id, episodeId: task.episode_id,
-            body, assigneeId: currentPopup.nextUser.id,
-          }),
-        }).catch(() => {})
-      }
-    }
-    await pendingAction.current?.()
-  }
-
-  async function handleStatusActionWithPopup() {
-    const resolvedStatus: TaskStatus | null =
-      task.status === 'ready' ? 'in_progress' :
-      task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
-      task.status === 'revision' ? 'in_review' :
-      null
-    if (!resolvedStatus) return
-
-    let nextUser: User | null = null
-    if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
-      const approver = task.approver as User | undefined
-      nextUser = approver ?? null
-      if (!nextUser) {
-        const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
-        nextUser = data as User ?? null
-      }
-    } else if (resolvedStatus === 'done') {
-      nextUser = await getUnlockingAssignee()
-    }
-
-    if (nextUser) {
-      const label = resolvedStatus === 'in_review' ? 'Submitting for review' : 'Marking done'
-      const sendLabel = resolvedStatus === 'in_review' ? 'Submit' : 'Done'
-      pendingAction.current = handleStatusAction
-      setPopup({ nextUser, actionLabel: label, sendLabel })
-    } else {
-      await handleStatusAction()
-    }
-  }
-
-  async function handleApproveWithPopup() {
-    const assignee = task.assignee as User | undefined
-    const nextUser = assignee && assignee.id !== currentUser.id ? assignee : await getUnlockingAssignee()
-    if (nextUser) {
-      pendingAction.current = handleApprove
-      setPopup({ nextUser, actionLabel: 'Approving task', sendLabel: 'Approve' })
-    } else {
-      await handleApprove()
+  async function maybePostNote() {
+    if (!noteText.trim() || !nextUserForNote) return
+    const body = `→ ${nextUserForNote.user.name}: ${noteText.trim()}`
+    const { data: comment } = await supabase
+      .from('comments')
+      .insert({ task_id: nextUserForNote.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+      .select('id').single()
+    if (comment) {
+      fetch('/api/notifications/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commentId: comment.id, authorId: currentUser.id,
+          taskId: nextUserForNote.taskId, episodeId: task.episode_id,
+          body, assigneeId: nextUserForNote.user.id,
+        }),
+      }).catch(() => {})
     }
   }
 
@@ -729,6 +707,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     if (!resolvedStatus) return
     setActionLoading(true)
     setActionError(null)
+    await maybePostNote()
 
     const updatePayload: Record<string, unknown> = { status: resolvedStatus }
     if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
@@ -784,6 +763,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
   async function handleApprove() {
     setActionLoading(true)
     setActionError(null)
+    await maybePostNote()
 
     const { data, error } = await supabase
       .from('tasks').update({ status: 'approved' }).eq('id', task.id)
@@ -943,62 +923,67 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
         )}
       </button>
 
-      {/* Handoff note popup */}
-      {popup && (
-        <div className="px-4 pb-4" onClick={e => e.stopPropagation()}>
-          <HandoffNotePopup
-            actionLabel={popup.actionLabel}
-            sendLabel={popup.sendLabel}
-            nextUser={popup.nextUser}
-            onSkip={() => executeWithNote('')}
-            onSend={(note) => executeWithNote(note)}
-            onCancel={() => { setPopup(null); pendingAction.current = null }}
-          />
-        </div>
-      )}
-
-      {/* Inline action buttons */}
-      {!popup && (showAssigneeAction || showApproverActions) && (
-        <div className="px-4 pb-4 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          {showAssigneeAction && (
-            <button
-              onClick={handleStatusActionWithPopup}
-              disabled={actionLoading}
-              className="btn-primary flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
-            >
-              {actionLoading
-                ? <span className="flex items-center justify-center gap-1.5"><Spinner />{
-                    actionLabel === 'Submit for Review' ? 'Submitting…' :
-                    actionLabel === 'Mark Done' ? 'Saving…' :
-                    actionLabel === 'Start' ? 'Starting…' :
-                    actionLabel === 'Resubmit' ? 'Submitting…' : 'Updating…'
-                  }</span>
-                : actionLabel}
-            </button>
+      {/* Inline note box + action buttons */}
+      {(showAssigneeAction || showApproverActions) && (
+        <div className="px-4 pb-4 space-y-2" onClick={e => e.stopPropagation()}>
+          {nextUserForNote && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Avatar name={nextUserForNote.user.name} color={nextUserForNote.user.avatar_color} size="sm" avatarUrl={nextUserForNote.user.avatar_url} />
+                <span className="text-[11px] text-[#555]">
+                  Note for <span className="text-[#888] font-medium">{nextUserForNote.user.name.split(' ')[0]}</span> <span className="text-[#444]">(optional)</span>
+                </span>
+              </div>
+              <textarea
+                value={noteText}
+                onChange={e => { if (e.target.value.length <= 300) setNoteText(e.target.value) }}
+                placeholder={`Note for ${nextUserForNote.user.name.split(' ')[0]}…`}
+                rows={2}
+                className="w-full px-2 py-1.5 bg-[#141414] border border-[#2e2e2e] rounded text-xs text-white placeholder-[#444] resize-none focus:outline-none focus:ring-1 focus:ring-[#ff3c00] leading-relaxed"
+              />
+            </div>
           )}
-          {showApproverActions && (
-            <>
+          <div className="flex items-center gap-2">
+            {showAssigneeAction && (
               <button
-                onClick={() => setSendBackOpen(s => !s)}
+                onClick={handleStatusAction}
                 disabled={actionLoading}
-                className={cn(
-                  'flex-1 py-1.5 px-3 border text-xs font-semibold rounded-lg transition-colors disabled:opacity-50',
-                  sendBackOpen
-                    ? 'border-[#ff3c00]/70 bg-[#ff3c00]/10 text-[#ff6644] cursor-pointer'
-                    : 'border-[#ff3c00]/30 hover:border-[#ff3c00]/60 hover:bg-[#ff3c00]/5 text-[#ff6644] cursor-pointer'
-                )}
+                className="btn-primary flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
               >
-                Send Back
+                {actionLoading
+                  ? <span className="flex items-center justify-center gap-1.5"><Spinner />{
+                      actionLabel === 'Submit for Review' ? 'Submitting…' :
+                      actionLabel === 'Mark Done' ? 'Saving…' :
+                      actionLabel === 'Start' ? 'Starting…' :
+                      actionLabel === 'Resubmit' ? 'Submitting…' : 'Updating…'
+                    }</span>
+                  : actionLabel}
               </button>
-              <button
-                onClick={handleApproveWithPopup}
-                disabled={actionLoading}
-                className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
-              >
-                {actionLoading && !sendingBack ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
-              </button>
-            </>
-          )}
+            )}
+            {showApproverActions && (
+              <>
+                <button
+                  onClick={() => setSendBackOpen(s => !s)}
+                  disabled={actionLoading}
+                  className={cn(
+                    'flex-1 py-1.5 px-3 border text-xs font-semibold rounded-lg transition-colors disabled:opacity-50',
+                    sendBackOpen
+                      ? 'border-[#ff3c00]/70 bg-[#ff3c00]/10 text-[#ff6644] cursor-pointer'
+                      : 'border-[#ff3c00]/30 hover:border-[#ff3c00]/60 hover:bg-[#ff3c00]/5 text-[#ff6644] cursor-pointer'
+                  )}
+                >
+                  Send Back
+                </button>
+                <button
+                  onClick={handleApprove}
+                  disabled={actionLoading}
+                  className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
+                >
+                  {actionLoading && !sendingBack ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 

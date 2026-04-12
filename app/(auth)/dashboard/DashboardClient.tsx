@@ -1,17 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users } from 'lucide-react'
 import { differenceInDays, differenceInHours, format, parseISO } from 'date-fns'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
+import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
-import { HandoffNotePopup } from '@/components/tasks/HandoffNotePopup'
 import type { EpisodeProgress } from './page'
 
 const ACTIVE_STATUSES: TaskStatus[] = ['ready', 'in_progress', 'in_review', 'revision']
@@ -861,79 +861,101 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
 }) {
   const supabase = createClient()
   const [acting, setActing] = useState(false)
-  const [popup, setPopup] = useState<{ nextUser: User; actionLabel: string; sendLabel: string } | null>(null)
-  const pendingAction = useRef<(() => Promise<void>) | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseISO(task.due_date), new Date()) : null
   const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
-  async function getUnlockingAssignee(): Promise<User | null> {
-    const { data: allTasks } = await supabase.from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
-    if (!allTasks) return null
-    const approvedIds = new Set([
-      ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
-      task.id,
-    ])
-    const unlocking = allTasks.find(t =>
-      t.status === 'locked' && t.dep_task_ids.length > 0 &&
-      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
-    )
-    if (!unlocking || unlocking.assignee_id === currentUser.id) return null
-    const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
-    return (data as User) ?? null
-  }
+  // Eagerly determine next person for inline note
+  useEffect(() => {
+    setNoteText('')
+    setNextUserForNote(null)
+    if (task.status === 'in_review') return // opens modal, no note here
 
-  async function executeWithNote(note: string) {
-    const currentPopup = popup
-    setPopup(null)
-    if (note && currentPopup) {
-      const body = `→ ${currentPopup.nextUser.name}: ${note}`
-      const { data: comment } = await supabase
-        .from('comments')
-        .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
-        .select('id').single()
-      if (comment) {
-        fetch('/api/notifications/comment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commentId: comment.id, authorId: currentUser.id,
-            taskId: task.id, episodeId: task.episode_id,
-            body, assigneeId: currentPopup.nextUser.id,
-          }),
-        }).catch(() => {})
+    async function compute() {
+      const rawNext: TaskStatus =
+        task.status === 'ready' || task.status === 'in_progress' ? 'in_review' :
+        task.status === 'revision' ? 'in_review' : task.status
+      const nextStatus: TaskStatus =
+        rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
+
+      if (nextStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
+        const approver = (task as Task & { approver?: User }).approver
+        if (approver?.name) {
+          setNextUserForNote({ user: approver, taskId: task.id })
+        } else {
+          const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
+          if (data) setNextUserForNote({ user: data as User, taskId: task.id })
+        }
+      } else if (nextStatus === 'approved') {
+        // Find downstream locked task that will be unlocked
+        const { data: allTasks } = await supabase
+          .from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
+        if (!allTasks) return
+        const approvedIds = new Set([
+          ...allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id),
+          task.id,
+        ])
+        const unlocking = allTasks.find(t =>
+          t.status === 'locked' && t.dep_task_ids.length > 0 &&
+          t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+        )
+        if (unlocking && unlocking.assignee_id !== currentUser.id) {
+          const { data } = await supabase.from('users').select('*').eq('id', unlocking.assignee_id).single()
+          if (data) setNextUserForNote({ user: data as User, taskId: unlocking.id })
+        }
       }
     }
-    await pendingAction.current?.()
+    compute()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.status])
+
+  async function maybePostNote() {
+    if (!noteText.trim() || !nextUserForNote) return
+    const body = `→ ${nextUserForNote.user.name}: ${noteText.trim()}`
+    const { data: comment } = await supabase
+      .from('comments')
+      .insert({ task_id: nextUserForNote.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+      .select('id').single()
+    if (comment) {
+      fetch('/api/notifications/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commentId: comment.id, authorId: currentUser.id,
+          taskId: nextUserForNote.taskId, episodeId: task.episode_id,
+          body, assigneeId: nextUserForNote.user.id,
+        }),
+      }).catch(() => {})
+    }
   }
 
-  async function doAction() {
+  async function handleAction(e: React.MouseEvent) {
+    e.stopPropagation()
     if (task.status === 'in_review') { onClick(); return }
 
     const rawNext: TaskStatus =
       task.status === 'ready' || task.status === 'in_progress' ? 'in_review' :
       task.status === 'revision' ? 'in_review' : task.status
-
     const nextStatus: TaskStatus =
       rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
 
     setActing(true)
+    await maybePostNote()
+
     const updatePayload: Record<string, unknown> = { status: nextStatus }
     if (nextStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
     const { data } = await supabase
-      .from('tasks')
-      .update(updatePayload)
-      .eq('id', task.id)
-      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
-      .single()
+      .from('tasks').update(updatePayload).eq('id', task.id)
+      .select('*').single()
 
     if (data) {
       onUpdate(data as unknown as Task)
       if (nextStatus === 'approved') {
         fetch('/api/episodes/check-triggers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
         }).catch(() => {})
       }
@@ -947,8 +969,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
           })
         }
         fetch('/api/slack/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }),
         }).catch(() => {})
       }
@@ -956,37 +977,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
     setActing(false)
   }
 
-  async function handleAction(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (task.status === 'in_review') { onClick(); return }
-
-    const rawNext: TaskStatus =
-      task.status === 'ready' || task.status === 'in_progress' ? 'in_review' :
-      task.status === 'revision' ? 'in_review' : task.status
-    const nextStatus: TaskStatus =
-      rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
-
-    let nextUser: User | null = null
-    if (nextStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
-      const approver = (task as Task & { approver?: User }).approver
-      nextUser = approver ?? null
-      if (!nextUser) {
-        const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
-        nextUser = data as User ?? null
-      }
-    } else if (nextStatus === 'approved') {
-      nextUser = await getUnlockingAssignee()
-    }
-
-    if (nextUser) {
-      const label = nextStatus === 'in_review' ? 'Submitting for review' : 'Marking done'
-      const sendLabel = nextStatus === 'in_review' ? 'Submit' : 'Done'
-      pendingAction.current = doAction
-      setPopup({ nextUser, actionLabel: label, sendLabel })
-    } else {
-      await doAction()
-    }
-  }
+  const firstName = nextUserForNote?.user.name.split(' ')[0]
 
   return (
     <div
@@ -1031,25 +1022,28 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
             </div>
           )}
         </div>
-        {!popup && (
-          <button
-            onClick={handleAction}
-            disabled={acting}
-            className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
-          >
-            {acting ? '...' : getActionLabel(task)}
-          </button>
-        )}
+        <button
+          onClick={handleAction}
+          disabled={acting}
+          className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
+        >
+          {acting ? '...' : getActionLabel(task)}
+        </button>
       </div>
-      {popup && (
-        <div className="mt-3" onClick={e => e.stopPropagation()}>
-          <HandoffNotePopup
-            actionLabel={popup.actionLabel}
-            sendLabel={popup.sendLabel}
-            nextUser={popup.nextUser}
-            onSkip={() => executeWithNote('')}
-            onSend={(note) => executeWithNote(note)}
-            onCancel={() => { setPopup(null); pendingAction.current = null }}
+      {nextUserForNote && task.status !== 'in_review' && (
+        <div className="mt-3 space-y-1" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-1.5">
+            <Avatar name={nextUserForNote.user.name} color={nextUserForNote.user.avatar_color} size="sm" avatarUrl={nextUserForNote.user.avatar_url} />
+            <span className="text-xs text-[#555]">
+              Note for <span className="text-[#888] font-medium">{firstName}</span> <span className="text-[#444]">(optional)</span>
+            </span>
+          </div>
+          <textarea
+            value={noteText}
+            onChange={e => { if (e.target.value.length <= 300) setNoteText(e.target.value) }}
+            placeholder={`Note for ${firstName}…`}
+            rows={2}
+            className="w-full px-2.5 py-2 bg-[#141414] border border-[#2e2e2e] rounded-lg text-xs text-white placeholder-[#444] resize-none focus:outline-none focus:ring-1 focus:ring-[#ff3c00] leading-relaxed"
           />
         </div>
       )}
