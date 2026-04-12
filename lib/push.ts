@@ -1,12 +1,6 @@
 import webpush from 'web-push'
 import { createAdminClient } from './supabase/admin'
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
-
 interface PushPayload {
   title: string
   body: string
@@ -15,6 +9,11 @@ interface PushPayload {
 }
 
 export async function sendPushToUser(userId: string, payload: PushPayload) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT!,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!
+  )
   const admin = createAdminClient()
   const { data: subs } = await admin
     .from('push_subscriptions')
