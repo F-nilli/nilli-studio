@@ -709,7 +709,8 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
   }
 
   async function handleApproveWithPopup() {
-    const nextUser = await getUnlockingAssignee()
+    const assignee = task.assignee as User | undefined
+    const nextUser = assignee && assignee.id !== currentUser.id ? assignee : await getUnlockingAssignee()
     if (nextUser) {
       pendingAction.current = handleApprove
       setPopup({ nextUser, actionLabel: 'Approving task', sendLabel: 'Approve' })

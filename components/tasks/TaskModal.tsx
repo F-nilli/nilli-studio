@@ -112,7 +112,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   }
 
   async function handleApproveWithPopup() {
-    const nextUser = await getUnlockingAssignee()
+    // Show popup for the assignee (whose work is being approved) if they're a different person
+    const assignee = task.assignee as User | undefined
+    const nextUser = assignee && assignee.id !== currentUser.id ? assignee : await getUnlockingAssignee()
     if (nextUser) {
       pendingAction.current = handleApprove
       setPopup({ nextUser, actionLabel: 'Approving task', sendLabel: 'Approve' })
