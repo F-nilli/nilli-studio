@@ -1000,7 +1000,11 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
             allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id)
           )
           for (const t of allTasksForSlack) {
-            if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+            if (
+              (t.status === 'ready' || t.status === 'in_progress') &&
+              t.dep_task_ids.length > 0 &&
+              t.dep_task_ids.every((d: string) => approvedIds.has(d))
+            ) {
               nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
             }
           }

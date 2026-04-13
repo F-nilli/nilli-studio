@@ -853,7 +853,9 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
           episodeId: task.episode_id,
         })
       }
-      // Compute which locked tasks will be unlocked by this approval
+      // Compute active tasks to show as "next" in the Slack approval message.
+      // We look for ready/in_progress tasks (not locked) because checkAndUnlockDependencies
+      // has already run and transitioned newly-unblocked tasks from locked → ready.
       const { data: allTasksForSlack } = await supabase
         .from('tasks')
         .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
@@ -864,7 +866,11 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
           allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id)
         )
         for (const t of allTasksForSlack) {
-          if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+          if (
+            (t.status === 'ready' || t.status === 'in_progress') &&
+            t.dep_task_ids.length > 0 &&
+            t.dep_task_ids.every((d: string) => approvedIds.has(d))
+          ) {
             nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
           }
         }
