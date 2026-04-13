@@ -772,15 +772,17 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     const updatePayload: Record<string, unknown> = { status: resolvedStatus }
     if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
 
-    if (resolvedStatus === 'in_review' && task.requires_approval && task.approver_id && task.approver_id !== currentUser.id) {
-      await sendNotification(supabase, {
-        userId: task.approver_id,
-        type: 'task_submitted_review',
-        title: 'Task submitted for review',
-        body: `${currentUser.name} submitted "${task.label}" for review`,
-        taskId: task.id,
-        episodeId: task.episode_id,
-      })
+    if (resolvedStatus === 'in_review' && task.requires_approval) {
+      if (task.approver_id && task.approver_id !== currentUser.id) {
+        await sendNotification(supabase, {
+          userId: task.approver_id,
+          type: 'task_submitted_review',
+          title: 'Task submitted for review',
+          body: `${currentUser.name} submitted "${task.label}" for review`,
+          taskId: task.id,
+          episodeId: task.episode_id,
+        })
+      }
       fetch('/api/slack/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
