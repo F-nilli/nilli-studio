@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Bell, CheckCircle, RotateCcw, Clock, LockOpen } from 'lucide-react'
+import { X, Bell, CheckCircle, RotateCcw, Clock, LockOpen, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { User, Notification, NotificationType } from '@/lib/types'
@@ -69,6 +69,11 @@ export function NotificationDrawer({ user, onClose }: Props) {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
   }
 
+  async function markOneRead(id: string) {
+    await supabase.from('notifications').update({ read: true }).eq('id', id)
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  }
+
   async function handleClick(n: Notification) {
     if (!n.read) {
       await supabase.from('notifications').update({ read: true }).eq('id', n.id)
@@ -121,7 +126,7 @@ export function NotificationDrawer({ user, onClose }: Props) {
             </div>
           ) : (
             notifications.map(n => (
-              <button
+              <div
                 key={n.id}
                 onClick={() => handleClick(n)}
                 className={cn(
@@ -139,10 +144,19 @@ export function NotificationDrawer({ user, onClose }: Props) {
                     <p className="text-[11px] text-[#555] mt-1.5">{formatRelativeTime(n.created_at)}</p>
                   </div>
                   {!n.read && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#ff3c00] shrink-0 mt-1.5" />
+                    <div className="flex items-start gap-1.5 shrink-0">
+                      <button
+                        onClick={e => { e.stopPropagation(); markOneRead(n.id) }}
+                        title="Mark as read"
+                        className="mt-0.5 p-0.5 rounded text-[#444] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#ff3c00] shrink-0 mt-1.5" />
+                    </div>
                   )}
                 </div>
-              </button>
+              </div>
             ))
           )}
         </div>
