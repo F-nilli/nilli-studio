@@ -338,7 +338,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
             return (
               <div
                 key={i}
-                className="py-1 px-1 space-y-0.5 min-h-[30px]"
+                className="py-1 px-1 space-y-0.5 min-h-[30px] overflow-hidden min-w-0"
                 style={{ borderLeft: '1px solid rgba(255,255,255,0.07)', background: i % 2 === 0 ? '#1a1a1a' : '#181818' }}
               >
                 {dayEpisodes.map(ep => (
@@ -387,7 +387,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
                 return (
                   <div
                     key={colIdx}
-                    className="relative p-0.5 space-y-0.5"
+                    className="relative p-0.5 space-y-0.5 overflow-hidden min-w-0"
                     style={{ background: colBg, borderLeft: '1px solid rgba(255,255,255,0.07)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                   >
                     {dayTasksAtHour.map(task => (
