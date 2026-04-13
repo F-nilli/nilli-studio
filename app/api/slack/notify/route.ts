@@ -49,6 +49,9 @@ export async function POST(request: Request) {
   }
 
   const result = await postToSlack(settings.slack_bot_token, client.slack_channel_id, blocks)
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 500 })
+  if (!result.ok) {
+    console.error('[Slack] postMessage failed:', result.error, { type, episodeId })
+    return NextResponse.json({ error: result.error }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }

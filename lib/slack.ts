@@ -1,13 +1,18 @@
 // Slack Web API utilities — server-side only
 
 export async function postToSlack(token: string, channel: string, blocks: object[]) {
+  // Derive a plain-text fallback from the first header or section block
+  // (used by Slack for mobile push previews and accessibility)
+  type AnyBlock = { type: string; text?: { text: string } }
+  const fallback = (blocks as AnyBlock[]).find(b => b.type === 'header' || b.type === 'section')?.text?.text ?? 'Nilli Studio update'
+
   const res = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ channel, blocks }),
+    body: JSON.stringify({ channel, blocks, text: fallback }),
   })
   return res.json() as Promise<{ ok: boolean; error?: string; team?: string }>
 }

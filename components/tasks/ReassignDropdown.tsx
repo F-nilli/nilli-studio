@@ -112,7 +112,7 @@ export function ReassignDropdown({ task, currentUser, episode, onReassigned, onC
           fromName: currentUser.name,
           toName: newAssignee.name,
         }),
-      }).catch(() => {})
+      }).catch(err => console.error('[Slack]', err))
     }
 
     const toast = task.status === 'locked'

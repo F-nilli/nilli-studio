@@ -262,18 +262,20 @@ export function CommentPanel({
         }),
       }).catch(() => {})
 
-      fetch('/api/slack/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'comment',
-          episodeId,
-          taskLabel: activeTask.label,
-          authorName: currentUser.name,
-          commentBody: trimmedBody,
-          clientKey: episodeClientKey,
-        }),
-      }).catch(() => {})
+      // Skip Slack for handoff notes (→ Name: ...) — they're internal workflow messages
+      if (!trimmedBody.startsWith('→ ')) {
+        fetch('/api/slack/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'comment',
+            episodeId,
+            taskLabel: activeTask.label,
+            authorName: currentUser.name,
+            commentBody: trimmedBody,
+          }),
+        }).catch(err => console.error('[Slack]', err))
+      }
     }
 
     setSubmitting(false)

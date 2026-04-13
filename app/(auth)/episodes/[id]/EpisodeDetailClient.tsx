@@ -766,7 +766,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }),
-      }).catch(() => {})
+      }).catch(err => console.error('[Slack]', err))
     }
 
     const { data, error } = await supabase
@@ -834,14 +834,30 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
           episodeId: task.episode_id,
         })
       }
+      // Compute which locked tasks will be unlocked by this approval
+      const { data: allTasksForSlack } = await supabase
+        .from('tasks')
+        .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
+        .eq('episode_id', task.episode_id)
+      const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
+      if (allTasksForSlack) {
+        const approvedIds = new Set(
+          allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id)
+        )
+        for (const t of allTasksForSlack) {
+          if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+            nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+          }
+        }
+      }
       fetch('/api/slack/notify', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: [] }),
-      }).catch(() => {})
+        body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack }),
+      }).catch(err => console.error('[Slack]', err))
       fetch('/api/episodes/check-triggers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
-      }).catch(() => {})
+      }).catch(err => console.error('[check-triggers]', err))
     }
     setActionLoading(false)
   }
@@ -894,7 +910,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
             assigneeName: assignee.name,
             dueDate: sendBackDate ? format(parseISO(sendBackDate), 'MMM d') : undefined,
           }),
-        }).catch(() => {})
+        }).catch(err => console.error('[Slack]', err))
       }
       setSendBackOpen(false)
       setSendBackDate('')
