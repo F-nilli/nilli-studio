@@ -14,12 +14,18 @@ export async function GET() {
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
-  const { data } = await admin.from('workspace_settings').select('slack_bot_token, workspace_name').single()
+  const { data: rows } = await admin
+    .from('workspace_settings')
+    .select('slack_bot_token, workspace_name')
+    .order('id', { ascending: false })
+    .limit(1)
+
+  const row = rows?.[0] ?? null
 
   return NextResponse.json({
-    connected: !!data?.slack_bot_token,
-    workspaceName: data?.workspace_name || null,
-    tokenHint: data?.slack_bot_token ? '…' + data.slack_bot_token.slice(-4) : null,
+    connected: !!row?.slack_bot_token,
+    workspaceName: row?.workspace_name || null,
+    tokenHint: row?.slack_bot_token ? '…' + row.slack_bot_token.slice(-4) : null,
   })
 }
 
@@ -37,17 +43,12 @@ export async function POST(request: Request) {
   if (!test.ok) return NextResponse.json({ error: test.error || 'Invalid token' }, { status: 400 })
 
   const admin = createAdminClient()
-  const { data: row } = await admin.from('workspace_settings').select('id').single()
-  if (row) {
-    const { error } = await admin.from('workspace_settings')
-      .update({ slack_bot_token: token, workspace_name: test.team, updated_at: new Date().toISOString() })
-      .eq('id', row.id)
-    if (error) return NextResponse.json({ error: `Failed to save token: ${error.message}` }, { status: 500 })
-  } else {
-    const { error } = await admin.from('workspace_settings')
-      .insert({ slack_bot_token: token, workspace_name: test.team })
-    if (error) return NextResponse.json({ error: `Failed to save token: ${error.message}` }, { status: 500 })
-  }
+
+  // Delete all existing rows then insert fresh — avoids .single() failing on multiple rows
+  await admin.from('workspace_settings').delete().gte('id', 0)
+  const { error } = await admin.from('workspace_settings')
+    .insert({ slack_bot_token: token, workspace_name: test.team })
+  if (error) return NextResponse.json({ error: `Failed to save token: ${error.message}` }, { status: 500 })
 
   return NextResponse.json({ ok: true, workspaceName: test.team })
 }
