@@ -40,6 +40,9 @@ export async function POST(request: Request) {
     await admin.from('workspace_settings')
       .update({ slack_bot_token: token, workspace_name: test.team, updated_at: new Date().toISOString() })
       .eq('id', row.id)
+  } else {
+    await admin.from('workspace_settings')
+      .insert({ slack_bot_token: token, workspace_name: test.team })
   }
 
   return NextResponse.json({ ok: true, workspaceName: test.team })
