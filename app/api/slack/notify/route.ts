@@ -13,7 +13,15 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
-  const { data: settings } = await admin.from('workspace_settings').select('slack_bot_token').single()
+  const { data: settingsRows, error: settingsError } = await admin
+    .from('workspace_settings')
+    .select('slack_bot_token')
+    .limit(1)
+  if (settingsError) {
+    console.error('[Slack notify] settings read error:', JSON.stringify(settingsError))
+    return NextResponse.json({ skipped: 'settings_error' })
+  }
+  const settings = settingsRows?.[0] ?? null
   if (!settings?.slack_bot_token) return NextResponse.json({ skipped: 'no_token' })
 
   const { data: episode } = await admin
