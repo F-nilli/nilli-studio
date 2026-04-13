@@ -265,22 +265,27 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       setCircleWarningId(null)
     }
 
-    // DB write first — card still visible on board during animation
-    const now = new Date().toISOString()
-    const ok = await persistArchive(ep.id, now)
-    if (!ok) return
-
     // Block Realtime handler from removing card while animation plays
     animatingRef.current.add(ep.id)
+
+    // Start circle fill immediately + DB write in parallel
+    const now = new Date().toISOString()
+    setCircleCompletingId(ep.id)
+    const [ok] = await Promise.all([
+      persistArchive(ep.id, now),
+      sleep(600),
+    ])
+    if (!ok) {
+      animatingRef.current.delete(ep.id)
+      setCircleCompletingId(null)
+      return
+    }
 
     // Undo toast
     if (circleUndoInfo?.timer) clearTimeout(circleUndoInfo.timer)
     const undoTimer = setTimeout(() => setCircleUndoInfo(null), 5000)
     setCircleUndoInfo({ id: ep.id, guestName: ep.guest_name, timer: undoTimer })
 
-    // Animation — card remains in liveEpisodes and visible throughout
-    setCircleCompletingId(ep.id)
-    await sleep(600)
     setCircleCompletingId(null)
     setCircleCompletedIds(prev => new Set([...prev, ep.id]))
     await sleep(3000)
