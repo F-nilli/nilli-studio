@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, AlertCircle, ChevronRight, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check } from 'lucide-react'
@@ -150,6 +150,8 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   } | null>(null)
   const supabase = createClient()
   const router = useRouter()
+  // Tracks episodes currently mid-animation so Realtime doesn't interrupt them
+  const animatingRef = useRef<Set<string>>(new Set())
 
   // Realtime: episode inserts, updates (archive/restore), deletes
   useEffect(() => {
@@ -172,7 +174,8 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
         } else if (payload.eventType === 'UPDATE') {
           const updated = payload.new as Episode
           if (updated.published_at) {
-            // Episode archived → remove from board, add to archive list
+            // Episode archived — skip if currently mid-animation (handleCircleComplete will do it)
+            if (animatingRef.current.has(updated.id)) return
             setLiveEpisodes(prev => prev.filter(e => e.id !== updated.id))
             setPublished(prev => prev.some(e => e.id === updated.id) ? prev : [updated, ...prev])
           } else {
@@ -219,50 +222,38 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const memberFilter = memberFilterId ? allUsers.find(u => u.id === memberFilterId) ?? null : null
   const canAct = canManageClients(currentUser)
 
+  const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+  // Returns the saved timestamp on success, null on failure
+  async function persistArchive(episodeId: string, now: string): Promise<boolean> {
+    let { error } = await supabase.from('episodes').update({
+      published_at: now, archived: true, completed_at: now, restored_at: null,
+    }).eq('id', episodeId)
+    if (error) {
+      const { error: e2 } = await supabase.from('episodes').update({ published_at: now }).eq('id', episodeId)
+      if (e2) { console.error('[archive] failed:', e2); return false }
+    }
+    return true
+  }
+
   async function togglePublish(episodeId: string, publish: boolean): Promise<boolean> {
     const now = new Date().toISOString()
-    if (publish) {
-      const ep = liveEpisodes.find(e => e.id === episodeId)
-      let { error } = await supabase.from('episodes').update({
-        published_at: now,
-        archived: true,
-        completed_at: now,
-        restored_at: null,
-      }).eq('id', episodeId)
-      if (error) {
-        // Fallback: archive tracking columns may not exist yet — just set published_at
-        const { error: fallbackError } = await supabase.from('episodes').update({
-          published_at: now,
-        }).eq('id', episodeId)
-        if (fallbackError) {
-          console.error('[togglePublish] failed:', fallbackError)
-          return false
-        }
-      }
-      // Hard-remove from live board immediately — don't rely solely on circleArchivedIds
-      setLiveEpisodes(prev => prev.filter(e => e.id !== episodeId))
-      if (ep) setPublished(prev => [{ ...ep, published_at: now, archived: true, completed_at: now, restored_at: null }, ...prev])
-      return true
-    } else {
+    if (!publish) {
       const ep = published.find(e => e.id === episodeId)
       const newRestoreCount = (ep?.restore_count ?? 0) + 1
       let { error } = await supabase.from('episodes').update({
-        published_at: null,
-        archived: false,
-        completed_at: null,
-        restored_at: now,
-        restore_count: newRestoreCount,
+        published_at: null, archived: false, completed_at: null,
+        restored_at: now, restore_count: newRestoreCount,
       }).eq('id', episodeId)
       if (error) {
-        const { error: fallbackError } = await supabase.from('episodes').update({ published_at: null }).eq('id', episodeId)
-        if (fallbackError) { console.error('[togglePublish] restore failed:', fallbackError); return false }
+        const { error: e2 } = await supabase.from('episodes').update({ published_at: null }).eq('id', episodeId)
+        if (e2) { console.error('[restore] failed:', e2); return false }
       }
       setPublished(prev => prev.filter(e => e.id !== episodeId))
       return true
     }
+    return false // publish path handled by handleCircleComplete
   }
-
-  const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
   async function handleCircleComplete(ep: { id: string; guest_name: string; tasks: Task[] }) {
     if (circleCompletingId === ep.id || circleCompletedIds.has(ep.id) || circleFadingIds.has(ep.id) || circleArchivedIds.has(ep.id)) return
@@ -274,16 +265,20 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       setCircleWarningId(null)
     }
 
-    // DB write happens immediately — before the rest of the animation
-    const ok = await togglePublish(ep.id, true)
+    // DB write first — card still visible on board during animation
+    const now = new Date().toISOString()
+    const ok = await persistArchive(ep.id, now)
     if (!ok) return
 
-    // Set up undo toast
+    // Block Realtime handler from removing card while animation plays
+    animatingRef.current.add(ep.id)
+
+    // Undo toast
     if (circleUndoInfo?.timer) clearTimeout(circleUndoInfo.timer)
     const undoTimer = setTimeout(() => setCircleUndoInfo(null), 5000)
     setCircleUndoInfo({ id: ep.id, guestName: ep.guest_name, timer: undoTimer })
 
-    // Animation only — data is already saved
+    // Animation — card remains in liveEpisodes and visible throughout
     setCircleCompletingId(ep.id)
     await sleep(600)
     setCircleCompletingId(null)
@@ -294,6 +289,14 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     await sleep(300)
     setCircleFadingIds(prev => { const n = new Set(prev); n.delete(ep.id); return n })
     setCircleArchivedIds(prev => new Set([...prev, ep.id]))
+
+    // Animation done — hard-remove from board and add to archive
+    animatingRef.current.delete(ep.id)
+    setLiveEpisodes(prev => {
+      const epData = prev.find(e => e.id === ep.id)
+      if (epData) setPublished(p => p.some(e => e.id === ep.id) ? p : [{ ...epData, published_at: now, archived: true, completed_at: now, restored_at: null }, ...p])
+      return prev.filter(e => e.id !== ep.id)
+    })
   }
 
   async function handleUndoComplete() {
