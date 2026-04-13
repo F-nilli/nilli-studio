@@ -133,3 +133,29 @@ export function buildReviewSubmittedBlocks({
     },
   ]
 }
+
+
+export function buildReassignBlocks({
+  clientLabel,
+  guestName,
+  taskLabel,
+  fromName,
+  toName,
+}: {
+  clientLabel: string
+  guestName: string
+  taskLabel: string
+  fromName: string
+  toName: string
+}) {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${guestName} / ${clientLabel}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${fromName}* reassigned *${taskLabel}* to *${toName}*` },
+    },
+  ]
+}

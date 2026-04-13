@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
+import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
 import type { EpisodeProgress } from './page'
@@ -37,6 +38,13 @@ export function DashboardClient({
   const [tasks, setTasks] = useState(initialTasks)
   const [reviewTasks, setReviewTasks] = useState(initialReviewTasks)
   const [selectedTask, setSelectedTask] = useState<(Task & { episode?: Episode }) | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(t)
+  }, [toast])
 
   // Realtime: my tasks
   useEffect(() => {
@@ -127,6 +135,7 @@ export function DashboardClient({
           tasks={tasks}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
+          onReassignToast={setToast}
         />
       )}
 
@@ -138,6 +147,7 @@ export function DashboardClient({
           episodesProgress={episodesProgress}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
+          onReassignToast={setToast}
         />
       )}
 
@@ -151,6 +161,7 @@ export function DashboardClient({
           upcomingReleases={upcomingReleases}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
+          onReassignToast={setToast}
         />
       )}
 
@@ -163,17 +174,25 @@ export function DashboardClient({
           onUpdate={(updated) => { handleTaskUpdate(updated); setSelectedTask(prev => prev ? { ...prev, ...updated } : null) }}
         />
       )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg text-sm font-medium text-white shadow-xl"
+          style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.15)' }}>
+          {toast}
+        </div>
+      )}
     </>
   )
 }
 
 // ─── Member Dashboard ───────────────────────────────────────────────────────
 
-function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate }: {
+function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReassignToast }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
+  onReassignToast?: (msg: string) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
@@ -240,7 +259,7 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate }: {
                   <SectionLabel label={STATUS_LABELS[status]} count={statusTasks.length} />
                   <div className="space-y-2 mt-3">
                     {statusTasks.map(task => (
-                      <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => onTaskClick(task)} onUpdate={onTaskUpdate} />
+                      <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => onTaskClick(task)} onUpdate={onTaskUpdate} onReassignToast={onReassignToast} />
                     ))}
                   </div>
                 </div>
@@ -273,13 +292,14 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate }: {
 
 // ─── Ops Manager Dashboard ──────────────────────────────────────────────────
 
-function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress, onTaskClick, onTaskUpdate }: {
+function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress, onTaskClick, onTaskUpdate, onReassignToast }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   reviewTasks: (Task & { episode: Episode })[]
   episodesProgress: EpisodeProgress[]
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
+  onReassignToast?: (msg: string) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
@@ -310,7 +330,7 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
           {activeTasks.length === 0 && tasks.filter(t => t.status === 'locked').length === 0 ? (
             <EmptyZone message="No active tasks right now" />
           ) : (
-            <MyTasksList tasks={tasks} currentUser={currentUser} onTaskClick={onTaskClick} onTaskUpdate={onTaskUpdate} />
+            <MyTasksList tasks={tasks} currentUser={currentUser} onTaskClick={onTaskClick} onTaskUpdate={onTaskUpdate} onReassignToast={onReassignToast} />
           )}
         </div>
 
@@ -349,7 +369,7 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
 
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
 
-function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, onTaskClick, onTaskUpdate }: {
+function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, onTaskClick, onTaskUpdate, onReassignToast }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   reviewTasks: (Task & { episode: Episode })[]
@@ -358,6 +378,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
   upcomingReleases: Episode[]
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
+  onReassignToast?: (msg: string) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const hour = new Date().getHours()
@@ -398,7 +419,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
           {activeTasks.length === 0 && tasks.filter(t => t.status === 'locked').length === 0 ? (
             <EmptyZone message="No active tasks assigned to you" />
           ) : (
-            <MyTasksList tasks={tasks} currentUser={currentUser} onTaskClick={onTaskClick} onTaskUpdate={onTaskUpdate} />
+            <MyTasksList tasks={tasks} currentUser={currentUser} onTaskClick={onTaskClick} onTaskUpdate={onTaskUpdate} onReassignToast={onReassignToast} />
           )}
         </div>
 
@@ -574,11 +595,12 @@ function StatCard({ icon, label, value, valueColor }: { icon: React.ReactNode; l
   )
 }
 
-function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate }: {
+function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate, onReassignToast }: {
   tasks: (Task & { episode: Episode })[]
   currentUser: User
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
+  onReassignToast?: (msg: string) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
@@ -597,7 +619,7 @@ function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate }: {
             <SectionLabel label={STATUS_LABELS[status]} count={statusTasks.length} />
             <div className="space-y-2 mt-3">
               {statusTasks.map(task => (
-                <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => onTaskClick(task)} onUpdate={onTaskUpdate} />
+                <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => onTaskClick(task)} onUpdate={onTaskUpdate} onReassignToast={onReassignToast} />
               ))}
             </div>
           </div>
@@ -853,14 +875,16 @@ function getActionLabel(task: Task): string {
   return ''
 }
 
-function TaskCard({ task, currentUser, onClick, onUpdate }: {
+function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
   task: Task & { episode: Episode }
   currentUser: User
   onClick: () => void
   onUpdate: (task: Task) => void
+  onReassignToast?: (msg: string) => void
 }) {
   const supabase = createClient()
   const [acting, setActing] = useState(false)
+  const [reassignOpen, setReassignOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
@@ -978,6 +1002,8 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
   }
 
   const firstName = nextUserForNote?.user.name.split(' ')[0]
+  const canReassign = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
+  const taskAssignee = (task as Task & { assignee?: User }).assignee
 
   return (
     <div
@@ -1045,6 +1071,33 @@ function TaskCard({ task, currentUser, onClick, onUpdate }: {
             rows={2}
             className="w-full px-2.5 py-2 bg-[#141414] border border-[#2e2e2e] rounded-lg text-xs text-white placeholder-[#444] resize-none focus:outline-none focus:ring-1 focus:ring-[#ff3c00] leading-relaxed"
           />
+        </div>
+      )}
+      {canReassign && taskAssignee && !['done', 'approved'].includes(task.status) && (
+        <div className="mt-3 pt-3 border-t border-[#222]" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
+            <Avatar name={taskAssignee.name} color={taskAssignee.avatar_color} size="sm" avatarUrl={taskAssignee.avatar_url} />
+            <span className="text-xs text-[#666]">{taskAssignee.name}</span>
+            <button
+              onClick={() => setReassignOpen(o => !o)}
+              className="text-[11px] text-[#f7931a]/60 hover:text-[#f7931a] hover:underline cursor-pointer transition-colors ml-1"
+            >
+              Reassign
+            </button>
+          </div>
+          {reassignOpen && (
+            <ReassignDropdown
+              task={task}
+              currentUser={currentUser}
+              episode={task.episode}
+              onReassigned={(updated, msg) => {
+                onUpdate(updated)
+                setReassignOpen(false)
+                onReassignToast?.(msg)
+              }}
+              onClose={() => setReassignOpen(false)}
+            />
+          )}
         </div>
       )}
     </div>

@@ -15,6 +15,7 @@ import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
 import { parseISO, format } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
+import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
 
 interface TaskComment { count: number; latest: string }
 
@@ -91,6 +92,14 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
 
   const canEditDates = canEditDatesRole(currentUser)
   const canEdit = canApprove(currentUser)
+  const canReassign = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(t)
+  }, [toast])
 
   // Load last-read timestamps from localStorage
   useEffect(() => {
@@ -293,6 +302,13 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
 
   return (
     <div className="flex items-start gap-5">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg text-sm text-white font-medium shadow-xl pointer-events-none"
+          style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.15)' }}>
+          {toast}
+        </div>
+      )}
       {/* Main content */}
       <div className="flex-1 min-w-0 space-y-4">
         {/* Header */}
@@ -360,6 +376,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 tasks={trackTasks}
                 done={done}
                 canEditDates={canEditDates}
+                canReassign={canReassign}
                 liveTaskComments={liveTaskComments}
                 hasUnread={hasUnread}
                 activeTask={activeTaskFilter}
@@ -370,6 +387,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 onTaskClick={handleTaskClick}
                 onDateChange={(taskId, oldDate, newDate) => handleDateChange(taskId, oldDate, newDate)}
                 onTaskUpdate={handleTaskUpdate}
+                onReassignToast={setToast}
               />
             )
           })}
@@ -521,6 +539,7 @@ interface TrackPanelProps {
   tasks: Task[]
   done: number
   canEditDates: boolean
+  canReassign: boolean
   liveTaskComments: Record<string, { count: number; latest: string }>
   hasUnread: (taskId: string) => boolean
   activeTask: Task | null
@@ -531,9 +550,10 @@ interface TrackPanelProps {
   onTaskClick: (task: Task) => void
   onDateChange: (taskId: string, oldDate: string | null, newDate: string) => void
   onTaskUpdate: (task: Task) => void
+  onReassignToast: (msg: string) => void
 }
 
-function TrackPanel({ track, trackColor, tasks, done, canEditDates, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate }: TrackPanelProps) {
+function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onReassignToast }: TrackPanelProps) {
   return (
     <div className="bg-[#1e1e1e] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
       {/* Header */}
@@ -561,6 +581,8 @@ function TrackPanel({ track, trackColor, tasks, done, canEditDates, liveTaskComm
             onDateChange={(oldDate, newDate) => onDateChange(task.id, oldDate, newDate)}
             onClick={() => onTaskClick(task)}
             onTaskUpdate={onTaskUpdate}
+            canReassign={canReassign}
+            onReassignToast={onReassignToast}
           />
         ))}
       </div>
@@ -576,6 +598,7 @@ interface TrackTaskCardProps {
   isExpanded: boolean
   isRecentlyUnlocked: boolean
   canEditDates: boolean
+  canReassign: boolean
   taskComment: { count: number; latest: string } | null
   hasUnread: boolean
   currentUser: User
@@ -583,9 +606,10 @@ interface TrackTaskCardProps {
   onDateChange: (oldDate: string | null, newDate: string) => void
   onClick: () => void
   onTaskUpdate: (task: Task) => void
+  onReassignToast: (msg: string) => void
 }
 
-function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate }: TrackTaskCardProps) {
+function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onReassignToast }: TrackTaskCardProps) {
   const supabase = createClient()
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
@@ -611,6 +635,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [sendingBack, setSendingBack] = useState(false)
+  const [reassignOpen, setReassignOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
 
@@ -1059,11 +1084,32 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
             <div>
               <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1">Assignee</p>
               {task.assignee ? (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <Avatar name={task.assignee.name} color={task.assignee.avatar_color} size="sm" avatarUrl={task.assignee.avatar_url} />
                   <span className="text-xs text-[#ccc]">{task.assignee.name}</span>
+                  {canReassign && !['done', 'approved'].includes(task.status) && (
+                    <button
+                      onClick={() => setReassignOpen(o => !o)}
+                      className="text-[11px] text-[#f7931a]/60 hover:text-[#f7931a] hover:underline cursor-pointer transition-colors"
+                    >
+                      Reassign
+                    </button>
+                  )}
                 </div>
               ) : <span className="text-xs text-[#555]">—</span>}
+              {reassignOpen && (
+                <ReassignDropdown
+                  task={task}
+                  currentUser={currentUser}
+                  episode={episode}
+                  onReassigned={(updated, msg) => {
+                    onTaskUpdate(updated)
+                    setReassignOpen(false)
+                    onReassignToast(msg)
+                  }}
+                  onClose={() => setReassignOpen(false)}
+                />
+              )}
             </div>
             <div>
               <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1">Due Date</p>
