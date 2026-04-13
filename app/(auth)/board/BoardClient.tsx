@@ -223,15 +223,21 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     const now = new Date().toISOString()
     if (publish) {
       const ep = liveEpisodes.find(e => e.id === episodeId)
-      const { error } = await supabase.from('episodes').update({
+      let { error } = await supabase.from('episodes').update({
         published_at: now,
         archived: true,
         completed_at: now,
         restored_at: null,
       }).eq('id', episodeId)
       if (error) {
-        console.error('[togglePublish] failed:', error)
-        return false
+        // Fallback: archive tracking columns may not exist yet — just set published_at
+        const { error: fallbackError } = await supabase.from('episodes').update({
+          published_at: now,
+        }).eq('id', episodeId)
+        if (fallbackError) {
+          console.error('[togglePublish] failed:', fallbackError)
+          return false
+        }
       }
       // Hard-remove from live board immediately — don't rely solely on circleArchivedIds
       setLiveEpisodes(prev => prev.filter(e => e.id !== episodeId))
@@ -240,14 +246,17 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     } else {
       const ep = published.find(e => e.id === episodeId)
       const newRestoreCount = (ep?.restore_count ?? 0) + 1
-      const { error } = await supabase.from('episodes').update({
+      let { error } = await supabase.from('episodes').update({
         published_at: null,
         archived: false,
         completed_at: null,
         restored_at: now,
         restore_count: newRestoreCount,
       }).eq('id', episodeId)
-      if (error) { console.error('[togglePublish] restore failed:', error); return false }
+      if (error) {
+        const { error: fallbackError } = await supabase.from('episodes').update({ published_at: null }).eq('id', episodeId)
+        if (fallbackError) { console.error('[togglePublish] restore failed:', fallbackError); return false }
+      }
       setPublished(prev => prev.filter(e => e.id !== episodeId))
       return true
     }
