@@ -967,13 +967,24 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
       rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
 
     setActing(true)
-    await maybePostNote()
+
+    // Optimistic update — reflect the new status immediately before DB responds
+    onUpdate({ ...task, status: nextStatus } as unknown as Task)
+
+    maybePostNote().catch(() => {})  // fire-and-forget, don't block the DB call
 
     const updatePayload: Record<string, unknown> = { status: nextStatus }
     if (nextStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('tasks').update(updatePayload).eq('id', task.id)
       .select('*').single()
+
+    if (error) {
+      // Rollback optimistic update
+      onUpdate(task as unknown as Task)
+      setActing(false)
+      return
+    }
 
     if (data) {
       onUpdate(data as unknown as Task)

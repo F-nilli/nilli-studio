@@ -12,48 +12,57 @@ export default async function CalendarPage() {
   const currentUser = profileRes.data as User
   const isAdmin = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
 
-  const taskQuery = supabase
+  if (isAdmin) {
+    // Admin: fetch tasks and episodes in parallel
+    const [tasksRes, episodesRes] = await Promise.all([
+      supabase
+        .from('tasks')
+        .select('*, assignee:users!assignee_id(*), episode:episodes(*)')
+        .not('due_date', 'is', null)
+        .order('due_date', { ascending: true }),
+      supabase
+        .from('episodes')
+        .select('id, guest_name, client_label, release_date')
+        .is('published_at', null)
+        .order('release_date', { ascending: true }),
+    ])
+
+    return (
+      <CalendarClient
+        currentUser={currentUser}
+        tasks={(tasksRes.data ?? []) as unknown as (Task & { episode: Episode })[]}
+        episodes={(episodesRes.data ?? []) as Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[]}
+        allUsers={[]}
+      />
+    )
+  }
+
+  // Member: need task list first to derive episode IDs
+  const { data: tasksData } = await supabase
     .from('tasks')
     .select('*, assignee:users!assignee_id(*), episode:episodes(*)')
     .not('due_date', 'is', null)
+    .eq('assignee_id', user.id)
     .order('due_date', { ascending: true })
 
-  const tasksRes = isAdmin
-    ? await taskQuery
-    : await taskQuery.eq('assignee_id', user.id)
+  const myTasks = (tasksData ?? []) as unknown as (Task & { episode: Episode })[]
+  const episodeIds = [...new Set(myTasks.map(t => t.episode_id).filter(Boolean))]
 
-  const myTasks = (tasksRes.data ?? []) as unknown as (Task & { episode: Episode })[]
-
-  // For members: only load release dates for episodes they're assigned to
-  // For admins: load all unpublished episodes
-  let episodesRes: { data: Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[] }
-  if (isAdmin) {
-    const { data } = await supabase
-      .from('episodes')
-      .select('id, guest_name, client_label, release_date')
-      .is('published_at', null)
-      .order('release_date', { ascending: true })
-    episodesRes = { data: (data ?? []) as Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[] }
-  } else {
-    const episodeIds = [...new Set(myTasks.map(t => t.episode_id).filter(Boolean))]
-    if (episodeIds.length > 0) {
-      const { data } = await supabase
-        .from('episodes')
-        .select('id, guest_name, client_label, release_date')
-        .in('id', episodeIds)
-        .is('published_at', null)
-        .order('release_date', { ascending: true })
-      episodesRes = { data: (data ?? []) as Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[] }
-    } else {
-      episodesRes = { data: [] }
-    }
-  }
+  const episodes: Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[] =
+    episodeIds.length > 0
+      ? ((await supabase
+          .from('episodes')
+          .select('id, guest_name, client_label, release_date')
+          .in('id', episodeIds)
+          .is('published_at', null)
+          .order('release_date', { ascending: true })).data ?? []) as Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[]
+      : []
 
   return (
     <CalendarClient
       currentUser={currentUser}
       tasks={myTasks}
-      episodes={episodesRes.data}
+      episodes={episodes}
       allUsers={[]}
     />
   )

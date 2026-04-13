@@ -19,39 +19,36 @@ export default async function BoardPage({
   const params = await searchParams
   const memberFilterId = params.member || null
 
-  const usersRes = await supabase.from('users').select('*')
-
-  // Always fetch published episodes for the Archive tab
-  const { data: publishedEpisodesData } = await supabase
-    .from('episodes')
-    .select('*')
-    .not('published_at', 'is', null)
-    .order('published_at', { ascending: false })
-
   if (canSeeAllEpisodes(profile)) {
-    const [episodesRes, tasksRes] = await Promise.all([
+    // Admin/ops_manager: fetch everything in one parallel round trip
+    const [usersRes, publishedEpisodesRes, episodesRes, tasksRes] = await Promise.all([
+      supabase.from('users').select('*'),
+      supabase.from('episodes').select('*').not('published_at', 'is', null).order('published_at', { ascending: false }),
       supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').is('published_at', null).order('release_date', { ascending: true }),
       supabase.from('tasks').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('template_task_id', { ascending: true }),
     ])
+
     return (
       <BoardClient
         currentUser={profile as User}
         episodes={(episodesRes.data || []) as Episode[]}
         tasks={(tasksRes.data || []) as unknown as Task[]}
         allUsers={(usersRes.data || []) as User[]}
-        publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
+        publishedEpisodes={(publishedEpisodesRes.data || []) as Episode[]}
         memberFilterId={memberFilterId}
       />
     )
   }
 
-  // Member: find episodes they're involved in
-  const { data: myTasks } = await supabase
-    .from('tasks')
-    .select('episode_id')
-    .eq('assignee_id', user.id)
+  // Member: two parallel rounds — first get their episode IDs + shared data,
+  // then fetch the actual episodes and tasks
+  const [usersRes, publishedEpisodesRes, myTasksRes] = await Promise.all([
+    supabase.from('users').select('*'),
+    supabase.from('episodes').select('*').not('published_at', 'is', null).order('published_at', { ascending: false }),
+    supabase.from('tasks').select('episode_id').eq('assignee_id', user.id),
+  ])
 
-  const involvedEpisodeIds = [...new Set((myTasks || []).map(t => t.episode_id))]
+  const involvedEpisodeIds = [...new Set((myTasksRes.data || []).map(t => t.episode_id))]
 
   if (involvedEpisodeIds.length === 0) {
     return (
@@ -60,7 +57,7 @@ export default async function BoardPage({
         episodes={[]}
         tasks={[]}
         allUsers={(usersRes.data || []) as User[]}
-        publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
+        publishedEpisodes={(publishedEpisodesRes.data || []) as Episode[]}
         memberFilterId={memberFilterId}
       />
     )
@@ -77,7 +74,7 @@ export default async function BoardPage({
       episodes={(episodesRes.data || []) as Episode[]}
       tasks={(tasksRes.data || []) as unknown as Task[]}
       allUsers={(usersRes.data || []) as User[]}
-      publishedEpisodes={(publishedEpisodesData || []) as Episode[]}
+      publishedEpisodes={(publishedEpisodesRes.data || []) as Episode[]}
       memberFilterId={memberFilterId}
     />
   )
