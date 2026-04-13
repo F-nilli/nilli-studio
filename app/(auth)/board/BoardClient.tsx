@@ -219,57 +219,72 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const memberFilter = memberFilterId ? allUsers.find(u => u.id === memberFilterId) ?? null : null
   const canAct = canManageClients(currentUser)
 
-  async function togglePublish(episodeId: string, publish: boolean) {
+  async function togglePublish(episodeId: string, publish: boolean): Promise<boolean> {
     const now = new Date().toISOString()
     if (publish) {
-      await supabase.from('episodes').update({
+      const ep = liveEpisodes.find(e => e.id === episodeId)
+      const { error } = await supabase.from('episodes').update({
         published_at: now,
         archived: true,
         completed_at: now,
         restored_at: null,
       }).eq('id', episodeId)
-      const ep = liveEpisodes.find(e => e.id === episodeId)
+      if (error) {
+        console.error('[togglePublish] failed:', error)
+        return false
+      }
+      // Hard-remove from live board immediately — don't rely solely on circleArchivedIds
+      setLiveEpisodes(prev => prev.filter(e => e.id !== episodeId))
       if (ep) setPublished(prev => [{ ...ep, published_at: now, archived: true, completed_at: now, restored_at: null }, ...prev])
+      return true
     } else {
       const ep = published.find(e => e.id === episodeId)
       const newRestoreCount = (ep?.restore_count ?? 0) + 1
-      await supabase.from('episodes').update({
+      const { error } = await supabase.from('episodes').update({
         published_at: null,
         archived: false,
         completed_at: null,
         restored_at: now,
         restore_count: newRestoreCount,
       }).eq('id', episodeId)
+      if (error) { console.error('[togglePublish] restore failed:', error); return false }
       setPublished(prev => prev.filter(e => e.id !== episodeId))
+      return true
     }
   }
 
-  function handleCircleComplete(ep: { id: string; guest_name: string; tasks: Task[] }) {
-    if (circleCompletingId === ep.id || circleCompletedIds.has(ep.id) || circleFadingIds.has(ep.id) || circleArchivedIds.has(ep.id)) return
-    const incompleteTasks = ep.tasks.filter(t => !['done', 'approved'].includes(t.status))
-    const delay = incompleteTasks.length > 0 ? 800 : 0
-    if (incompleteTasks.length > 0) setCircleWarningId(ep.id)
+  const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
-    setTimeout(() => {
+  async function handleCircleComplete(ep: { id: string; guest_name: string; tasks: Task[] }) {
+    if (circleCompletingId === ep.id || circleCompletedIds.has(ep.id) || circleFadingIds.has(ep.id) || circleArchivedIds.has(ep.id)) return
+
+    const incompleteTasks = ep.tasks.filter(t => !['done', 'approved'].includes(t.status))
+    if (incompleteTasks.length > 0) {
+      setCircleWarningId(ep.id)
+      await sleep(800)
       setCircleWarningId(null)
-      setCircleCompletingId(ep.id)
-      setTimeout(() => {
-        setCircleCompletingId(null)
-        setCircleCompletedIds(prev => new Set([...prev, ep.id]))
-        setTimeout(() => {
-          setCircleCompletedIds(prev => { const n = new Set(prev); n.delete(ep.id); return n })
-          setCircleFadingIds(prev => new Set([...prev, ep.id]))
-          setTimeout(async () => {
-            setCircleFadingIds(prev => { const n = new Set(prev); n.delete(ep.id); return n })
-            setCircleArchivedIds(prev => new Set([...prev, ep.id]))
-            await togglePublish(ep.id, true)
-            if (circleUndoInfo?.timer) clearTimeout(circleUndoInfo.timer)
-            const undoTimer = setTimeout(() => setCircleUndoInfo(null), 5000)
-            setCircleUndoInfo({ id: ep.id, guestName: ep.guest_name, timer: undoTimer })
-          }, 300)
-        }, 3000)
-      }, 600)
-    }, delay)
+    }
+
+    // DB write happens immediately — before the rest of the animation
+    const ok = await togglePublish(ep.id, true)
+    if (!ok) return
+
+    // Set up undo toast
+    if (circleUndoInfo?.timer) clearTimeout(circleUndoInfo.timer)
+    const undoTimer = setTimeout(() => setCircleUndoInfo(null), 5000)
+    setCircleUndoInfo({ id: ep.id, guestName: ep.guest_name, timer: undoTimer })
+
+    // Animation only — data is already saved
+    setCircleCompletingId(ep.id)
+    await sleep(600)
+    setCircleCompletingId(null)
+    setCircleCompletedIds(prev => new Set([...prev, ep.id]))
+    await sleep(3000)
+    setCircleCompletedIds(prev => { const n = new Set(prev); n.delete(ep.id); return n })
+    setCircleFadingIds(prev => new Set([...prev, ep.id]))
+    await sleep(300)
+    setCircleFadingIds(prev => { const n = new Set(prev); n.delete(ep.id); return n })
+    setCircleArchivedIds(prev => new Set([...prev, ep.id]))
   }
 
   async function handleUndoComplete() {
