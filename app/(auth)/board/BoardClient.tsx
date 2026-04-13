@@ -309,7 +309,19 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     clearTimeout(circleUndoInfo.timer)
     const { id } = circleUndoInfo
     await supabase.from('episodes').update({ published_at: null, archived: false, completed_at: null }).eq('id', id)
-    setPublished(prev => prev.filter(e => e.id !== id))
+    // Restore episode to live board
+    setPublished(prev => {
+      const ep = prev.find(e => e.id === id)
+      if (ep) {
+        const restored = { ...ep, published_at: null, archived: false, completed_at: null }
+        setLiveEpisodes(live =>
+          live.some(e => e.id === id)
+            ? live
+            : [...live, restored as unknown as Episode].sort((a, b) => new Date(a.release_date).getTime() - new Date(b.release_date).getTime())
+        )
+      }
+      return prev.filter(e => e.id !== id)
+    })
     setCircleArchivedIds(prev => { const n = new Set(prev); n.delete(id); return n })
     setCircleUndoInfo(null)
   }
