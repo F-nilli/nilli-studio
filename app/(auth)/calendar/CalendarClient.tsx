@@ -273,7 +273,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
                         onClick={() => { setExpandedDay(null); router.push(`/episodes/${task.episode_id}?t=${task.id}`) }}
                         className="w-full text-left flex flex-col gap-0.5 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
                       >
-                        <span className="text-[12px] font-medium text-white">{task.label}</span>
+                        <span className="text-[12px] font-medium text-white truncate">{task.label}</span>
                         <span className="text-[10px] text-white/40 truncate">{(task as any).episode?.guest_name}</span>
                       </button>
                     ))}
@@ -535,16 +535,12 @@ function TaskPill({
   const bgOpacity = isPast ? 0.07 : overdue ? 0.15 : 0.12
   const bgColor = hexWithOpacity(overdue ? '#dc2626' : trackColor, bgOpacity)
 
-  const label = weekView
-    ? task.label
-    : task.label.length > 22 ? task.label.slice(0, 22) + '…' : task.label
-
   return (
     <button
       onClick={onClick}
       onMouseEnter={e => onHover((e.currentTarget as HTMLButtonElement).getBoundingClientRect())}
       onMouseLeave={onLeave}
-      className="w-full text-left flex items-center gap-1 hover:brightness-110 transition-all cursor-pointer"
+      className="w-full text-left flex items-center gap-1 hover:brightness-110 transition-all cursor-pointer overflow-hidden"
       style={{
         height: weekView ? '32px' : '24px',
         borderRadius: '4px',
@@ -558,7 +554,7 @@ function TaskPill({
         opacity: isPast ? 0.5 : 1,
       }}
     >
-      <span className={cn('flex-1', weekView ? 'truncate' : '')}>{label}</span>
+      <span className="flex-1 min-w-0 truncate">{task.label}</span>
       {task.assignee && (
         <span
           className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ml-1"
