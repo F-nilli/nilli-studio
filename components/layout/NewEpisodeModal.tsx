@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { X, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Client, DbTaskTemplate } from '@/lib/types'
 import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
-// ─── Helpers (same logic as NewEpisodeClient) ─────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getDownstreamSeqIds(seqId: number, templates: DbTaskTemplate[]): number[] {
   const result: number[] = []
@@ -39,7 +39,7 @@ function calcDueDates(releaseDate: string, templates: DbTaskTemplate[]): Record<
   return result
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CreatedEpisode {
   id: string
@@ -52,6 +52,8 @@ interface Props {
   onClose: () => void
   onSuccess: (episode: CreatedEpisode) => void
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   const supabase = createClient()
@@ -70,6 +72,16 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
   const [selectedTemplateName, setSelectedTemplateName] = useState('Default')
+  const [manuallyAdjusted, setManuallyAdjusted] = useState<Set<number>>(new Set())
+  const [cascadeShifts, setCascadeShifts] = useState<Record<number, number>>({})
+  const [releaseDateWarning, setReleaseDateWarning] = useState(false)
+
+  // Image upload state
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [imageWarning, setImageWarning] = useState('')
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch on mount
   useEffect(() => {
@@ -103,7 +115,39 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   useEffect(() => {
     if (!releaseDate || clientTemplates.length === 0) { setTaskDueDates({}); return }
     setTaskDueDates(calcDueDates(releaseDate, clientTemplates))
-  }, [releaseDate, clientId, selectedTemplateName, templates])
+    setManuallyAdjusted(new Set())
+    setCascadeShifts({})
+  }, [releaseDate, clientId, selectedTemplateName])
+
+  function addImageFiles(files: File[]) {
+    const MAX_MB = 10
+    const typed = files.filter(f => ['image/jpeg', 'image/png', 'image/webp'].includes(f.type))
+    const tooBig = typed.filter(f => f.size > MAX_MB * 1024 * 1024)
+    const valid = typed.filter(f => f.size <= MAX_MB * 1024 * 1024)
+    if (tooBig.length > 0) {
+      const names = tooBig.map(f => f.name).join(', ')
+      setImageWarning(`${tooBig.length === 1 ? `"${names}" is` : `${tooBig.length} images are`} too large (max 10MB each) and were not added`)
+    }
+    if (!valid.length) return
+    setImageFiles(prev => {
+      const all = [...prev, ...valid]
+      const totalMB = all.reduce((s, f) => s + f.size, 0) / (1024 * 1024)
+      if (!tooBig.length) setImageWarning(totalMB > 50 ? 'Total size is large — consider compressing images' : '')
+      return all
+    })
+    setImagePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))])
+  }
+
+  function removeImageFile(idx: number) {
+    URL.revokeObjectURL(imagePreviews[idx])
+    setImageFiles(prev => {
+      const next = prev.filter((_, i) => i !== idx)
+      const totalMB = next.reduce((s, f) => s + f.size, 0) / (1024 * 1024)
+      setImageWarning(totalMB > 50 ? 'Total size is large — consider compressing images' : '')
+      return next
+    })
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
 
   function handleDateChange(seqId: number, newValue: string) {
     const rounded = roundToHour(newValue)
@@ -118,6 +162,8 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       }
       return next
     })
+    setManuallyAdjusted(prev => new Set([...prev, seqId]))
+    setCascadeShifts(prev => ({ ...prev, [seqId]: downstream.length }))
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -143,36 +189,71 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
     if (epError || !episode) { setError(epError?.message || 'Failed to create episode'); setSubmitting(false); return }
 
     const seqIdToDbId: Record<number, string> = {}
-    const taskInserts = clientTemplates.map(t => ({
-      episode_id: episode.id,
-      template_task_id: t.seq_id,
-      label: t.label,
-      assignee_id: t.assignee_id || currentUser.id,
-      track: t.track,
-      status: t.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
-      due_date: taskDueDates[t.seq_id] ? fromDatetimeLocal(taskDueDates[t.seq_id]) : null,
-      note: t.note || null,
-      dep_task_ids: [],
-      requires_approval: t.requires_approval || false,
-      approver_id: t.requires_approval ? (t.approver_id || null) : null,
-    }))
+    const taskInserts = clientTemplates.map(template => {
+      const rawDate = taskDueDates[template.seq_id]
+
+      let resolvedApproverId: string | null = null
+      if (template.requires_approval && template.approver_id) {
+        const val = template.approver_id
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+        if (isUuid) {
+          resolvedApproverId = val
+        } else {
+          const match = allUsers.find(u => u.name.toLowerCase() === val.toLowerCase())
+          if (match) resolvedApproverId = match.id
+        }
+      }
+
+      return {
+        episode_id: episode.id,
+        template_task_id: template.seq_id,
+        label: template.label,
+        assignee_id: template.assignee_id || currentUser.id,
+        track: template.track,
+        status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
+        due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
+        note: template.note || null,
+        dep_task_ids: [],
+        requires_approval: template.requires_approval || false,
+        approver_id: resolvedApproverId,
+      }
+    })
 
     const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
     if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setSubmitting(false); return }
 
     for (const task of createdTasks) seqIdToDbId[task.template_task_id] = task.id
-    for (const t of clientTemplates) {
-      if (t.dep_seq_ids.length > 0) {
-        const depDbIds = t.dep_seq_ids.map(id => seqIdToDbId[id]).filter(Boolean)
-        await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[t.seq_id])
+    for (const template of clientTemplates) {
+      if (template.dep_seq_ids.length > 0) {
+        const depDbIds = template.dep_seq_ids.map(id => seqIdToDbId[id]).filter(Boolean)
+        await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[template.seq_id])
       }
     }
     for (const task of createdTasks) {
       if (task.status === 'ready' && task.assignee_id) {
-        await supabase.from('notifications').insert({
-          user_id: task.assignee_id, type: 'task_unlocked', title: 'New task started',
-          body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
-          task_id: task.id, episode_id: episode.id, read: false,
+        const assignee = allUsers.find(u => u.id === task.assignee_id)
+        if (assignee) {
+          await supabase.from('notifications').insert({
+            user_id: assignee.id, type: 'task_unlocked', title: 'New task started',
+            body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
+            task_id: task.id, episode_id: episode.id, read: false,
+          })
+        }
+      }
+    }
+
+    // Upload reference images
+    if (imageFiles.length > 0) {
+      for (const file of imageFiles) {
+        const path = `${episode.id}/${Date.now()}-${file.name}`
+        const { error: uploadError } = await supabase.storage.from('episode-references').upload(path, file)
+        if (uploadError) continue
+        const { data: urlData } = supabase.storage.from('episode-references').getPublicUrl(path)
+        await supabase.from('episode_images').insert({
+          episode_id: episode.id,
+          url: urlData.publicUrl,
+          filename: file.name,
+          uploaded_by: currentUser.id,
         })
       }
     }
@@ -187,7 +268,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const inputStyle = { background: '#222', border: '1px solid rgba(255,255,255,0.1)' }
+  const inputStyle = { background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)' }
 
   return (
     <div
@@ -196,13 +277,13 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
-        className="w-full max-w-[520px] max-h-[88vh] overflow-y-auto rounded-2xl mx-4"
-        style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
+        className="w-full max-w-[580px] max-h-[90vh] overflow-y-auto rounded-2xl mx-4"
+        style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <h2 className="text-[16px] font-bold text-white">New Episode</h2>
+        <div className="flex items-center justify-between px-6 py-4 shrink-0 sticky top-0 z-10" style={{ background: '#141414', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <h2 className="text-[16px] font-bold text-white">New Project</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-[#555] hover:text-white transition-colors cursor-pointer">
             <X className="w-4 h-4" />
           </button>
@@ -212,7 +293,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
         {dataLoading ? (
           <div className="px-6 py-12 text-center text-[#555] text-sm">Loading...</div>
         ) : (
-          <form onSubmit={handleCreate} className="p-6 space-y-4">
+          <form onSubmit={handleCreate} className="p-6 space-y-5">
             {error && (
               <div className="bg-[#ff3c00]/10 border border-[#ff3c00]/30 text-[#ff3c00] px-3 py-2 rounded-lg text-sm">{error}</div>
             )}
@@ -222,22 +303,25 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
               <>
                 {/* Client */}
                 <div>
-                  <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Client</label>
-                  <select value={clientId} onChange={e => setClientId(e.target.value)} className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a]" style={inputStyle}>
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Client</label>
+                  <select value={clientId} onChange={e => setClientId(e.target.value)}
+                    className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a]" style={inputStyle}>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </select>
                 </div>
 
-                {/* Pipeline (if multiple) */}
+                {/* Pipeline */}
                 {clientPipelineNames.length > 1 && (
                   <div>
-                    <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Pipeline</label>
+                    <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Pipeline</label>
                     <div className="flex gap-2 flex-wrap">
                       {clientPipelineNames.map(name => (
                         <button key={name} type="button" onClick={() => setSelectedTemplateName(name)}
                           className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
-                            selectedTemplateName === name ? 'bg-[#f7931a] text-black border-[#f7931a]' : 'text-[#888] border-[#2e2e2e] hover:text-white')}
-                          style={selectedTemplateName !== name ? { background: '#222' } : {}}
+                            selectedTemplateName === name
+                              ? 'bg-[#f7931a] text-black border-[#f7931a]'
+                              : 'text-[#888] border-[#2e2e2e] hover:text-white')}
+                          style={selectedTemplateName !== name ? { background: '#1e1e1e' } : {}}
                         >{name}</button>
                       ))}
                     </div>
@@ -246,39 +330,97 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
 
                 {/* Guest Name */}
                 <div>
-                  <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Guest Name</label>
-                  <input type="text" value={guestName} onChange={e => setGuestName(e.target.value)} required placeholder="e.g. Elon Musk"
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Guest Name</label>
+                  <input type="text" value={guestName} onChange={e => setGuestName(e.target.value)} required
+                    placeholder="e.g. Elon Musk"
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#555]" style={inputStyle} />
                 </div>
 
                 {/* Release Date */}
                 <div>
-                  <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Release Date & Time</label>
-                  <DateHourPicker value={releaseDate} onChange={setReleaseDate} className="w-full" />
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Release Date & Time</label>
+                  <DateHourPicker
+                    value={releaseDate}
+                    onChange={v => {
+                      if (manuallyAdjusted.size > 0) {
+                        setReleaseDateWarning(true)
+                        setTimeout(() => setReleaseDateWarning(false), 4000)
+                      }
+                      setReleaseDate(v)
+                    }}
+                    className="w-full"
+                  />
+                  {releaseDateWarning && (
+                    <p className="text-xs text-amber-400 mt-1">Release date changed — task dates have been recalculated.</p>
+                  )}
                 </div>
 
                 {/* Footage URL */}
                 <div>
-                  <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Footage URL <span className="text-[#555] font-normal">(optional)</span></label>
-                  <input type="url" value={footageUrl} onChange={e => setFootageUrl(e.target.value)} placeholder="https://drive.google.com/..."
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Footage URL <span className="text-[#555] font-normal">(optional)</span></label>
+                  <input type="url" value={footageUrl} onChange={e => setFootageUrl(e.target.value)}
+                    placeholder="https://drive.google.com/..."
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#555]" style={inputStyle} />
                 </div>
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-[13px] font-medium text-[#aaa] mb-1.5">Notes <span className="text-[#555] font-normal">(optional)</span></label>
-                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Episode brief, client direction..."
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Notes <span className="text-[#555] font-normal">(optional)</span></label>
+                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                    placeholder="Add episode brief, client direction, or notes for the team..."
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#555] resize-none" style={inputStyle} />
+                </div>
+
+                {/* Reference Images */}
+                <div>
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1">
+                    Reference Images <span className="text-[#555] font-normal">(optional)</span>
+                  </label>
+                  <p className="text-xs text-[#555] mb-2">Upload mood boards, direction examples, or references for the team</p>
+                  <div
+                    onClick={() => imageInputRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={e => { e.preventDefault(); setIsDragging(false); addImageFiles(Array.from(e.dataTransfer.files)) }}
+                    className="cursor-pointer flex flex-col items-center justify-center gap-1.5 rounded-lg py-5 transition-colors"
+                    style={{
+                      border: `2px dashed ${isDragging ? 'rgba(247,147,26,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                      background: isDragging ? 'rgba(247,147,26,0.04)' : 'transparent',
+                    }}
+                  >
+                    <Upload className="w-5 h-5 text-[#555]" />
+                    <p className="text-sm text-[#666]">Drop images here or click to browse</p>
+                    <p className="text-xs text-[#444]">JPG, PNG, WebP · Max 10MB per image</p>
+                  </div>
+                  <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden"
+                    onChange={e => { addImageFiles(Array.from(e.target.files || [])); e.target.value = '' }} />
+                  {imageWarning && <p className="text-xs text-amber-400 mt-2">{imageWarning}</p>}
+                  {imagePreviews.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto mt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+                      {imagePreviews.map((src, idx) => (
+                        <div key={idx} className="relative shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={src} alt={imageFiles[idx]?.name || 'Preview'}
+                            style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
+                          <button type="button" onClick={() => removeImageFile(idx)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#333] border border-[#555] flex items-center justify-center text-[#aaa] hover:text-white hover:bg-[#444] transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Starting task due dates */}
                 {releaseDate && unlockedTemplates.length > 0 && (
                   <div>
-                    <p className="text-[13px] font-medium text-[#aaa] mb-1">Starting task due dates</p>
+                    <p className="text-[13px] font-medium text-[#ccc] mb-1">Starting task due dates</p>
                     <p className="text-xs text-[#555] mb-2">Auto-calculated from release date. Adjust if this episode needs a faster turnaround.</p>
                     <div className="space-y-2">
                       {unlockedTemplates.map(t => {
                         const assignee = allUsers.find(u => u.id === t.assignee_id)
+                        const shiftCount = cascadeShifts[t.seq_id]
                         return (
                           <div key={t.seq_id} className="rounded-lg px-3 py-2.5" style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.07)' }}>
                             <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -286,6 +428,28 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                               <span className="text-xs text-[#555] shrink-0">{assignee?.name || '—'}</span>
                             </div>
                             <DateHourPicker value={taskDueDates[t.seq_id] || ''} onChange={v => handleDateChange(t.seq_id, v)} className="w-full" />
+                            {shiftCount !== undefined && shiftCount > 0 && (
+                              <p className="text-xs text-[#888] mt-1">{shiftCount} dependent task{shiftCount !== 1 ? 's' : ''} shifted</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* All tasks preview */}
+                {clientTemplates.length > 0 && (
+                  <div>
+                    <p className="text-[13px] font-medium text-[#ccc] mb-2">All tasks ({clientTemplates.length})</p>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {clientTemplates.map(t => {
+                        const assignee = allUsers.find(u => u.id === t.assignee_id)
+                        return (
+                          <div key={t.seq_id} className="flex items-center gap-2 text-sm text-[#888] rounded-md px-3 py-1.5" style={{ background: '#1e1e1e' }}>
+                            <span className="text-[#555] text-xs w-5 shrink-0">{t.seq_id}.</span>
+                            <span className="flex-1 truncate">{t.label}</span>
+                            <span className="text-xs text-[#666] shrink-0">{assignee?.name || '—'}</span>
                           </div>
                         )
                       })}
@@ -303,7 +467,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                   <button type="submit" disabled={submitting}
                     className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold text-black disabled:opacity-50 transition-all hover:scale-[1.01] cursor-pointer"
                     style={{ background: 'linear-gradient(to bottom, #ff9a30, #e8820a)', border: '1px solid #f7931a', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
-                    {submitting ? 'Creating...' : 'Create Episode'}
+                    {submitting ? 'Creating...' : 'Create Project'}
                   </button>
                 </div>
               </>

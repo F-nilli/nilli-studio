@@ -427,7 +427,7 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
               style={{ background: 'linear-gradient(to bottom, #ff9a30, #e8820a)', border: '1px solid #f7931a', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}
             >
               <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">New Episode</span>
+              <span className="hidden sm:inline">New Project</span>
             </button>
           )}
 

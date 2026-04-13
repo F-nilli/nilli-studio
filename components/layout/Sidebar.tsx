@@ -37,7 +37,7 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
 
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
-    { href: '/board', label: 'Board', icon: Layers2 },
+    { href: '/board', label: 'Project Board', icon: Layers2 },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
     ...(user.role === 'admin' || user.role === 'ops_manager'
       ? [{ href: '/analytics', label: 'Analytics', icon: BarChart2 }]
