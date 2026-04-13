@@ -14,11 +14,20 @@ export async function GET() {
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
-  const { data: rows } = await admin
+  const { data: rows, error: selectError } = await admin
     .from('workspace_settings')
     .select('slack_bot_token, workspace_name')
-    .order('id', { ascending: false })
     .limit(1)
+
+  if (selectError) {
+    console.error('[Slack GET] select error:', JSON.stringify(selectError))
+    return NextResponse.json({ error: `DB read error: ${selectError.message}` }, {
+      status: 500,
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
+
+  console.log('[Slack GET] rows:', JSON.stringify(rows))
 
   const row = rows?.[0] ?? null
 
@@ -26,6 +35,8 @@ export async function GET() {
     connected: !!row?.slack_bot_token,
     workspaceName: row?.workspace_name || null,
     tokenHint: row?.slack_bot_token ? '…' + row.slack_bot_token.slice(-4) : null,
+  }, {
+    headers: { 'Cache-Control': 'no-store' },
   })
 }
 
@@ -44,11 +55,23 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
-  // Delete all existing rows then insert fresh — avoids .single() failing on multiple rows
-  await admin.from('workspace_settings').delete().gte('id', 0)
-  const { error } = await admin.from('workspace_settings')
-    .insert({ slack_bot_token: token, workspace_name: test.team })
-  if (error) return NextResponse.json({ error: `Failed to save token: ${error.message}` }, { status: 500 })
+  // Delete all existing rows. id is uuid so we use a uuid-safe filter.
+  const { error: deleteError } = await admin
+    .from('workspace_settings')
+    .delete()
+    .not('id', 'is', null)
 
+  if (deleteError) console.error('[Slack POST] delete error:', JSON.stringify(deleteError))
+
+  const { error: insertError } = await admin
+    .from('workspace_settings')
+    .insert({ slack_bot_token: token, workspace_name: test.team })
+
+  if (insertError) {
+    console.error('[Slack POST] insert error:', JSON.stringify(insertError))
+    return NextResponse.json({ error: `Failed to save token: ${insertError.message}` }, { status: 500 })
+  }
+
+  console.log('[Slack POST] saved token for workspace:', test.team)
   return NextResponse.json({ ok: true, workspaceName: test.team })
 }

@@ -1513,7 +1513,7 @@ function IntegrationsTab() {
   const [toast, setToast] = useState('')
 
   useEffect(() => {
-    fetch('/api/admin/slack').then(r => r.json()).then(setStatus).catch(() => {})
+    fetch('/api/admin/slack', { cache: 'no-store' }).then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
   async function handleSave(e: React.FormEvent) {
