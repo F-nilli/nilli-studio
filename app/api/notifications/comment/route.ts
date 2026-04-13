@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { commentId, authorId, taskId, episodeId, body, assigneeId } = await request.json()
+  const { commentId, authorId, taskId, episodeId, body, assigneeId, parentAuthorId } = await request.json()
 
   const admin = createAdminClient()
 
@@ -42,6 +42,20 @@ export async function POST(request: NextRequest) {
         read: false,
       })
     }
+  }
+
+  // Parent comment author — notify on reply
+  if (parentAuthorId && parentAuthorId !== authorId && !notifiedIds.has(parentAuthorId)) {
+    notifiedIds.add(parentAuthorId)
+    inserts.push({
+      user_id: parentAuthorId,
+      author_id: authorId,
+      comment_id: commentId,
+      task_id: taskId ?? null,
+      episode_id: episodeId,
+      type: 'mention',
+      read: false,
+    })
   }
 
   // Task assignee — if not already mentioned and not the author

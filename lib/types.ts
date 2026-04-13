@@ -26,12 +26,7 @@ export type Track =
   | 'Review'
   | 'Publishing'
 
-export type ClientKey =
-  | 'brandon_gentile'
-  | 'bitcoin_edge'
-  | 'peruvian_bull'
-  | 'walker_america'
-  | 'youre_the_voice'
+export type ClientKey = string
 
 export interface User {
   id: string
@@ -108,6 +103,8 @@ export interface Comment {
   body: string
   internal: boolean
   created_at: string
+  parent_comment_id?: string | null
+  depth?: number
   // Joined
   author?: User
 }

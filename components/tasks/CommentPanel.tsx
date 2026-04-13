@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, ArrowUpDown, Lock } from 'lucide-react'
+import { X, Send, ArrowUpDown, Lock, CornerDownLeft } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
 import { Comment, User, Task, Track, canAccessSettings } from '@/lib/types'
@@ -50,6 +50,8 @@ interface Props {
   onReplaceComment: (tempId: string, real: Comment) => void
   onRemoveComment: (id: string) => void
   highlightCommentId?: string
+  replyToCommentId?: string | null
+  onReplyConsumed?: () => void
 }
 
 export function CommentPanel({
@@ -68,6 +70,8 @@ export function CommentPanel({
   onReplaceComment,
   onRemoveComment,
   highlightCommentId,
+  replyToCommentId,
+  onReplyConsumed,
 }: Props) {
   const supabase = createClient()
   const [activeTab, setActiveTab] = useState<Tab>('all')
@@ -81,6 +85,8 @@ export function CommentPanel({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [mentionStart, setMentionStart] = useState(0)
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null)
+  const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
@@ -91,6 +97,21 @@ export function CommentPanel({
   const taskLabels = useMemo(() => Object.fromEntries(tasks.map(t => [t.id, t.label])), [tasks])
   const taskTracks = useMemo(() => Object.fromEntries(tasks.map(t => [t.id, t.track as Track])), [tasks])
 
+  // Build replies map: parent ID → sorted children
+  const repliesMap = useMemo(() => {
+    const map: Record<string, Comment[]> = {}
+    for (const c of allComments) {
+      if (c.parent_comment_id) {
+        if (!map[c.parent_comment_id]) map[c.parent_comment_id] = []
+        map[c.parent_comment_id].push(c)
+      }
+    }
+    for (const id in map) {
+      map[id].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    }
+    return map
+  }, [allComments])
+
   const sorted = (list: Comment[]) =>
     [...list].sort((a, b) =>
       sortDesc
@@ -98,16 +119,34 @@ export function CommentPanel({
         : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
 
-  const allNonInternal = useMemo(() => sorted(allComments.filter(c => !c.internal)), [allComments, sortDesc])
-  const taskOnlyComments = useMemo(() =>
-    activeTask ? sorted(allComments.filter(c => c.task_id === activeTask.id && !c.internal)) : [],
+  // Top-level only (no parent) per tab
+  const topLevelAll = useMemo(() =>
+    sorted(allComments.filter(c => !c.parent_comment_id && !c.internal)),
+    [allComments, sortDesc])
+  const topLevelTask = useMemo(() =>
+    activeTask ? sorted(allComments.filter(c => !c.parent_comment_id && !c.internal && c.task_id === activeTask.id)) : [],
     [allComments, activeTask, sortDesc])
-  const internalComments = useMemo(() => sorted(allComments.filter(c => c.internal)), [allComments, sortDesc])
+  const topLevelInternal = useMemo(() =>
+    sorted(allComments.filter(c => !c.parent_comment_id && c.internal)),
+    [allComments, sortDesc])
 
-  const visibleComments =
-    activeTab === 'all' ? allNonInternal :
-    activeTab === 'tasks' ? taskOnlyComments :
-    internalComments
+  const visibleTopLevel =
+    activeTab === 'all' ? topLevelAll :
+    activeTab === 'tasks' ? topLevelTask :
+    topLevelInternal
+
+  // Total visible comment count including replies (for scroll trigger)
+  const totalVisibleCount = useMemo(() => {
+    let count = visibleTopLevel.length
+    for (const c of visibleTopLevel) {
+      const replies = repliesMap[c.id] ?? []
+      count += replies.length
+      for (const r of replies) {
+        count += (repliesMap[r.id] ?? []).length
+      }
+    }
+    return count
+  }, [visibleTopLevel, repliesMap])
 
   const totalUnreadTasks = tasks.filter(t => hasUnread(t.id)).length
 
@@ -124,7 +163,7 @@ export function CommentPanel({
   // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [visibleComments.length])
+  }, [totalVisibleCount])
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -152,6 +191,22 @@ export function CommentPanel({
     setFlashedCommentId(highlightCommentId)
     setTimeout(() => setFlashedCommentId(null), 2000)
   }, [highlightCommentId, allComments.length])
+
+  // Consume external replyToCommentId (from task row ↩ button)
+  useEffect(() => {
+    if (!replyToCommentId) return
+    const comment = allComments.find(c => c.id === replyToCommentId)
+    if (comment) {
+      setReplyingTo(comment)
+      if (!comment.internal) {
+        setActiveTab(comment.task_id ? 'tasks' : 'all')
+      } else {
+        setActiveTab('internal')
+      }
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+    onReplyConsumed?.()
+  }, [replyToCommentId])
 
   // @mention options
   const mentionOptions = mentionQuery !== null
@@ -190,32 +245,52 @@ export function CommentPanel({
         handleSubmit()
       }
     }
-    if (e.key === 'Escape') setMentionQuery(null)
+    if (e.key === 'Escape') {
+      setMentionQuery(null)
+      if (replyingTo) setReplyingTo(null)
+    }
+  }
+
+  function startReply(comment: Comment) {
+    setReplyingTo(comment)
+    // Switch to the right tab
+    if (comment.internal) {
+      setActiveTab('internal')
+    } else if (comment.task_id) {
+      setActiveTab('tasks')
+    }
+    setTimeout(() => inputRef.current?.focus(), 50)
   }
 
   async function handleSubmit() {
-    const isInternal = activeTab === 'internal'
+    const isInternal = replyingTo ? replyingTo.internal : activeTab === 'internal'
     const trimmedBody = body.trim()
     if (!trimmedBody) return
-    if (!isInternal && !activeTask) return
+    if (!replyingTo && !isInternal && !activeTask) return
 
-    // Clear input immediately for optimistic feel
+    const replyParent = replyingTo
     setBody('')
     setMentionQuery(null)
     setSubmitError(null)
     setSubmitting(true)
+    setReplyingTo(null)
+
+    const taskId = replyParent ? replyParent.task_id : (activeTask?.id ?? null)
+    const depth = replyParent ? Math.min((replyParent.depth ?? 0) + 1, 2) : 0
 
     // Optimistic comment
     const tempId = `optimistic-${Date.now()}`
     const optimisticComment: Comment = {
       id: tempId,
-      task_id: activeTask?.id ?? null,
+      task_id: taskId,
       episode_id: episodeId,
       author_id: currentUser.id,
       body: trimmedBody,
       internal: isInternal,
       created_at: new Date().toISOString(),
       author: currentUser,
+      parent_comment_id: replyParent?.id ?? null,
+      depth,
     }
     onNewComment(optimisticComment)
 
@@ -225,7 +300,11 @@ export function CommentPanel({
       internal: isInternal,
       episode_id: episodeId,
     }
-    if (activeTask) insertData.task_id = activeTask.id
+    if (taskId) insertData.task_id = taskId
+    if (replyParent) {
+      insertData.parent_comment_id = replyParent.id
+      insertData.depth = depth
+    }
 
     const { data, error } = await supabase
       .from('comments')
@@ -235,34 +314,35 @@ export function CommentPanel({
 
     if (error || !data) {
       console.error('Comment insert failed:', error)
-      // Rollback optimistic comment and restore body
       onRemoveComment(tempId)
       setBody(trimmedBody)
+      setReplyingTo(replyParent)
       setSubmitError(error?.message ?? 'Failed to send. Please try again.')
       setSubmitting(false)
       return
     }
 
     const newComment = data as unknown as Comment
-    // Replace optimistic with real comment
     onReplaceComment(tempId, newComment)
 
-    // Notifications (non-blocking, server-side)
-    if (activeTask && !isInternal) {
+    // Notifications (non-blocking)
+    if (taskId && !isInternal) {
+      const replyTask = tasks.find(t => t.id === taskId)
       fetch('/api/notifications/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           commentId: newComment.id,
           authorId: currentUser.id,
-          taskId: activeTask.id,
+          taskId,
           episodeId,
           body: trimmedBody,
-          assigneeId: activeTask.assignee_id ?? null,
+          assigneeId: replyTask?.assignee_id ?? null,
+          parentAuthorId: replyParent?.author_id ?? null,
         }),
       }).catch(() => {})
 
-      // Skip Slack for handoff notes (→ Name: ...) — they're internal workflow messages
+      // Skip Slack for handoff notes
       if (!trimmedBody.startsWith('→ ')) {
         fetch('/api/slack/notify', {
           method: 'POST',
@@ -270,7 +350,7 @@ export function CommentPanel({
           body: JSON.stringify({
             type: 'comment',
             episodeId,
-            taskLabel: activeTask.label,
+            taskLabel: replyTask?.label ?? activeTask?.label,
             authorName: currentUser.name,
             commentBody: trimmedBody,
           }),
@@ -281,13 +361,135 @@ export function CommentPanel({
     setSubmitting(false)
   }
 
-  const inputDisabled = activeTab === 'all'
-  const inputPlaceholder =
-    activeTab === 'internal'
+  // Input is disabled when: no reply mode AND on "all" tab
+  const inputDisabled = !replyingTo && activeTab === 'all'
+
+  // Effective internal status for textarea styling
+  const effectiveInternal = replyingTo ? replyingTo.internal : activeTab === 'internal'
+
+  const inputPlaceholder = replyingTo
+    ? `Reply to ${replyingTo.author?.name ?? 'comment'}…`
+    : activeTab === 'internal'
       ? 'Internal note — only visible to admins and managers'
       : activeTask
         ? `Comment on "${activeTask.label}"…`
         : 'Select a task to comment'
+
+  // ─── Comment bubble renderer ─────────────────────────────────────────────────
+
+  function renderCommentBubble(comment: Comment, depth: number) {
+    const isOwn = comment.author_id === currentUser.id
+    const isOptimistic = comment.id.startsWith('optimistic-')
+    const taskLabel = comment.task_id ? taskLabels[comment.task_id] : null
+    const taskTrack = comment.task_id ? taskTracks[comment.task_id] : null
+    const trackColor = taskTrack ? TRACK_COLORS[taskTrack] : '#888'
+    const commentUnread = comment.task_id ? hasUnread(comment.task_id) : false
+    const isHandoff = comment.body.startsWith('→ ')
+    const isHovered = hoveredCommentId === comment.id
+    const canDepthReply = (comment.depth ?? 0) < 2
+
+    return (
+      <div
+        key={comment.id}
+        ref={el => { commentRefs.current[comment.id] = el }}
+        className={cn(
+          'flex gap-2 transition-opacity',
+          isOwn ? 'flex-row-reverse' : 'flex-row',
+          isOptimistic && 'opacity-60',
+          flashedCommentId === comment.id && 'comment-flash'
+        )}
+        onMouseEnter={() => setHoveredCommentId(comment.id)}
+        onMouseLeave={() => setHoveredCommentId(null)}
+      >
+        <div className="shrink-0">
+          <Avatar
+            name={comment.author?.name ?? '?'}
+            color={comment.author?.avatar_color ?? '#888'}
+            size="sm"
+            avatarUrl={comment.author?.avatar_url ?? null}
+          />
+        </div>
+        <div className={cn('max-w-[84%] flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
+          {isHandoff && (
+            <span className="text-[10px] text-[#555] mb-0.5">↗ handoff note</span>
+          )}
+          {/* Task pill (ALL tab only, top-level only) */}
+          {activeTab === 'all' && taskLabel && depth === 0 && (
+            <span
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full mb-0.5 truncate max-w-full"
+              style={{ backgroundColor: `${trackColor}25`, color: trackColor }}
+            >
+              {taskLabel}
+            </span>
+          )}
+          <div className={cn('flex items-baseline gap-1.5 flex-wrap', isOwn && 'flex-row-reverse')}>
+            {!isOwn && (
+              <span className="text-[13px] font-semibold text-[#bbb]">{comment.author?.name}</span>
+            )}
+            {comment.internal && (
+              <Lock className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+            )}
+            {commentUnread && !isOwn && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#f7931a] shrink-0" />
+            )}
+            <span className="text-[11px] text-white/30">
+              {isOptimistic ? 'sending…' : relativeTime(comment.created_at)}
+            </span>
+          </div>
+          <div className={cn(
+            'px-3 py-2.5 rounded-xl text-[14px] leading-relaxed',
+            comment.internal
+              ? isOwn
+                ? 'bg-purple-900/25 border border-purple-700/25 text-purple-200'
+                : 'bg-purple-900/15 border border-purple-700/20 text-purple-300'
+              : isOwn
+                ? 'text-[#ffe8d8]'
+                : 'text-[#d0d0d0]'
+          )}
+          style={!comment.internal ? (isOwn
+            ? { background: '#2d1f0e', border: '1px solid rgba(247,147,26,0.2)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
+            : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
+          ) : {}}
+          >
+            {renderBody(comment.body)}
+          </div>
+          {/* Reply button — shown on hover, only for non-optimistic, max depth 2 */}
+          {!isOptimistic && canDepthReply && (
+            <button
+              onClick={() => startReply(comment)}
+              className={cn(
+                'flex items-center gap-1 text-[11px] text-[#555] hover:text-[#888] transition-all mt-0.5',
+                isHovered ? 'opacity-100' : 'opacity-0'
+              )}
+            >
+              <CornerDownLeft className="w-3 h-3" />
+              Reply
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Thread renderer ──────────────────────────────────────────────────────────
+
+  function renderThread(comment: Comment, depth: number = 0): React.ReactNode {
+    const replies = repliesMap[comment.id] ?? []
+    return (
+      <div key={comment.id}>
+        {renderCommentBubble(comment, depth)}
+        {replies.length > 0 && (
+          <div className={cn('mt-2 relative', depth === 0 ? 'ml-8 pl-4' : 'ml-4 pl-3')}
+            style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}
+          >
+            <div className="flex flex-col gap-3">
+              {replies.map(reply => renderThread(reply, depth + 1))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col bg-[#181818] rounded-xl overflow-hidden" style={{ height: 'calc(100vh - 8rem)', border: '1px solid rgba(255,255,255,0.09)' }}>
@@ -361,8 +563,8 @@ export function CommentPanel({
       )}
 
       {/* Comment list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {visibleComments.length === 0 && (
+      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {visibleTopLevel.length === 0 && (
           <p className="text-center text-xs text-[#444] py-10">
             {activeTab === 'all' ? 'No comments yet.' :
              activeTab === 'tasks' ? 'No comments on this task yet.' :
@@ -370,82 +572,7 @@ export function CommentPanel({
           </p>
         )}
 
-        {visibleComments.map(comment => {
-          const isOwn = comment.author_id === currentUser.id
-          const isOptimistic = comment.id.startsWith('optimistic-')
-          const taskLabel = comment.task_id ? taskLabels[comment.task_id] : null
-          const taskTrack = comment.task_id ? taskTracks[comment.task_id] : null
-          const trackColor = taskTrack ? TRACK_COLORS[taskTrack] : '#888'
-          const commentUnread = comment.task_id ? hasUnread(comment.task_id) : false
-          const isHandoff = comment.body.startsWith('→ ')
-
-          return (
-            <div
-              key={comment.id}
-              ref={el => { commentRefs.current[comment.id] = el }}
-              className={cn(
-                'flex gap-2 transition-opacity',
-                isOwn ? 'flex-row-reverse' : 'flex-row',
-                isOptimistic && 'opacity-60',
-                flashedCommentId === comment.id && 'comment-flash'
-              )}
-            >
-              <div className="shrink-0">
-                <Avatar
-                  name={comment.author?.name ?? '?'}
-                  color={comment.author?.avatar_color ?? '#888'}
-                  size="sm"
-                  avatarUrl={comment.author?.avatar_url ?? null}
-                />
-              </div>
-              <div className={cn('max-w-[84%] flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
-                {isHandoff && (
-                  <span className="text-[10px] text-[#555] mb-0.5">↗ handoff note</span>
-                )}
-                {/* Task pill (ALL tab only) */}
-                {activeTab === 'all' && taskLabel && (
-                  <span
-                    className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full mb-0.5 truncate max-w-full"
-                    style={{ backgroundColor: `${trackColor}25`, color: trackColor }}
-                  >
-                    {taskLabel}
-                  </span>
-                )}
-                <div className={cn('flex items-baseline gap-1.5 flex-wrap', isOwn && 'flex-row-reverse')}>
-                  {!isOwn && (
-                    <span className="text-[13px] font-semibold text-[#bbb]">{comment.author?.name}</span>
-                  )}
-                  {comment.internal && (
-                    <Lock className="w-2.5 h-2.5 text-purple-400 shrink-0" />
-                  )}
-                  {commentUnread && !isOwn && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#f7931a] shrink-0" />
-                  )}
-                  <span className="text-[11px] text-white/30">
-                    {isOptimistic ? 'sending…' : relativeTime(comment.created_at)}
-                  </span>
-                </div>
-                <div className={cn(
-                  'px-3 py-2.5 rounded-xl text-[14px] leading-relaxed',
-                  comment.internal
-                    ? isOwn
-                      ? 'bg-purple-900/25 border border-purple-700/25 text-purple-200'
-                      : 'bg-purple-900/15 border border-purple-700/20 text-purple-300'
-                    : isOwn
-                      ? 'text-[#ffe8d8]'
-                      : 'text-[#d0d0d0]'
-                )}
-                style={!comment.internal ? (isOwn
-                  ? { background: '#2d1f0e', border: '1px solid rgba(247,147,26,0.2)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
-                  : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
-                ) : {}}
-                >
-                  {renderBody(comment.body)}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+        {visibleTopLevel.map(comment => renderThread(comment, 0))}
         <div ref={bottomRef} />
       </div>
 
@@ -464,66 +591,88 @@ export function CommentPanel({
           </p>
         </div>
       ) : (
-        <div className="border-t p-4 shrink-0 relative" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          {/* @mention dropdown */}
-          {mentionQuery !== null && (
-            <div className="absolute bottom-full left-3 right-3 mb-1 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg overflow-hidden shadow-xl z-20">
-              {mentionOptions.length > 0
-                ? mentionOptions.slice(0, 6).map(u => (
-                    <button
-                      key={u.id}
-                      onMouseDown={e => { e.preventDefault(); insertMention(u) }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-[#252525] text-left transition-colors"
-                    >
-                      <Avatar name={u.name} color={u.avatar_color} size="sm" avatarUrl={u.avatar_url} />
-                      <span className="text-sm text-white">@{u.name}</span>
-                    </button>
-                  ))
-                : (
-                  <p className="px-3 py-2.5 text-xs text-[#555]">No members found</p>
-                )
-              }
+        <div className="border-t shrink-0 relative" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          {/* Replying-to preview strip */}
+          {replyingTo && (
+            <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)', background: '#1e1e1e' }}>
+              <CornerDownLeft className="w-3 h-3 text-[#555] shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] text-[#555]">Replying to </span>
+                <span className="text-[10px] text-[#888] font-semibold">{replyingTo.author?.name}</span>
+                <span className="text-[10px] text-[#444] ml-1.5 truncate block">
+                  {replyingTo.body.length > 60 ? replyingTo.body.slice(0, 60) + '…' : replyingTo.body}
+                </span>
+              </div>
+              <button
+                onClick={() => setReplyingTo(null)}
+                className="p-1 text-[#555] hover:text-white transition-colors shrink-0"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
           )}
 
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 relative">
-              <textarea
-                ref={inputRef}
-                value={body}
-                onChange={handleInput}
-                onKeyDown={handleKeyDown}
-                placeholder={inputPlaceholder}
-                rows={2}
-                className={cn(
-                  'w-full px-3 py-2 rounded-lg text-[14px] text-white placeholder-[#555] focus:outline-none resize-none leading-relaxed',
-                  activeTab === 'internal'
-                    ? 'bg-purple-950/30 border border-purple-800/30'
-                    : ''
+          <div className="p-4 relative">
+            {/* @mention dropdown */}
+            {mentionQuery !== null && (
+              <div className="absolute bottom-full left-3 right-3 mb-1 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg overflow-hidden shadow-xl z-20">
+                {mentionOptions.length > 0
+                  ? mentionOptions.slice(0, 6).map(u => (
+                      <button
+                        key={u.id}
+                        onMouseDown={e => { e.preventDefault(); insertMention(u) }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-[#252525] text-left transition-colors"
+                      >
+                        <Avatar name={u.name} color={u.avatar_color} size="sm" avatarUrl={u.avatar_url} />
+                        <span className="text-sm text-white">@{u.name}</span>
+                      </button>
+                    ))
+                  : (
+                    <p className="px-3 py-2.5 text-xs text-[#555]">No members found</p>
+                  )
+                }
+              </div>
+            )}
+
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 relative">
+                <textarea
+                  ref={inputRef}
+                  value={body}
+                  onChange={handleInput}
+                  onKeyDown={handleKeyDown}
+                  placeholder={inputPlaceholder}
+                  rows={2}
+                  className={cn(
+                    'w-full px-3 py-2 rounded-lg text-[14px] text-white placeholder-[#555] focus:outline-none resize-none leading-relaxed',
+                    effectiveInternal
+                      ? 'bg-purple-950/30 border border-purple-800/30'
+                      : ''
+                  )}
+                  style={!effectiveInternal ? { background: '#2a2a2a', border: '1px solid rgba(255,255,255,0.12)' } : {}}
+                />
+                {body.length > 400 && (
+                  <span className={cn(
+                    'absolute bottom-1.5 right-2 text-[10px] tabular-nums',
+                    body.length > 480 ? 'text-[#ff3c00]' : 'text-[#555]'
+                  )}>
+                    {500 - body.length}
+                  </span>
                 )}
-                style={activeTab !== 'internal' ? { background: '#2a2a2a', border: '1px solid rgba(255,255,255,0.12)' } : {}}
-              />
-              {body.length > 400 && (
-                <span className={cn(
-                  'absolute bottom-1.5 right-2 text-[10px] tabular-nums',
-                  body.length > 480 ? 'text-[#ff3c00]' : 'text-[#555]'
-                )}>
-                  {500 - body.length}
-                </span>
-              )}
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !body.trim()}
+                className={cn(
+                  'p-2 disabled:opacity-40 text-white rounded-lg transition-colors shrink-0',
+                  effectiveInternal
+                    ? 'bg-purple-700 hover:bg-purple-600'
+                    : 'bg-[#ff3c00] hover:bg-[#e63600]'
+                )}
+              >
+                <Send className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              onClick={handleSubmit}
-              disabled={submitting || !body.trim()}
-              className={cn(
-                'p-2 disabled:opacity-40 text-white rounded-lg transition-colors shrink-0',
-                activeTab === 'internal'
-                  ? 'bg-purple-700 hover:bg-purple-600'
-                  : 'bg-[#ff3c00] hover:bg-[#e63600]'
-              )}
-            >
-              <Send className="w-4 h-4" />
-            </button>
           </div>
         </div>
       )}

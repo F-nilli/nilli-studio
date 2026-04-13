@@ -760,7 +760,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClients[0]?.id || null)
   const [addingClient, setAddingClient] = useState(false)
   const [newClientLabel, setNewClientLabel] = useState('')
-  const [newClientKey, setNewClientKey] = useState('')
+  const [duplicateModal, setDuplicateModal] = useState<{ clientId: string; name: string; key: string } | null>(null)
   const [channelId, setChannelId] = useState(initialClients[0]?.slack_channel_id || '')
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ msg: string; error?: boolean } | null>(null)
@@ -857,39 +857,14 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     showToast('Client renamed')
   }
 
-  async function handleDuplicateClient(clientId: string) {
+  function handleDuplicateClient(clientId: string) {
     setClientMenuOpen(null)
     const client = clients.find(c => c.id === clientId)
     if (!client) return
-    const { data: newClient } = await supabase.from('clients').insert({
-      key: client.key + '_copy_' + Date.now(),
-      label: 'Copy of ' + client.label,
-      active: client.active,
-    }).select().single()
-    if (!newClient) return
-    const allClientTpls = templates.filter(t => t.client_id === clientId)
-    if (allClientTpls.length > 0) {
-      const inserts = allClientTpls.map(t => ({
-        client_id: newClient.id,
-        template_name: t.template_name || 'Default',
-        seq_id: t.seq_id,
-        label: t.label,
-        assignee_id: t.assignee_id || null,
-        track: t.track,
-        due_days: t.due_days,
-        note: t.note,
-        dep_seq_ids: t.dep_seq_ids || [],
-        requires_approval: t.requires_approval || false,
-        approver_id: t.approver_id || null,
-      }))
-      const { data: newTpls } = await supabase.from('task_templates').insert(inserts).select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)')
-      if (newTpls) setTemplates(prev => [...prev, ...newTpls as unknown as DbTaskTemplate[]])
-    }
-    const newClientData = newClient as Client
-    setClients(prev => [...prev, newClientData])
-    selectClient(newClient.id)
-    showToast(`"${newClientData.label}" created`)
+    const name = 'Copy of ' + client.label
+    setDuplicateModal({ clientId, name, key: toClientKey(name) })
   }
+
 
   async function handleDeleteClient(clientId: string) {
     setClientMenuOpen(null)
@@ -1026,19 +1001,61 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, active } : c))
   }
 
+  function toClientKey(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  }
+
   async function handleAddClient(e: React.FormEvent) {
     e.preventDefault()
-    const { data } = await supabase.from('clients').insert({ key: newClientKey, label: newClientLabel }).select().single()
+    const key = toClientKey(newClientLabel)
+    if (!key) return
+    const { data } = await supabase.from('clients').insert({ key, label: newClientLabel }).select().single()
     if (data) {
       setClients(prev => [...prev, data as Client])
       setSelectedClientId(data.id)
       setEditingTasks([])
       setAddingClient(false)
-      setNewClientLabel(''); setNewClientKey('')
+      setNewClientLabel('')
     }
   }
 
+  async function handleConfirmDuplicate() {
+    if (!duplicateModal) return
+    const { clientId, name, key } = duplicateModal
+    const client = clients.find(c => c.id === clientId)
+    if (!client) return
+    setDuplicateModal(null)
+    const { data: newClient } = await supabase.from('clients').insert({
+      key,
+      label: name,
+      active: client.active,
+    }).select().single()
+    if (!newClient) return
+    const allClientTpls = templates.filter(t => t.client_id === clientId)
+    if (allClientTpls.length > 0) {
+      const inserts = allClientTpls.map(t => ({
+        client_id: newClient.id,
+        template_name: t.template_name || 'Default',
+        seq_id: t.seq_id,
+        label: t.label,
+        assignee_id: t.assignee_id || null,
+        track: t.track,
+        due_days: t.due_days,
+        note: t.note,
+        dep_seq_ids: t.dep_seq_ids || [],
+        requires_approval: t.requires_approval || false,
+        approver_id: t.approver_id || null,
+      }))
+      const { data: newTpls } = await supabase.from('task_templates').insert(inserts).select()
+      if (newTpls) setTemplates(prev => [...prev, ...(newTpls as DbTaskTemplate[])])
+    }
+    setClients(prev => [...prev, newClient as Client])
+    setSelectedClientId(newClient.id)
+    showToast('Client duplicated')
+  }
+
   return (
+    <>
     <div className="space-y-4">
       {toast && (
         <div className={cn('rounded-lg px-4 py-2.5 text-sm text-white flex items-center gap-2 border', toast.error ? 'bg-[#1a0a0a] border-[#ff3c00]/50' : 'bg-[#141414] border-[#2e2e2e]')}>
@@ -1108,8 +1125,9 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
             <form onSubmit={handleAddClient} className="space-y-2 pt-1">
               <input value={newClientLabel} onChange={e => setNewClientLabel(e.target.value)} required placeholder="Client name"
                 className="w-full px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]" />
-              <input value={newClientKey} onChange={e => setNewClientKey(e.target.value)} required placeholder="client_key (no spaces)"
-                className="w-full px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]" />
+              {newClientLabel && (
+                <p className="text-[10px] text-[#555] px-0.5">Key: <span className="text-[#888]">{toClientKey(newClientLabel)}</span></p>
+              )}
               <button type="submit" className="w-full py-1.5 bg-[#ff3c00] text-white rounded text-xs font-semibold">Add</button>
             </form>
           )}
@@ -1319,6 +1337,49 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
         )}
       </div>
     </div>
+
+    {/* Duplicate client modal */}
+    {duplicateModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setDuplicateModal(null)}>
+        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-6 w-80 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+          <h3 className="text-sm font-semibold text-white">Duplicate client</h3>
+          <div className="space-y-2">
+            <div>
+              <label className="text-[10px] text-[#555] uppercase tracking-wider block mb-1">Display name</label>
+              <input
+                value={duplicateModal.name}
+                onChange={e => setDuplicateModal(m => m ? { ...m, name: e.target.value, key: toClientKey(e.target.value) } : m)}
+                className="w-full px-3 py-2 bg-[#111] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00] placeholder-[#555]"
+                placeholder="Client name"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-[#555] uppercase tracking-wider block mb-1">Key <span className="normal-case text-[#444]">(auto-generated, editable)</span></label>
+              <input
+                value={duplicateModal.key}
+                onChange={e => setDuplicateModal(m => m ? { ...m, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') } : m)}
+                className="w-full px-3 py-2 bg-[#111] border border-[#2e2e2e] text-[#888] rounded-lg text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+                placeholder="client_key"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => setDuplicateModal(null)} className="flex-1 py-2 rounded-lg text-sm text-[#666] hover:text-white border border-[#2e2e2e] hover:border-[#444] transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDuplicate}
+              disabled={!duplicateModal.name.trim() || !duplicateModal.key.trim()}
+              className="flex-1 py-2 rounded-lg text-sm font-semibold bg-[#ff3c00] hover:bg-[#e63600] text-white transition-colors disabled:opacity-40"
+            >
+              Duplicate
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 

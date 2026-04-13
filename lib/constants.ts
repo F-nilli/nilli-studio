@@ -1,4 +1,4 @@
-import { ClientKey, Track, UserRole } from './types'
+import { Track, UserRole } from './types'
 
 export const MEMBER_COLORS: Record<string, string> = {
   eph: '#f7931a',
@@ -20,7 +20,7 @@ export const TRACK_COLORS: Record<Track, string> = {
   'Publishing': '#38bdf8',
 }
 
-export const CLIENT_LABELS: Record<ClientKey, string> = {
+export const CLIENT_LABELS: Record<string, string> = {
   brandon_gentile: 'Brandon Gentile',
   bitcoin_edge: 'Bitcoin Edge',
   peruvian_bull: 'Peruvian Bull',

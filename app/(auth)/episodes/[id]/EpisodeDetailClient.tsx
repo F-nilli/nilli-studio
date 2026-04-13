@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare, CornerDownLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Episode, Task, User, Track, Comment, TaskStatus, canEditDates as canEditDatesRole, canApprove, canManageClients } from '@/lib/types'
 import { EpisodeImages } from '@/components/episodes/EpisodeImages'
@@ -94,6 +94,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const canEdit = canApprove(currentUser)
   const canReassign = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
   const [toast, setToast] = useState<string | null>(null)
+  const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!toast) return
@@ -271,6 +272,18 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     setAllComments(prev => prev.filter(c => c.id !== id))
   }
 
+  function handleReplyToLatest(taskId: string) {
+    // Find latest non-internal top-level comment on this task
+    const latest = [...allComments]
+      .filter(c => c.task_id === taskId && !c.internal && !c.parent_comment_id)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+    if (latest) {
+      const task = tasks.find(t => t.id === taskId)
+      if (task) setActiveTaskFilter(task)
+      setReplyToCommentId(latest.id)
+    }
+  }
+
   async function handleDateChange(taskId: string, oldDateStr: string | null, newDatetimeLocal: string) {
     const newDateStr = fromDatetimeLocal(newDatetimeLocal)
     const downstream = getDownstreamTaskIds(taskId, tasks)
@@ -388,6 +401,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 onDateChange={(taskId, oldDate, newDate) => handleDateChange(taskId, oldDate, newDate)}
                 onTaskUpdate={handleTaskUpdate}
                 onReassignToast={setToast}
+                onReplyToLatest={handleReplyToLatest}
               />
             )
           })}
@@ -412,6 +426,8 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
           onReplaceComment={handleReplaceComment}
           onRemoveComment={handleRemoveComment}
           highlightCommentId={initialCommentId}
+          replyToCommentId={replyToCommentId}
+          onReplyConsumed={() => setReplyToCommentId(null)}
         />
       </div>
     </div>
@@ -551,9 +567,10 @@ interface TrackPanelProps {
   onDateChange: (taskId: string, oldDate: string | null, newDate: string) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast: (msg: string) => void
+  onReplyToLatest: (taskId: string) => void
 }
 
-function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onReassignToast }: TrackPanelProps) {
+function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onReassignToast, onReplyToLatest }: TrackPanelProps) {
   return (
     <div className="bg-[#1e1e1e] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
       {/* Header */}
@@ -583,6 +600,7 @@ function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign,
             onTaskUpdate={onTaskUpdate}
             canReassign={canReassign}
             onReassignToast={onReassignToast}
+            onReplyToLatest={onReplyToLatest}
           />
         ))}
       </div>
@@ -607,9 +625,10 @@ interface TrackTaskCardProps {
   onClick: () => void
   onTaskUpdate: (task: Task) => void
   onReassignToast: (msg: string) => void
+  onReplyToLatest: (taskId: string) => void
 }
 
-function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onReassignToast }: TrackTaskCardProps) {
+function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onReassignToast, onReplyToLatest }: TrackTaskCardProps) {
   const supabase = createClient()
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
@@ -969,10 +988,17 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
               </span>
             )}
             {commentCount > 0 && (
-              <span className="flex items-center gap-1 text-xs">
+              <span className="flex items-center gap-1.5 text-xs">
                 <MessageSquare className={cn('w-3 h-3 shrink-0', hasUnread ? 'text-[#f7931a]' : 'text-[#555]')} />
                 <span className={hasUnread ? 'text-[#f7931a]' : 'text-[#555]'}>{commentCount}</span>
                 {hasUnread && <span className="w-1 h-1 rounded-full bg-[#f7931a] ml-0.5" />}
+                <button
+                  onClick={e => { e.stopPropagation(); onReplyToLatest(task.id) }}
+                  className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[#555] hover:text-[#888] transition-all ml-0.5"
+                >
+                  <CornerDownLeft className="w-3 h-3" />
+                  <span className="text-[10px]">Reply</span>
+                </button>
               </span>
             )}
             {overdue && <AlertCircle className="w-3 h-3 text-[#ff3c00] shrink-0" />}

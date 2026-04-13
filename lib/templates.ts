@@ -1,4 +1,4 @@
-import { ClientKey, Track } from './types'
+import { Track } from './types'
 
 export interface TaskTemplate {
   id: number
@@ -10,7 +10,7 @@ export interface TaskTemplate {
   note?: string
 }
 
-export const CLIENT_TEMPLATES: Record<ClientKey, TaskTemplate[]> = {
+export const CLIENT_TEMPLATES: Record<string, TaskTemplate[]> = {
   brandon_gentile: [
     { id: 1, label: 'Edit full podcast (cuts, trailer, ad reads, watermarks, outro)', assigneeName: 'Eph', track: 'Long-form', deps: [], dueDays: 3 },
     { id: 2, label: 'Internal revision', assigneeName: 'Ali', track: 'Review', deps: [1], dueDays: 4 },
