@@ -37,12 +37,14 @@ export async function POST(request: Request) {
   const admin = createAdminClient()
   const { data: row } = await admin.from('workspace_settings').select('id').single()
   if (row) {
-    await admin.from('workspace_settings')
+    const { error } = await admin.from('workspace_settings')
       .update({ slack_bot_token: token, workspace_name: test.team, updated_at: new Date().toISOString() })
       .eq('id', row.id)
+    if (error) return NextResponse.json({ error: `Failed to save token: ${error.message}` }, { status: 500 })
   } else {
-    await admin.from('workspace_settings')
+    const { error } = await admin.from('workspace_settings')
       .insert({ slack_bot_token: token, workspace_name: test.team })
+    if (error) return NextResponse.json({ error: `Failed to save token: ${error.message}` }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, workspaceName: test.team })
