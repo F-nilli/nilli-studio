@@ -1505,9 +1505,17 @@ function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: 
 
 // ─── Integrations Tab ─────────────────────────────────────────────────────────
 
+const SLACK_NOTIF_TYPES = [
+  { key: 'approval', label: 'Task approved', description: 'When a task is approved and next tasks unlock' },
+  { key: 'review_submitted', label: 'Submitted for review', description: 'When a task is submitted for approval' },
+  { key: 'revision', label: 'Revision requested', description: 'When a task is sent back for revision' },
+  { key: 'comment', label: 'New comment', description: 'When someone posts a comment on a task' },
+  { key: 'reassign', label: 'Task reassigned', description: 'When a task is reassigned to a different person' },
+] as const
+
 function IntegrationsTab() {
   const [token, setToken] = useState('')
-  const [status, setStatus] = useState<{ connected: boolean; workspaceName: string | null; tokenHint: string | null } | null>(null)
+  const [status, setStatus] = useState<{ connected: boolean; workspaceName: string | null; tokenHint: string | null; notifications: Record<string, boolean> } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
@@ -1515,6 +1523,17 @@ function IntegrationsTab() {
   useEffect(() => {
     fetch('/api/admin/slack', { cache: 'no-store' }).then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
+
+  async function handleToggle(key: string, enabled: boolean) {
+    if (!status) return
+    const updated = { ...status.notifications, [key]: enabled }
+    setStatus(prev => prev ? { ...prev, notifications: updated } : prev)
+    await fetch('/api/admin/slack', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notifications: updated }),
+    })
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -1581,6 +1600,34 @@ function IntegrationsTab() {
           </button>
         </form>
       </div>
+      {status?.connected && (
+        <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+          <h4 className="text-sm font-semibold text-white">Notification events</h4>
+          <div className="space-y-3">
+            {SLACK_NOTIF_TYPES.map(({ key, label, description }) => {
+              const enabled = status.notifications[key] !== false
+              return (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white">{label}</p>
+                    <p className="text-xs text-[#555]">{description}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={enabled}
+                    onClick={() => handleToggle(key, !enabled)}
+                    className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]'}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
+                    />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
       <p className="text-xs text-[#555]">
         Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
       </p>

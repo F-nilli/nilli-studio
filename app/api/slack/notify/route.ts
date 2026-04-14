@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   const { data: settingsRows, error: settingsError } = await admin
     .from('workspace_settings')
-    .select('slack_bot_token')
+    .select('slack_bot_token, slack_notifications')
     .limit(1)
   if (settingsError) {
     console.error('[Slack notify] settings read error:', JSON.stringify(settingsError))
@@ -23,6 +23,10 @@ export async function POST(request: Request) {
   }
   const settings = settingsRows?.[0] ?? null
   if (!settings?.slack_bot_token) return NextResponse.json({ skipped: 'no_token' })
+
+  // Check if this notification type is enabled (default: true if not configured)
+  const notifPrefs = (settings as any).slack_notifications ?? {}
+  if (notifPrefs[type] === false) return NextResponse.json({ skipped: 'disabled' })
 
   const { data: episode } = await admin
     .from('episodes')
