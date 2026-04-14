@@ -150,10 +150,14 @@ export interface ActivityEntry {
   id: string
   episode_id: string | null
   task_id: string | null
-  action: string
-  detail: { from_status?: string; to_status?: string; task_label?: string }
-  created_at: string
-  episode?: { guest_name: string; client_label: string }
+  from_status: string | null
+  to_status: string | null
+  changed_at: string
+  changed_by: string | null
+  note: string | null
+  task?: { label: string } | null
+  episode?: { guest_name: string; client_label: string } | null
+  actor?: { name: string; avatar_color: string; avatar_url: string | null } | null
 }
 
 export interface Notification {

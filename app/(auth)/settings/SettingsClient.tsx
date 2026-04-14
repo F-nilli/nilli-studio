@@ -7,7 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { cn, formatDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical, UserMinus, UserCheck, AlertTriangle } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical, UserMinus, UserCheck, AlertTriangle, Link2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -1595,10 +1595,32 @@ const STATUS_COLORS: Record<string, string> = {
   in_review: '#8b5cf6', approved: '#10b981', revision: '#ff3c00', done: '#10b981',
 }
 
+function ActivityActor({ actor }: { actor: ActivityEntry['actor'] }) {
+  if (!actor) {
+    return (
+      <span className="flex items-center gap-1 shrink-0">
+        <Link2 className="w-3 h-3 text-[#444]" />
+        <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Auto</span>
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1.5 shrink-0">
+      <span
+        className="flex items-center justify-center rounded-full text-white font-bold shrink-0"
+        style={{ width: 18, height: 18, fontSize: 9, background: actor.avatar_color || '#444' }}
+      >
+        {actor.name[0].toUpperCase()}
+      </span>
+      <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{actor.name.split(' ')[0]}</span>
+    </span>
+  )
+}
+
 function ActivityTab({ activity }: { activity: ActivityEntry[] }) {
   const grouped: Record<string, ActivityEntry[]> = {}
   for (const entry of activity) {
-    const day = entry.created_at.slice(0, 10)
+    const day = entry.changed_at.slice(0, 10)
     if (!grouped[day]) grouped[day] = []
     grouped[day].push(entry)
   }
@@ -1623,27 +1645,38 @@ function ActivityTab({ activity }: { activity: ActivityEntry[] }) {
           <div className="border border-[#2e2e2e] rounded-xl overflow-hidden divide-y divide-[#242424]">
             {entries.map(entry => (
               <div key={entry.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#111111] transition-colors">
+                {/* Task label + episode */}
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-sm font-medium text-white truncate">{entry.detail.task_label}</span>
+                  <span className="text-sm font-medium text-white truncate">{entry.task?.label ?? '—'}</span>
                   {entry.episode && (
                     <span className="text-xs text-[#555] shrink-0">— {entry.episode.guest_name} / {entry.episode.client_label}</span>
                   )}
                 </div>
+                {/* Actor */}
+                <span className="text-[#333] shrink-0">·</span>
+                <ActivityActor actor={entry.actor} />
+                {/* Status badges or note */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {entry.detail.from_status && (
+                  {entry.note && entry.from_status === entry.to_status ? (
+                    <span className="text-xs text-[#666]">{entry.note}</span>
+                  ) : (
                     <>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: STATUS_COLORS[entry.detail.from_status] + '22', color: STATUS_COLORS[entry.detail.from_status] }}>
-                        {entry.detail.from_status?.replace('_', ' ')}
-                      </span>
-                      <span className="text-[#444]">→</span>
+                      {entry.from_status && (
+                        <>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: STATUS_COLORS[entry.from_status] + '22', color: STATUS_COLORS[entry.from_status] }}>
+                            {entry.from_status.replace('_', ' ')}
+                          </span>
+                          <span className="text-[#444]">→</span>
+                        </>
+                      )}
+                      {entry.to_status && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: STATUS_COLORS[entry.to_status] + '22', color: STATUS_COLORS[entry.to_status] }}>
+                          {entry.to_status.replace('_', ' ')}
+                        </span>
+                      )}
                     </>
                   )}
-                  {entry.detail.to_status && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: STATUS_COLORS[entry.detail.to_status] + '22', color: STATUS_COLORS[entry.detail.to_status] }}>
-                      {entry.detail.to_status?.replace('_', ' ')}
-                    </span>
-                  )}
-                  <span className="text-xs text-[#555]">{format(parseISO(entry.created_at), 'h:mm a')}</span>
+                  <span className="text-xs text-[#555]">{format(parseISO(entry.changed_at), 'h:mm a')}</span>
                 </div>
               </div>
             ))}

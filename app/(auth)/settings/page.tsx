@@ -17,9 +17,9 @@ export default async function SettingsPage() {
     supabase.from('clients').select('*').order('label'),
     supabase.from('task_templates').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('seq_id'),
     supabase
-      .from('activity_log')
-      .select('*, episode:episodes(guest_name, client_label)')
-      .order('created_at', { ascending: false })
+      .from('task_history')
+      .select('*, task:tasks(label), episode:episodes(guest_name, client_label), actor:users!changed_by(name, avatar_color, avatar_url)')
+      .order('changed_at', { ascending: false })
       .limit(100),
     supabase.from('pipeline_triggers').select('*'),
   ])
