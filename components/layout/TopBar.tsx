@@ -210,13 +210,13 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
         }
       })
 
-    // Write last_seen_at to DB on meaningful interaction, throttled to 2 min
+    // Write last_seen_at via API (admin client bypasses RLS), throttled to 2 min
     const WRITE_THROTTLE = 2 * 60 * 1000
     function writeLastSeen() {
       const now = Date.now()
       if (now - lastSeenWriteRef.current < WRITE_THROTTLE) return
       lastSeenWriteRef.current = now
-      supabase.from('users').update({ last_seen_at: new Date().toISOString() }).eq('id', user!.id)
+      fetch('/api/user/ping', { method: 'POST' })
     }
     // Write immediately on mount
     writeLastSeen()
