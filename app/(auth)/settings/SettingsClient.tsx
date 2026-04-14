@@ -33,6 +33,20 @@ const AVATAR_COLORS = ['#ff3c00', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#
 
 type PresenceStatus = 'online' | 'idle'
 
+function formatLastSeen(lastSeenAt: string | null | undefined): { label: string; isLive: boolean } | null {
+  if (!lastSeenAt) return null
+  const diffMs = Date.now() - new Date(lastSeenAt).getTime()
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 10) return { label: 'Live now', isLive: true }
+  if (diffMin < 60) return { label: `${diffMin}m ago`, isLive: false }
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return { label: `${diffH}h ago`, isLive: false }
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 7) return { label: `${diffD}d ago`, isLive: false }
+  const diffW = Math.floor(diffD / 7)
+  return { label: `${diffW}w ago`, isLive: false }
+}
+
 interface ActionTarget {
   user: User
   action: 'deactivate' | 'delete'
@@ -139,6 +153,13 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   const [reassigneeId, setReassigneeId] = useState('')
   const [updateTemplates, setUpdateTemplates] = useState(true)
   const [modalLoading, setModalLoading] = useState(false)
+
+  // Re-render every minute so relative timestamps stay accurate
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   function showToast(msg: string, isError = false) {
     setToast(msg)
@@ -528,11 +549,25 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
         </div>
 
         <div className="min-w-0">
-          <p className="text-[14px] font-medium text-white truncate">
-            {user.name}
-            {isSelf && <span className="text-[#555] text-[12px] ml-1">(you)</span>}
-            {inactive && <span className="text-[#555] text-[11px] ml-1.5">Deactivated</span>}
-          </p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-[14px] font-medium text-white truncate">
+              {user.name}
+              {isSelf && <span className="text-[#555] text-[12px] ml-1">(you)</span>}
+              {inactive && <span className="text-[#555] text-[11px] ml-1.5">Deactivated</span>}
+            </p>
+            {!inactive && (() => {
+              const ls = formatLastSeen(user.last_seen_at)
+              if (!ls) return null
+              return (
+                <span className={cn(
+                  'shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap',
+                  ls.isLive ? 'text-green-400 bg-green-400/10' : 'text-[#555] bg-[#1c1c1c]'
+                )}>
+                  {ls.label}
+                </span>
+              )
+            })()}
+          </div>
           <p className="text-[13px] text-[#666] truncate">{user.email}</p>
         </div>
       </div>

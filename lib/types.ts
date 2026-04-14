@@ -38,6 +38,7 @@ export interface User {
   avatar_url: string | null
   created_at: string
   active?: boolean
+  last_seen_at?: string | null
   password_changed?: boolean
 }
 

@@ -104,6 +104,7 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
   const [showPresenceTooltip, setShowPresenceTooltip] = useState(false)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isIdleRef = useRef(false)
+  const lastSeenWriteRef = useRef<number>(0)
 
   // ── Badge counts ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -209,6 +210,17 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
         }
       })
 
+    // Write last_seen_at to DB on meaningful interaction, throttled to 2 min
+    const WRITE_THROTTLE = 2 * 60 * 1000
+    function writeLastSeen() {
+      const now = Date.now()
+      if (now - lastSeenWriteRef.current < WRITE_THROTTLE) return
+      lastSeenWriteRef.current = now
+      supabase.from('users').update({ last_seen_at: new Date().toISOString() }).eq('id', user!.id)
+    }
+    // Write immediately on mount
+    writeLastSeen()
+
     // Idle detection
     const IDLE_TIMEOUT = 10 * 60 * 1000
     function resetIdle() {
@@ -226,6 +238,11 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
     document.addEventListener('mousemove', resetIdle)
     document.addEventListener('keydown', resetIdle)
 
+    // Track last_seen_at on click or keydown (meaningful interactions)
+    function onInteract() { writeLastSeen() }
+    document.addEventListener('click', onInteract)
+    document.addEventListener('keydown', onInteract)
+
     // Heartbeat every 30s
     const heartbeat = setInterval(() => {
       if (!isIdleRef.current) {
@@ -236,6 +253,8 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
     return () => {
       document.removeEventListener('mousemove', resetIdle)
       document.removeEventListener('keydown', resetIdle)
+      document.removeEventListener('click', onInteract)
+      document.removeEventListener('keydown', onInteract)
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
       clearInterval(heartbeat)
       supabase.removeChannel(channel)
