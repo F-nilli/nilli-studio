@@ -644,7 +644,7 @@ const MANIFESTO_SECTIONS = [
   },
   {
     heading: 'WHAT WE BELIEVE',
-    body: `Great content doesn't spread because it exists. It spreads because it's packaged, positioned, and released with intention.\n\nMost creators are sitting on valuable content that never reaches the audience it deserves — not because the content is bad, but because the production is an afterthought.\n\nWe believe the edit is part of the message. The thumbnail is part of the pitch. The clip is part of the reach. We treat every deliverable as if the creator's reputation depends on it, because it does.`,
+    body: `Great content doesn't spread because it exists. It spreads because it's packaged, positioned, and released with intention.\n\nMost creators are sitting on valuable content that never reaches the audience it deserves. Not because the content is bad, but because the production is an afterthought.\n\nWe believe the edit is part of the message. The thumbnail is part of the pitch. The clip is part of the reach. We treat every deliverable as if the creator's reputation depends on it, because it does.`,
   },
   {
     heading: 'BITCOIN FIRST',
