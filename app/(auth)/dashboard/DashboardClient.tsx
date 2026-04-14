@@ -783,9 +783,9 @@ function MiniProductionOverview({ episodes }: { episodes: EpisodeProgress[] }) {
 function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; onClick: () => void }) {
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
   return (
-    <button
+    <div
       onClick={onClick}
-      className="w-full text-left rounded-lg p-4 opacity-50 hover:opacity-70 transition-opacity"
+      className="w-full text-left rounded-lg p-4 opacity-50 hover:opacity-70 transition-opacity cursor-pointer"
       style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)' }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -798,6 +798,13 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
           </div>
           <p className="text-base font-medium text-[#888]">{task.label}</p>
           <p className="text-sm text-[#555] mt-0.5">{task.track}</p>
+          <Link
+            href={`/episodes/${task.episode_id}`}
+            onClick={e => e.stopPropagation()}
+            className="text-[11px] text-[#444] hover:text-[#888] transition-colors mt-1.5 inline-block"
+          >
+            Go to project →
+          </Link>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex items-center gap-1.5 text-xs text-[#555] bg-[#222] px-2 py-0.5 rounded-full border border-[#2e2e2e]">
@@ -808,7 +815,7 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
           )}
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -840,6 +847,13 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
           <p className="text-[13px] text-[#888] mt-0.5">
             {task.track}{showAssignee && task.assignee ? ` · ${(task.assignee as User).name}` : ''}
           </p>
+          <Link
+            href={`/episodes/${task.episode_id}`}
+            onClick={e => e.stopPropagation()}
+            className="text-[11px] text-[#555] hover:text-[#888] transition-colors mt-1.5 inline-block"
+          >
+            Go to project →
+          </Link>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           {task.due_date && (
@@ -1073,6 +1087,13 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
               Footage →
             </a>
           )}
+          <Link
+            href={`/episodes/${task.episode_id}`}
+            onClick={e => e.stopPropagation()}
+            className="text-[11px] text-[#555] hover:text-[#888] transition-colors mt-1.5 inline-block"
+          >
+            Go to project →
+          </Link>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <StatusBadge status={task.status} />
