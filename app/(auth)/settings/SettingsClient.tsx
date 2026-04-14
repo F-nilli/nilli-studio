@@ -183,13 +183,24 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
-  // ── Live last_seen_at updates ─────────────────────────────────────────────
+  // ── Fresh last_seen_at on mount + live updates ────────────────────────────
   useEffect(() => {
+    // Fetch current last_seen_at for all users (server snapshot may be stale)
+    supabase.from('users').select('id, last_seen_at').then(({ data }) => {
+      if (data) {
+        setUsers(prev => prev.map(u => {
+          const fresh = data.find((d: { id: string; last_seen_at: string | null }) => d.id === u.id)
+          return fresh ? { ...u, last_seen_at: fresh.last_seen_at } : u
+        }))
+      }
+    })
+
+    // Keep real-time updates for when users become active while the tab is open
     const ch = supabase
       .channel('team-last-seen')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
         const updated = payload.new as User
-        if (updated?.last_seen_at) {
+        if (updated?.id) {
           setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, last_seen_at: updated.last_seen_at } : u))
         }
       })
