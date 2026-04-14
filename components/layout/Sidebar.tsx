@@ -39,9 +39,7 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { href: '/board', label: 'Project Board', icon: Layers2 },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
-    ...(user.role === 'admin' || user.role === 'ops_manager'
-      ? [{ href: '/analytics', label: 'Analytics', icon: BarChart2 }]
-      : []),
+    { href: '/analytics', label: 'Analytics', icon: BarChart2 },
   ]
 
   function navClass(isActive: boolean, extraHover = '') {

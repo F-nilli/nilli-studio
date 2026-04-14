@@ -11,7 +11,5 @@ export default async function AnalyticsPage() {
   const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
   const currentUser = profile as User
 
-  if (currentUser.role === 'member') redirect('/dashboard')
-
   return <AnalyticsClient currentUser={currentUser} />
 }

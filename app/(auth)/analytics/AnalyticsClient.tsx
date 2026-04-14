@@ -47,6 +47,7 @@ const CARD_STYLE: React.CSSProperties = {
 }
 
 export function AnalyticsClient({ currentUser }: { currentUser: User }) {
+  const isBasic = currentUser.role === 'member'
   const [range, setRange] = useState<Range>('thirty')
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [charts, setCharts] = useState<ChartsData | null>(null)
@@ -205,7 +206,7 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
 
         {/* ── Charts row 2: Revisions + Team + Insights ─────────── */}
         {(loading || hasData) && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isBasic ? '1fr' : '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
             {/* Revision rounds by client */}
             <div style={CARD_STYLE}>
               <ChartTitle>Avg revision rounds by client</ChartTitle>
@@ -226,29 +227,33 @@ export function AnalyticsClient({ currentUser }: { currentUser: User }) {
               )}
             </div>
 
-            {/* Team task completion */}
-            <div style={CARD_STYLE}>
-              <ChartTitle>Team task completion</ChartTitle>
-              {loading ? (
-                <SkeletonBar height={160} />
-              ) : charts && charts.teamCompletion.length > 0 ? (
-                <TeamCompletionList members={charts.teamCompletion} />
-              ) : (
-                <EmptyChart />
-              )}
-            </div>
+            {/* Team task completion — admin/ops_manager only */}
+            {!isBasic && (
+              <div style={CARD_STYLE}>
+                <ChartTitle>Team task completion</ChartTitle>
+                {loading ? (
+                  <SkeletonBar height={160} />
+                ) : charts && charts.teamCompletion.length > 0 ? (
+                  <TeamCompletionList members={charts.teamCompletion} />
+                ) : (
+                  <EmptyChart />
+                )}
+              </div>
+            )}
 
-            {/* Studio insights */}
-            <div style={CARD_STYLE}>
-              <ChartTitle>Studio insights</ChartTitle>
-              {loading ? (
-                <SkeletonBar height={160} />
-              ) : charts && charts.insights.length > 0 ? (
-                <InsightsList insights={charts.insights} />
-              ) : (
-                <EmptyChart text="Not enough data to generate insights yet" />
-              )}
-            </div>
+            {/* Studio insights — admin/ops_manager only */}
+            {!isBasic && (
+              <div style={CARD_STYLE}>
+                <ChartTitle>Studio insights</ChartTitle>
+                {loading ? (
+                  <SkeletonBar height={160} />
+                ) : charts && charts.insights.length > 0 ? (
+                  <InsightsList insights={charts.insights} />
+                ) : (
+                  <EmptyChart text="Not enough data to generate insights yet" />
+                )}
+              </div>
+            )}
           </div>
         )}
 
