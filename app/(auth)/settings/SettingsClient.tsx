@@ -183,6 +183,20 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
+  // ── Live last_seen_at updates ─────────────────────────────────────────────
+  useEffect(() => {
+    const ch = supabase
+      .channel('team-last-seen')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
+        const updated = payload.new as User
+        if (updated?.last_seen_at) {
+          setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, last_seen_at: updated.last_seen_at } : u))
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
   function resetInviteForm() {
     setInviteEmail(''); setInviteName(''); setInviteUsername('')
     setInvitePassword(''); setInviteConfirm('')
