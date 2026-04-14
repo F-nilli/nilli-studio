@@ -52,7 +52,7 @@ export function buildApprovalBlocks({
     const lines = nextTasks.map(t => `*${t.assigneeName}* — ${t.label}`).join('\n')
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `NEXT: ${lines}` },
+      text: { type: 'mrkdwn', text: `NEXT:\n${lines}` },
     })
   }
 
