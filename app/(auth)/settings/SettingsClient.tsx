@@ -1546,7 +1546,7 @@ function IntegrationsTab() {
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error || 'Failed to connect'); setSaving(false); return }
-    setStatus({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4) })
+    setStatus(prev => ({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4), notifications: prev?.notifications ?? {} }))
     setToken('')
     setToast('Slack connected!')
     setTimeout(() => setToast(''), 3000)
