@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks } from '@/lib/slack'
+import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks } from '@/lib/slack'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -58,6 +58,8 @@ export async function POST(request: Request) {
     blocks = buildReassignBlocks({ clientLabel, guestName, taskLabel, fromName, toName })
   } else if (type === 'release_date_changed') {
     blocks = buildReleaseDateChangedBlocks({ clientLabel, guestName, newDate, newTime: newTime ?? null })
+  } else if (type === 'new_project') {
+    blocks = buildNewProjectBlocks({ clientLabel, guestName, releaseDate: newDate, releaseTime: newTime ?? null })
   } else {
     return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
   }

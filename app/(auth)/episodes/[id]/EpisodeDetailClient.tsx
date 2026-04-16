@@ -392,6 +392,19 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       const u = updates.find(x => x.id === t.id)
       return u ? { ...t, due_date: u.due_date } : t
     }))
+
+    // Notify assignee if someone else changed their deadline
+    const changedTask = tasks.find(t => t.id === taskId)
+    if (changedTask && changedTask.assignee_id !== currentUser.id) {
+      sendNotification(supabase, {
+        userId: changedTask.assignee_id,
+        type: 'task_deadline_changed',
+        title: 'Deadline updated',
+        body: `Deadline for "${changedTask.label}" was updated to ${formatDate(newDateStr)}`,
+        taskId,
+        episodeId: episode.id,
+      })
+    }
   }
 
   const releaseLocal = new Date(currentReleaseDate + 'T00:00:00')
@@ -1140,9 +1153,28 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
         {!isLocked && (
           <div className="flex items-center gap-2.5 pl-[22px]">
             {task.due_date && !editingDate && (
-              <span className={cn('text-[13px] tabular-nums', overdue ? 'text-[#ff5533]' : 'text-white/40')}>
-                {formatDate(task.due_date)}
-              </span>
+              canEditDates ? (
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingDate(true) }}
+                  className={cn('flex items-center gap-1 text-[13px] tabular-nums hover:text-white transition-colors group/duedate', overdue ? 'text-[#ff5533]' : 'text-white/40')}
+                >
+                  {formatDate(task.due_date)}
+                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/duedate:opacity-60 transition-opacity shrink-0" />
+                </button>
+              ) : (
+                <span className={cn('text-[13px] tabular-nums', overdue ? 'text-[#ff5533]' : 'text-white/40')}>
+                  {formatDate(task.due_date)}
+                </span>
+              )
+            )}
+            {!task.due_date && !editingDate && canEditDates && !isLocked && (
+              <button
+                onClick={e => { e.stopPropagation(); setEditingDate(true) }}
+                className="flex items-center gap-1 text-[13px] text-white/20 hover:text-white/50 transition-colors"
+              >
+                <Pencil className="w-2.5 h-2.5" />
+                <span>Set deadline</span>
+              </button>
             )}
             {commentCount > 0 && (
               <span className="flex items-center gap-1.5 text-xs">
@@ -1312,9 +1344,19 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
             </div>
             <div>
               <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1">Due Date</p>
-              <span className={cn('text-xs', overdue ? 'text-[#ff3c00]' : 'text-[#ccc]')}>
-                {task.due_date ? formatDate(task.due_date) : '—'}
-              </span>
+              {canEditDates && !isLocked ? (
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingDate(true) }}
+                  className={cn('flex items-center gap-1 text-xs hover:text-white transition-colors group/expandeddate', overdue ? 'text-[#ff3c00]' : task.due_date ? 'text-[#ccc]' : 'text-white/30')}
+                >
+                  {task.due_date ? formatDate(task.due_date) : 'Set deadline'}
+                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/expandeddate:opacity-60 transition-opacity" />
+                </button>
+              ) : (
+                <span className={cn('text-xs', overdue ? 'text-[#ff3c00]' : 'text-[#ccc]')}>
+                  {task.due_date ? formatDate(task.due_date) : '—'}
+                </span>
+              )}
             </div>
           </div>
           {task.requires_approval && task.approver && (
@@ -1375,15 +1417,6 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
         </div>
       )}
 
-      {/* Date edit pencil (admin/manager, hover) */}
-      {canEditDates && !isLocked && !editingDate && (
-        <button
-          onClick={e => { e.stopPropagation(); setEditingDate(true) }}
-          className="absolute top-3 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-[#2e2e2e] text-[#555] hover:text-white transition-all z-10"
-        >
-          <Pencil className="w-2.5 h-2.5" />
-        </button>
-      )}
     </div>
   )
 }

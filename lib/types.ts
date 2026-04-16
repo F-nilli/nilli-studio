@@ -119,6 +119,7 @@ export type NotificationType =
   | 'task_overdue'
   | 'task_comment_mention'
   | 'release_date_changed'
+  | 'task_deadline_changed'
 
 export interface Client {
   id: string

@@ -256,6 +256,24 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
       }
     }
 
+    // Slack notification for new project
+    const releaseDateFormatted = releaseDate.length >= 10
+      ? new Date(releaseDate.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : ''
+    const releaseTimeFormatted = releaseDate.length >= 13
+      ? new Date(releaseDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : null
+    fetch('/api/slack/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'new_project',
+        episodeId: episode.id,
+        newDate: releaseDateFormatted,
+        newTime: releaseTimeFormatted,
+      }),
+    }).catch(() => {})
+
     router.push(`/episodes/${episode.id}`)
   }
 

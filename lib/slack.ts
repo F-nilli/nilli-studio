@@ -140,6 +140,30 @@ export function buildReviewSubmittedBlocks({
 }
 
 
+export function buildNewProjectBlocks({
+  clientLabel,
+  guestName,
+  releaseDate,
+  releaseTime,
+}: {
+  clientLabel: string
+  guestName: string
+  releaseDate: string
+  releaseTime: string | null
+}) {
+  const releaseParts = [releaseDate, releaseTime].filter(Boolean).join(' · ')
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${clientLabel} — ${guestName}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `🎙️ New project created · releases *${releaseParts}*` },
+    },
+  ]
+}
+
 export function buildReleaseDateChangedBlocks({
   clientLabel,
   guestName,

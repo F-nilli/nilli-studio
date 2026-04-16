@@ -1572,6 +1572,7 @@ const SLACK_NOTIF_TYPES = [
   { key: 'comment', label: 'New comment', description: 'When someone posts a comment on a task' },
   { key: 'reassign', label: 'Task reassigned', description: 'When a task is reassigned to a different person' },
   { key: 'release_date_changed', label: 'Release date changed', description: 'When the release date or time is updated on a project' },
+  { key: 'new_project', label: 'New project created', description: 'When a new project is created for a client' },
 ] as const
 
 function IntegrationsTab() {
