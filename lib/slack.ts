@@ -140,6 +140,30 @@ export function buildReviewSubmittedBlocks({
 }
 
 
+export function buildReleaseDateChangedBlocks({
+  clientLabel,
+  guestName,
+  newDate,
+  newTime,
+}: {
+  clientLabel: string
+  guestName: string
+  newDate: string
+  newTime: string | null
+}) {
+  const dateDisplay = newTime ? `${newDate} · ${newTime}` : newDate
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${clientLabel} — ${guestName}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `📅 Release date updated to *${dateDisplay}*` },
+    },
+  ]
+}
+
 export function buildReassignBlocks({
   clientLabel,
   guestName,

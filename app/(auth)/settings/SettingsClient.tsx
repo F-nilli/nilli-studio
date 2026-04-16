@@ -1571,6 +1571,7 @@ const SLACK_NOTIF_TYPES = [
   { key: 'revision', label: 'Revision requested', description: 'When a task is sent back for revision' },
   { key: 'comment', label: 'New comment', description: 'When someone posts a comment on a task' },
   { key: 'reassign', label: 'Task reassigned', description: 'When a task is reassigned to a different person' },
+  { key: 'release_date_changed', label: 'Release date changed', description: 'When the release date or time is updated on a project' },
 ] as const
 
 function IntegrationsTab() {

@@ -160,6 +160,18 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
           episodeId: episode.id,
         })
       ))
+
+      // Slack notification (fires if enabled in Settings → Integrations)
+      fetch('/api/slack/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'release_date_changed',
+          episodeId: episode.id,
+          newDate: newDateFormatted,
+          newTime: newTimeFormatted,
+        }),
+      }).catch(() => {})
     }
 
     setCurrentReleaseDate(newDate)
