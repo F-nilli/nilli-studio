@@ -96,6 +96,79 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const [toast, setToast] = useState<string | null>(null)
   const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null)
 
+  // Release date editing
+  const [currentReleaseDate, setCurrentReleaseDate] = useState(episode.release_date)
+  const [currentReleaseTime, setCurrentReleaseTime] = useState(episode.release_time)
+  const [editingRelease, setEditingRelease] = useState(false)
+  const [editReleaseDraft, setEditReleaseDraft] = useState('')
+  const [adjustDeadlines, setAdjustDeadlines] = useState(true)
+  const [notifyUsers, setNotifyUsers] = useState(false)
+  const [savingRelease, setSavingRelease] = useState(false)
+
+  function startEditRelease() {
+    const time = currentReleaseTime ? currentReleaseTime.slice(0, 5) : '00:00'
+    setEditReleaseDraft(`${currentReleaseDate}T${time}`)
+    setAdjustDeadlines(true)
+    setNotifyUsers(false)
+    setEditingRelease(true)
+  }
+
+  async function handleSaveRelease() {
+    if (!editReleaseDraft) return
+    setSavingRelease(true)
+
+    const newDate = editReleaseDraft.slice(0, 10)
+    const newTime = editReleaseDraft.length >= 13 ? editReleaseDraft.slice(11, 16) : null
+
+    // Compute delta for deadline shifting (ms)
+    const oldDateTime = new Date(`${currentReleaseDate}T${currentReleaseTime ? currentReleaseTime.slice(0, 5) : '00:00'}`)
+    const newDateTime = new Date(editReleaseDraft)
+    const deltaMs = newDateTime.getTime() - oldDateTime.getTime()
+
+    // Save episode
+    await supabase.from('episodes').update({
+      release_date: newDate,
+      release_time: newTime ?? null,
+    }).eq('id', episode.id)
+
+    // Adjust task deadlines
+    if (adjustDeadlines && deltaMs !== 0) {
+      const toUpdate = tasks.filter(t => t.due_date && !['done', 'approved'].includes(t.status))
+      const updates = toUpdate.map(t => ({
+        id: t.id,
+        due_date: new Date(new Date(t.due_date!).getTime() + deltaMs).toISOString(),
+      }))
+      await Promise.all(updates.map(u => supabase.from('tasks').update({ due_date: u.due_date }).eq('id', u.id)))
+      setTasks(prev => prev.map(t => {
+        const u = updates.find(x => x.id === t.id)
+        return u ? { ...t, due_date: u.due_date } : t
+      }))
+    }
+
+    // Notify all assignees
+    if (notifyUsers) {
+      const assigneeIds = [...new Set(tasks.map(t => t.assignee_id).filter(id => id !== currentUser.id))]
+      const newDateFormatted = format(new Date(newDate + 'T00:00:00'), 'MMM d, yyyy')
+      const newTimeFormatted = newTime ? format(new Date(`${newDate}T${newTime}`), 'h:mm a') : null
+      const body = `Release date for ${episode.guest_name} updated to ${newDateFormatted}${newTimeFormatted ? ` · ${newTimeFormatted}` : ''}`
+      await Promise.all(assigneeIds.map(userId =>
+        sendNotification(supabase, {
+          userId,
+          type: 'release_date_changed',
+          title: 'Release date updated',
+          body,
+          episodeId: episode.id,
+        })
+      ))
+    }
+
+    setCurrentReleaseDate(newDate)
+    setCurrentReleaseTime(newTime)
+    setEditingRelease(false)
+    setSavingRelease(false)
+    setToast('Release date updated')
+  }
+
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 3500)
@@ -309,10 +382,10 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     }))
   }
 
-  const releaseLocal = new Date(episode.release_date + 'T00:00:00')
+  const releaseLocal = new Date(currentReleaseDate + 'T00:00:00')
   const daysUntil = differenceInDays(releaseLocal, startOfToday())
-  const releaseTimeStr = episode.release_time
-    ? format(new Date(`${episode.release_date}T${episode.release_time.slice(0, 5)}`), 'h:mm a')
+  const releaseTimeStr = currentReleaseTime
+    ? format(new Date(`${currentReleaseDate}T${currentReleaseTime.slice(0, 5)}`), 'h:mm a')
     : null
 
   return (
@@ -349,11 +422,65 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
             </div>
             <div className="flex items-baseline justify-between gap-6 flex-wrap">
               <h1 className="text-[30px] font-bold text-white leading-tight shrink-0">{episode.guest_name}</h1>
-              <p className={cn('text-[26px] font-bold leading-tight',
-                daysUntil < 0 ? 'text-[#ff3c00]/80' : daysUntil < 3 ? 'text-yellow-500/80' : 'text-[#555]'
-              )}>
-                {format(releaseLocal, 'MMM d, yyyy')}{releaseTimeStr && ` · ${releaseTimeStr}`}
-              </p>
+              {editingRelease ? (
+                <div
+                  className="flex flex-col items-end gap-3 p-4 rounded-xl"
+                  style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)' }}
+                >
+                  <DateHourPicker value={editReleaseDraft} onChange={setEditReleaseDraft} />
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={adjustDeadlines}
+                      onChange={e => setAdjustDeadlines(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#f7931a] cursor-pointer"
+                    />
+                    <span className="text-[13px] text-[#ccc]">Adjust task deadlines automatically</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={notifyUsers}
+                      onChange={e => setNotifyUsers(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#f7931a] cursor-pointer"
+                    />
+                    <span className="text-[13px] text-[#ccc]">Notify all users in this project</span>
+                  </label>
+                  <div className="flex gap-2 w-full pt-1">
+                    <button
+                      onClick={() => setEditingRelease(false)}
+                      className="flex-1 py-1.5 rounded-lg text-sm text-[#888] hover:text-white transition-colors"
+                      style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveRelease}
+                      disabled={savingRelease}
+                      className="flex-1 py-1.5 rounded-lg text-sm font-semibold text-black disabled:opacity-50 transition-all hover:scale-[1.02]"
+                      style={{ background: 'linear-gradient(to bottom, #ff9a30, #e8820a)', border: '1px solid #f7931a' }}
+                    >
+                      {savingRelease ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group/date">
+                  <p className={cn('text-[26px] font-bold leading-tight',
+                    daysUntil < 0 ? 'text-[#ff3c00]/80' : daysUntil < 3 ? 'text-yellow-500/80' : 'text-[#555]'
+                  )}>
+                    {format(releaseLocal, 'MMM d, yyyy')}{releaseTimeStr && ` · ${releaseTimeStr}`}
+                  </p>
+                  {canEditDates && (
+                    <button
+                      onClick={startEditRelease}
+                      className="p-1.5 rounded-md opacity-0 group-hover/date:opacity-100 hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-all"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {episode.source_episode_id && episode.source?.guest_name && episode.template_name && episode.template_name !== 'Default' && (
               <Link
