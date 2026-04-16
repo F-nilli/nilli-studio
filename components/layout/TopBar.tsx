@@ -571,6 +571,7 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
           onSuccess={(episode: CreatedEpisode) => {
             setShowNewEpisodeModal(false)
             setToast({ episodeId: episode.id, guestName: episode.guest_name, clientLabel: episode.client_label })
+            router.refresh()
           }}
         />
       )}

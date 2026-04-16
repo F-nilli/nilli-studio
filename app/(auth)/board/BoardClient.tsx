@@ -175,6 +175,16 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   // Tracks episodes currently mid-animation so Realtime doesn't interrupt them
   const animatingRef = useRef<Set<string>>(new Set())
 
+  // Merge server-fetched episodes when router.refresh() brings updated props
+  useEffect(() => {
+    setLiveEpisodes(prev => {
+      const existingIds = new Set(prev.map(e => e.id))
+      const toAdd = episodes.filter(e => !existingIds.has(e.id))
+      if (toAdd.length === 0) return prev
+      return [...prev, ...toAdd].sort((a, b) => new Date(a.release_date).getTime() - new Date(b.release_date).getTime())
+    })
+  }, [episodes])
+
   // Realtime: episode inserts, updates (archive/restore), deletes
   useEffect(() => {
     const channel = supabase
@@ -401,7 +411,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-bold text-white">Production Board</h1>
+          <h1 className="text-[26px] font-bold text-white">Project Board</h1>
           <p className="text-[#888] text-[15px] mt-1">{liveEpisodes.length} episode{liveEpisodes.length !== 1 ? 's' : ''}</p>
         </div>
         {canCreateProject(currentUser) && (
