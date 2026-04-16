@@ -92,9 +92,10 @@ function DeadlineChip({ daysLeft, releaseDate, releaseTime }: {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <span className="text-[11px] text-[#555]">
-        {timeStr ? `${dateStr} · ${timeStr}` : dateStr}
+      <span className="text-[13px] font-semibold text-white/80">
+        {dateStr}
       </span>
+      {timeStr && <span className="text-[11px] text-[#666]">{timeStr}</span>}
       <span className={cn('px-2 py-0.5 rounded-md text-xs font-bold', badgeClass)}>
         {badgeText}
       </span>
