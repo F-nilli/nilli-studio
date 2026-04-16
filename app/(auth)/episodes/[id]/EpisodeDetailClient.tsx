@@ -13,7 +13,7 @@ import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
-import { parseISO, format } from 'date-fns'
+import { format, parseISO, startOfToday, differenceInDays } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
 
@@ -309,9 +309,11 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     }))
   }
 
-  const daysUntil = Math.round(
-    (parseISO(episode.release_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-  )
+  const releaseLocal = new Date(episode.release_date + 'T00:00:00')
+  const daysUntil = differenceInDays(releaseLocal, startOfToday())
+  const releaseTimeStr = episode.release_time
+    ? format(new Date(`${episode.release_date}T${episode.release_time.slice(0, 5)}`), 'h:mm a')
+    : null
 
   return (
     <div className="flex items-start gap-5">
@@ -341,10 +343,18 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
               )}>
                 {daysUntil < 0 ? `Released ${Math.abs(daysUntil)}d ago` :
                  daysUntil === 0 ? 'Releases today' :
-                 `Releases in ${daysUntil}d · ${format(parseISO(episode.release_date), 'MMM d, yyyy')}`}
+                 `Releases in ${daysUntil}d`}
+                {releaseTimeStr && ` · ${releaseTimeStr}`}
               </span>
             </div>
-            <h1 className="text-[30px] font-bold text-white leading-tight">{episode.guest_name}</h1>
+            <div className="flex items-baseline justify-between gap-6 flex-wrap">
+              <h1 className="text-[30px] font-bold text-white leading-tight shrink-0">{episode.guest_name}</h1>
+              <p className={cn('text-[26px] font-bold leading-tight',
+                daysUntil < 0 ? 'text-[#ff3c00]/80' : daysUntil < 3 ? 'text-yellow-500/80' : 'text-[#555]'
+              )}>
+                {format(releaseLocal, 'MMM d, yyyy')}{releaseTimeStr && ` · ${releaseTimeStr}`}
+              </p>
+            </div>
             {episode.source_episode_id && episode.source?.guest_name && episode.template_name && episode.template_name !== 'Default' && (
               <Link
                 href={`/episodes/${episode.source.id}`}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users } from 'lucide-react'
-import { differenceInDays, differenceInHours, format, parseISO } from 'date-fns'
+import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
@@ -697,7 +697,7 @@ function AtRiskTaskRow({ task, onClick }: { task: Task & { episode: Episode }; o
 
 function UpcomingReleaseRow({ episode }: { episode: Episode }) {
   const daysUntil = episode.release_date
-    ? differenceInDays(parseISO(episode.release_date), new Date())
+    ? differenceInDays(new Date(episode.release_date + 'T00:00:00'), startOfToday())
     : null
   const urgent = daysUntil !== null && daysUntil <= 3
 
@@ -718,7 +718,7 @@ function UpcomingReleaseRow({ episode }: { episode: Episode }) {
           {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`}
         </p>
         <p className="text-[11px] text-[#555]">
-          {episode.release_date ? format(parseISO(episode.release_date), 'MMM d') : '—'}
+          {episode.release_date ? format(new Date(episode.release_date + 'T00:00:00'), 'MMM d') : '—'}
         </p>
       </div>
     </Link>
@@ -731,7 +731,7 @@ function MiniProductionOverview({ episodes }: { episodes: EpisodeProgress[] }) {
       {episodes.map(ep => {
         const pct = ep.totalTasks > 0 ? Math.round((ep.doneTasks / ep.totalTasks) * 100) : 0
         const daysUntil = ep.release_date
-          ? differenceInDays(parseISO(ep.release_date), new Date())
+          ? differenceInDays(new Date(ep.release_date + 'T00:00:00'), startOfToday())
           : null
         const releaseSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 7
         const borderColor = ep.overdueTasks > 0
@@ -762,7 +762,7 @@ function MiniProductionOverview({ episodes }: { episodes: EpisodeProgress[] }) {
               <span className="text-[11px] text-[#555]">{ep.doneTasks}/{ep.totalTasks} done</span>
               {daysUntil !== null && (
                 <span className={cn('text-[11px]', releaseSoon ? 'text-amber-400 font-bold' : 'text-[#444]')}>
-                  {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : daysUntil > 0 ? `${daysUntil}d` : format(parseISO(ep.release_date), 'MMM d')}
+                  {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : daysUntil > 0 ? `${daysUntil}d` : format(new Date(ep.release_date + 'T00:00:00'), 'MMM d')}
                 </span>
               )}
             </div>

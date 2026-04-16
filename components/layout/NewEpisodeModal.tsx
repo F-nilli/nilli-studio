@@ -179,6 +179,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
         client_label: selectedClient.label,
         guest_name: guestName,
         release_date: releaseDate.slice(0, 10),
+        release_time: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
         footage_url: footageUrl || null,
         notes: notes || null,
         template_name: selectedTemplateName,

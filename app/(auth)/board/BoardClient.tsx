@@ -8,7 +8,7 @@ import { InfoIcon } from '@/components/ui/InfoIcon'
 import { Episode, Task, User, TaskStatus, canCreateProject, canManageClients, canSeeAllEpisodes } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, isOverdue, formatDate } from '@/lib/utils'
-import { parseISO, differenceInDays, differenceInHours, format } from 'date-fns'
+import { differenceInDays, differenceInHours, format, startOfToday } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 
 interface Props {
@@ -64,21 +64,42 @@ function getActiveStatus(tasks: Task[]): string | null {
   return null
 }
 
-function DeadlineChip({ daysLeft }: { daysLeft: number }) {
+function DeadlineChip({ daysLeft, releaseDate, releaseTime }: {
+  daysLeft: number
+  releaseDate: string
+  releaseTime: string | null
+}) {
+  const dateStr = format(new Date(releaseDate + 'T00:00:00'), 'MMM d')
+  const timeStr = releaseTime
+    ? format(new Date(`${releaseDate}T${releaseTime.slice(0, 5)}`), 'h:mm a')
+    : null
+
+  let badgeClass: string
+  let badgeText: string
   if (daysLeft < 0) {
-    return (
-      <span className="px-3 py-1 rounded-lg text-base font-bold bg-[#ff3c00]/20 text-[#ff3c00]">
-        {Math.abs(daysLeft)}d overdue
+    badgeClass = 'bg-[#ff3c00]/20 text-[#ff3c00]'
+    badgeText = `${Math.abs(daysLeft)}d overdue`
+  } else if (daysLeft === 0) {
+    badgeClass = 'bg-[#ff3c00]/20 text-[#ff3c00]'
+    badgeText = 'Today'
+  } else if (daysLeft <= 3) {
+    badgeClass = 'bg-amber-500/20 text-amber-400'
+    badgeText = `${daysLeft}d left`
+  } else {
+    badgeClass = 'bg-[#2a2a2a] text-[#888]'
+    badgeText = `${daysLeft}d left`
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <span className="text-[11px] text-[#555]">
+        {timeStr ? `${dateStr} · ${timeStr}` : dateStr}
       </span>
-    )
-  }
-  if (daysLeft === 0) {
-    return <span className="px-3 py-1 rounded-lg text-base font-bold bg-[#ff3c00]/20 text-[#ff3c00]">Today</span>
-  }
-  if (daysLeft <= 3) {
-    return <span className="px-3 py-1 rounded-lg text-base font-bold bg-amber-500/20 text-amber-400">{daysLeft}d left</span>
-  }
-  return <span className="px-3 py-1 rounded-lg text-base font-bold bg-[#1e1e1e] text-[#888]">{daysLeft}d left</span>
+      <span className={cn('px-2 py-0.5 rounded-md text-xs font-bold', badgeClass)}>
+        {badgeText}
+      </span>
+    </div>
+  )
 }
 
 function CompletionCircle({ filling, filled }: { filling: boolean; filled: boolean }) {
@@ -334,23 +355,25 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     }))
 
   // Summary bar stats
-  const now = new Date()
+  const todayMidnight = startOfToday()
   const activeCount = episodesWithTasks.filter(ep =>
     ep.tasks.some(t => ['ready', 'in_progress', 'in_review', 'revision'].includes(t.status))
   ).length
-  const overdueEpisodeCount = episodesWithTasks.filter(ep => parseISO(ep.release_date) < now).length
+  const overdueEpisodeCount = episodesWithTasks.filter(ep =>
+    new Date(ep.release_date + 'T00:00:00') < todayMidnight
+  ).length
   const notStartedCount = episodesWithTasks.filter(ep =>
     !ep.tasks.some(t => t.status === 'done' || t.status === 'approved')
   ).length
   const nextEpisode = episodesWithTasks
-    .filter(ep => parseISO(ep.release_date) >= now)
-    .sort((a, b) => parseISO(a.release_date).getTime() - parseISO(b.release_date).getTime())[0] ?? null
+    .filter(ep => new Date(ep.release_date + 'T00:00:00') >= todayMidnight)
+    .sort((a, b) => new Date(a.release_date + 'T00:00:00').getTime() - new Date(b.release_date + 'T00:00:00').getTime())[0] ?? null
   function formatNextDeadlineLabel(ep: typeof nextEpisode): string {
     if (!ep) return '—'
-    const days = differenceInDays(parseISO(ep.release_date), now)
+    const days = differenceInDays(new Date(ep.release_date + 'T00:00:00'), todayMidnight)
     if (days === 0) return 'Today'
     if (days === 1) return 'Tomorrow'
-    return format(parseISO(ep.release_date), 'MMM d')
+    return format(new Date(ep.release_date + 'T00:00:00'), 'MMM d')
   }
 
   const filteredEpisodes = episodesWithTasks.filter(ep => {
@@ -514,9 +537,13 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
           const activeAssignees = getActiveAssignees(ep.tasks, allUsers)
           const dotColor = getStatusDot(ep.tasks)
           const activePipelineStage = stats.done === 0 ? getActivePipelineStage(ep.tasks) : null
-          const daysUntilRelease = differenceInDays(parseISO(ep.release_date), new Date())
-          const hoursUntilRelease = differenceInHours(parseISO(ep.release_date), new Date())
-          const isReleaseOverdue = hoursUntilRelease < 0
+          const releaseDay = new Date(ep.release_date + 'T00:00:00')
+          const releaseDateTime = ep.release_time
+            ? new Date(`${ep.release_date}T${ep.release_time.slice(0, 5)}`)
+            : releaseDay
+          const daysUntilRelease = differenceInDays(releaseDay, todayMidnight)
+          const hoursUntilRelease = differenceInHours(releaseDateTime, new Date())
+          const isReleaseOverdue = daysUntilRelease < 0
           const isReleaseSoon = !isReleaseOverdue && hoursUntilRelease <= 24
 
           const isCompleting = circleCompletingId === ep.id
@@ -612,7 +639,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                     <h3 className="font-bold text-white text-[22px] truncate">{ep.guest_name}</h3>
                   </div>
                   <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
-                    <DeadlineChip daysLeft={daysUntilRelease} />
+                    <DeadlineChip daysLeft={daysUntilRelease} releaseDate={ep.release_date} releaseTime={ep.release_time ?? null} />
                     <ChevronRight className="w-5 h-5 text-[#555] group-hover:text-white transition-colors" />
                   </div>
                 </div>
