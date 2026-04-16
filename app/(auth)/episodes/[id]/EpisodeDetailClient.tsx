@@ -439,7 +439,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         </div>
       )}
       {/* Main content */}
-      <div className="flex-1 min-w-0 space-y-4">
+      <div className="flex-1 min-w-0 space-y-4 min-h-[calc(100vh-8rem)]">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link
