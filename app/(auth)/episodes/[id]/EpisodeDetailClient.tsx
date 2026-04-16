@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, MessageSquare, CornerDownLeft } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, X, MessageSquare, CornerDownLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Episode, Task, User, Track, Comment, TaskStatus, canEditDates as canEditDatesRole, canApprove, canManageClients } from '@/lib/types'
 import { EpisodeImages } from '@/components/episodes/EpisodeImages'
@@ -95,6 +95,22 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const canReassign = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
   const [toast, setToast] = useState<string | null>(null)
   const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null)
+
+  // Guest name editing
+  const [currentGuestName, setCurrentGuestName] = useState(episode.guest_name)
+  const [editingGuestName, setEditingGuestName] = useState(false)
+  const [guestNameDraft, setGuestNameDraft] = useState('')
+  const [savingGuestName, setSavingGuestName] = useState(false)
+
+  async function handleSaveGuestName() {
+    const trimmed = guestNameDraft.trim()
+    if (!trimmed || trimmed === currentGuestName) { setEditingGuestName(false); return }
+    setSavingGuestName(true)
+    await supabase.from('episodes').update({ guest_name: trimmed }).eq('id', episode.id)
+    setCurrentGuestName(trimmed)
+    setEditingGuestName(false)
+    setSavingGuestName(false)
+  }
 
   // Release date editing
   const [currentReleaseDate, setCurrentReleaseDate] = useState(episode.release_date)
@@ -446,7 +462,38 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-6 flex-wrap">
-              <h1 className="text-[30px] font-bold text-white leading-tight shrink-0">{episode.guest_name}</h1>
+              {editingGuestName ? (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <input
+                    autoFocus
+                    value={guestNameDraft}
+                    onChange={e => setGuestNameDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleSaveGuestName()
+                      if (e.key === 'Escape') setEditingGuestName(false)
+                    }}
+                    className="text-[30px] font-bold text-white leading-tight bg-transparent border-b-2 border-[#f7931a] outline-none flex-1 min-w-0"
+                  />
+                  <button onClick={handleSaveGuestName} disabled={savingGuestName} className="p-1.5 rounded-md bg-[#f7931a] text-black shrink-0 disabled:opacity-50">
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setEditingGuestName(false)} className="p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#666] hover:text-white transition-colors shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group/guestname shrink-0">
+                  <h1 className="text-[30px] font-bold text-white leading-tight">{currentGuestName}</h1>
+                  {canEditDates && (
+                    <button
+                      onClick={() => { setGuestNameDraft(currentGuestName); setEditingGuestName(true) }}
+                      className="p-1.5 rounded-md opacity-0 group-hover/guestname:opacity-100 hover:bg-[#2a2a2a] text-[#555] hover:text-white transition-all"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
               {editingRelease ? (
                 <div
                   className="flex flex-col items-end gap-3 p-4 rounded-xl"
@@ -575,7 +622,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         <CommentPanel
           episodeId={episode.id}
           episodeClientKey={episode.client_key}
-          episodeGuestName={episode.guest_name}
+          episodeGuestName={currentGuestName}
           episodeClientLabel={episode.client_label}
           allComments={allComments}
           tasks={tasks}
