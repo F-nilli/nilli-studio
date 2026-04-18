@@ -5,7 +5,7 @@ import { TaskStatus } from './types'
 import { TaskTemplate } from './templates'
 
 export function formatRelativeTime(dateStr: string): string {
-  const date = parseISO(dateStr)
+  const date = parseDate(dateStr)
   const diffMs = Date.now() - date.getTime()
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMins / 60)
@@ -32,9 +32,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Normalize a DB timestamp string to always have a timezone indicator.
+// Supabase plain `timestamp` columns return without 'Z'; treat those as UTC.
+// Date-only strings (no 'T') are left alone — they use local-date semantics.
+function normalizeDateStr(s: string): string {
+  return s.includes('T') && !s.includes('+') && !s.endsWith('Z') ? s + 'Z' : s
+}
+
+// Parse a DB date/timestamp string into a Date, correctly treating UTC timestamps.
+export function parseDate(s: string): Date {
+  return parseISO(normalizeDateStr(s))
+}
+
 export function formatDate(date: string | Date | null): string {
   if (!date) return '—'
-  const d = typeof date === 'string' ? parseISO(date) : date
+  const d = typeof date === 'string' ? parseDate(date) : date
   const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0
   return hasTime ? format(d, 'MMM d, yyyy · h:mm a') : format(d, 'MMM d, yyyy')
 }
@@ -42,7 +54,7 @@ export function formatDate(date: string | Date | null): string {
 // Convert DB timestamp string to datetime-local input value in the user's LOCAL timezone
 export function toDatetimeLocal(isoString: string | null): string {
   if (!isoString) return ''
-  return format(parseISO(isoString), "yyyy-MM-dd'T'HH:mm")
+  return format(parseDate(isoString), "yyyy-MM-dd'T'HH:mm")
 }
 
 // Convert datetime-local input value (local time) to UTC ISO string for DB storage
@@ -71,7 +83,7 @@ export function isOverdue(
     if (hoursInReview >= 12) return true
   }
   if (!dueDate) return false
-  return isAfter(startOfDay(new Date()), startOfDay(parseISO(dueDate)))
+  return isAfter(startOfDay(new Date()), startOfDay(parseDate(dueDate)))
 }
 
 export function calculateDueDates(

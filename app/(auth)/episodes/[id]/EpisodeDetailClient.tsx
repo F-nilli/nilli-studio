@@ -396,7 +396,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         const downTask = tasks.find(t => t.id === downId)
         if (downTask?.due_date && downTask.status === 'locked') {
           const shifted = new Date(new Date(downTask.due_date).getTime() + delta)
-          updates.push({ id: downId, due_date: format(shifted, "yyyy-MM-dd'T'HH:mm:ss") })
+          updates.push({ id: downId, due_date: shifted.toISOString() })
         }
       }
     }

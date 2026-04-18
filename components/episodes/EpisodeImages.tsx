@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
+import { parseDate } from '@/lib/utils'
 
 interface EpisodeImage {
   id: string
@@ -206,7 +207,7 @@ export function EpisodeImages({ episodeId, canManage, currentUserId }: Props) {
                 <p className="text-sm text-[#888]">{currentImage.filename}</p>
               )}
               <p className="text-xs text-[#555] mt-0.5">
-                {format(parseISO(currentImage.created_at), 'MMM d, yyyy')}
+                {format(parseDate(currentImage.created_at), 'MMM d, yyyy')}
               </p>
             </div>
             {canManage && (

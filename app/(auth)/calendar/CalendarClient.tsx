@@ -7,10 +7,10 @@ import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   eachDayOfInterval, format, isSameMonth, isSameDay,
   addMonths, subMonths, addWeeks, subWeeks,
-  parseISO, isToday, isPast, startOfDay, getHours,
+  isToday, isPast, startOfDay, getHours,
 } from 'date-fns'
 import type { Task, Episode, User } from '@/lib/types'
-import { cn, isOverdue } from '@/lib/utils'
+import { cn, isOverdue, parseDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -114,11 +114,11 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   function getTasksForDay(day: Date) {
-    return activeTasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day))
+    return activeTasks.filter(t => t.due_date && isSameDay(parseDate(t.due_date), day))
   }
 
   function getEpisodesForDay(day: Date) {
-    return activeEpisodes.filter(ep => ep.release_date && isSameDay(parseISO(ep.release_date), day))
+    return activeEpisodes.filter(ep => ep.release_date && isSameDay(parseDate(ep.release_date), day))
   }
 
   function navigatePrev() {
@@ -153,7 +153,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
       const e = endOfMonth(currentDate)
       return activeTasks.some(t => {
         if (!t.due_date) return false
-        const d = parseISO(t.due_date)
+        const d = parseDate(t.due_date)
         return d >= s && d <= e
       })
     }
@@ -161,7 +161,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
     const e = endOfWeek(currentDate, { weekStartsOn: 1 })
     return activeTasks.some(t => {
       if (!t.due_date) return false
-      const d = parseISO(t.due_date)
+      const d = parseDate(t.due_date)
       return d >= s && d <= e
     })
   }
@@ -334,7 +334,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
           </div>
           {weekDays.map((day, i) => {
             const dayEpisodes = getEpisodesForDay(day)
-            const allDayTasks = getTasksForDay(day).filter(t => !t.due_date || getHours(parseISO(t.due_date)) === 0)
+            const allDayTasks = getTasksForDay(day).filter(t => !t.due_date || getHours(parseDate(t.due_date)) === 0)
             return (
               <div
                 key={i}
@@ -381,7 +381,7 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
                 const colBg = colIdx % 2 === 0 ? '#1a1a1a' : '#181818'
                 const dayTasksAtHour = getTasksForDay(day).filter(t => {
                   if (!t.due_date) return false
-                  const h = getHours(parseISO(t.due_date))
+                  const h = getHours(parseDate(t.due_date))
                   return h !== 0 && Math.max(7, Math.min(22, h)) === hour
                 })
                 return (
@@ -582,7 +582,7 @@ const STATUS_COLORS: Record<string, string> = {
 function TaskTooltip({ task, rect }: { task: Task & { episode?: Episode }; rect: DOMRect }) {
   const color = STATUS_COLORS[task.status] ?? '#888'
   const label = STATUS_LABELS[task.status] ?? task.status
-  const due = task.due_date ? parseISO(task.due_date) : null
+  const due = task.due_date ? parseDate(task.due_date) : null
   const hasTime = due && getHours(due) !== 0
 
   return (

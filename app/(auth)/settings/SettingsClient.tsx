@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, canManageTeam } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { InfoIcon } from '@/components/ui/InfoIcon'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, parseDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical, UserMinus, UserCheck, AlertTriangle, Link2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -1317,7 +1317,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
                 <p className="text-sm text-[#555]">{currentTasks.length} tasks · {selectedTemplateName}</p>
                 {selectedClient.last_saved_at && (
                   <p className="text-xs text-[#555] mt-0.5">
-                    Last edited by {selectedClient.last_saved_by_name ?? '—'} · {format(parseISO(selectedClient.last_saved_at), 'MMM d')}
+                    Last edited by {selectedClient.last_saved_by_name ?? '—'} · {format(parseDate(selectedClient.last_saved_at), 'MMM d')}
                   </p>
                 )}
               </div>
@@ -1852,7 +1852,7 @@ function ActivityTab({ activity }: { activity: ActivityEntry[] }) {
                       )}
                     </>
                   )}
-                  <span className="text-xs text-[#555]">{format(parseISO(entry.changed_at), 'h:mm a')}</span>
+                  <span className="text-xs text-[#555]">{format(parseDate(entry.changed_at), 'h:mm a')}</span>
                 </div>
               </div>
             ))}

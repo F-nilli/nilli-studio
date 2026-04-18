@@ -7,7 +7,7 @@ import { differenceInDays, differenceInHours, format, parseISO, startOfToday } f
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
-import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
+import { cn, formatDate, isOverdue, STATUS_LABELS, parseDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
@@ -652,10 +652,10 @@ function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate, onReassign
 
 function AtRiskTaskRow({ task, onClick }: { task: Task & { episode: Episode }; onClick: () => void }) {
   const daysOverdue = task.due_date
-    ? differenceInDays(new Date(), parseISO(task.due_date))
+    ? differenceInDays(new Date(), parseDate(task.due_date))
     : null
   const hoursInReview = task.status === 'in_review' && task.review_started_at
-    ? differenceInHours(new Date(), parseISO(task.review_started_at))
+    ? differenceInHours(new Date(), parseDate(task.review_started_at))
     : null
   const assignee = task.assignee as User | undefined
 
@@ -863,7 +863,7 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
             </div>
           )}
           {task.review_started_at && (() => {
-            const hrs = differenceInHours(new Date(), parseISO(task.review_started_at))
+            const hrs = differenceInHours(new Date(), parseDate(task.review_started_at))
             if (hrs <= 0) return null
             const color = hrs >= 12 ? 'text-[#ff3c00]' : hrs >= 6 ? 'text-amber-400' : 'text-[#666]'
             return (
@@ -902,7 +902,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
   const [noteText, setNoteText] = useState('')
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
-  const hoursUntilDue = task.due_date ? differenceInHours(parseISO(task.due_date), new Date()) : null
+  const hoursUntilDue = task.due_date ? differenceInHours(parseDate(task.due_date), new Date()) : null
   const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
