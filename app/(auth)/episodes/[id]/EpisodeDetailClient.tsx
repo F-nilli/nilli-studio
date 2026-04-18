@@ -439,7 +439,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         </div>
       )}
       {/* Main content */}
-      <div className="flex-1 min-w-0 space-y-4 min-h-[calc(100vh-8rem)]">
+      <div className="flex-1 min-w-0 space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link
@@ -618,7 +618,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       </div>
 
       {/* Comment panel — 320px fixed */}
-      <div className="w-80 shrink-0 sticky top-6 self-start">
+      <div className="w-80 shrink-0 sticky top-[76px] self-start">
         <CommentPanel
           episodeId={episode.id}
           episodeClientKey={episode.client_key}

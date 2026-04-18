@@ -492,7 +492,7 @@ export function CommentPanel({
   }
 
   return (
-    <div className="flex flex-col bg-[#181818] rounded-xl overflow-hidden" style={{ height: 'calc(100vh - 8rem)', border: '1px solid rgba(247,147,26,0.3)' }}>
+    <div className="flex flex-col bg-[#181818] rounded-xl overflow-hidden" style={{ height: 'calc(100vh - 76px - 32px)', border: '1px solid rgba(247,147,26,0.3)' }}>
       {/* Panel header */}
       <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="flex items-center gap-2">
