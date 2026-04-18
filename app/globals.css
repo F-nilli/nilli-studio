@@ -48,7 +48,11 @@ html {
 }
 
 body {
-  background: #0d0d0d;
+  background-color: #0d0d0d;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 120px 120px;
   color: var(--foreground);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 15px;
