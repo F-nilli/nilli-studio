@@ -56,14 +56,15 @@ interface Props {
   user?: User
   collapsed?: boolean
   onToggle?: () => void
+  isMobile?: boolean
 }
 
-export function TopBar({ user, collapsed = false, onToggle }: Props) {
+export function TopBar({ user, collapsed = false, onToggle, isMobile = false }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
 
-  const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED
+  const sidebarWidth = isMobile ? 0 : (collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED)
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'ops_manager'
 
   // Search
@@ -485,7 +486,7 @@ export function TopBar({ user, collapsed = false, onToggle }: Props) {
           )}
 
           {/* Search */}
-          <div className="relative" ref={containerRef}>
+          <div className="relative hidden md:block" ref={containerRef}>
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#444] pointer-events-none z-10" />
             <input
               ref={inputRef}

@@ -430,7 +430,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     : null
 
   return (
-    <div className="flex items-start gap-5">
+    <div className="flex flex-col md:flex-row items-start gap-5">
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg text-sm text-white font-medium shadow-xl pointer-events-none"
@@ -584,7 +584,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         />
 
         {/* 2-column track grid */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {TRACK_ORDER.map(track => {
             const trackTasks = tasks.filter(t => t.track === track)
             if (trackTasks.length === 0) return null
@@ -617,8 +617,8 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         </div>
       </div>
 
-      {/* Comment panel — 320px fixed */}
-      <div className="w-80 shrink-0 sticky top-[76px] self-start">
+      {/* Comment panel */}
+      <div className="w-full md:w-80 md:shrink-0 md:sticky md:top-[76px] md:self-start">
         <CommentPanel
           episodeId={episode.id}
           episodeClientKey={episode.client_key}

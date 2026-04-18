@@ -216,6 +216,16 @@ button:active:not(:disabled),
   flex-shrink: 0;
 }
 
+/* ── Comment panel responsive height ───────────────────────────────────── */
+.comment-panel-height {
+  height: 360px;
+}
+@media (min-width: 768px) {
+  .comment-panel-height {
+    height: calc(100vh - 76px - 32px);
+  }
+}
+
 /* ── Global pointer cursor for all interactive elements ─────────────────── */
 button,
 a,

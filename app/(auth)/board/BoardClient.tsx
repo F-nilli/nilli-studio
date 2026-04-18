@@ -450,7 +450,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
 
       {/* Summary bar */}
       {liveEpisodes.length > 0 && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {/* Active */}
           <div className="rounded-xl p-4" style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)' }}>
             <p className="text-3xl font-black text-white">{activeCount}</p>

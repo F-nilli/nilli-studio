@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { MobileNav } from './MobileNav'
 import { UserContext } from '@/lib/contexts/UserContext'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/lib/types'
@@ -45,7 +46,17 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
   }
 
   const pathname = usePathname()
-  const marginLeft = mounted ? (collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : SIDEBAR_EXPANDED
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const marginLeft = mounted && !isMobile ? (collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0
 
   return (
     <UserContext.Provider value={{ user: currentUser, setUser: setCurrentUser }}>
@@ -55,17 +66,18 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
           className="flex-1 flex flex-col min-h-screen"
           style={{
             marginLeft,
-            transition: mounted ? 'margin-left 200ms' : 'none',
+            transition: mounted && !isMobile ? 'margin-left 200ms' : 'none',
           }}
         >
-          <TopBar user={currentUser} collapsed={collapsed} onToggle={handleToggle} />
-          <main className="flex-1 px-8 py-8 max-w-[1400px] w-full mx-auto overflow-hidden">
+          <TopBar user={currentUser} collapsed={collapsed} onToggle={handleToggle} isMobile={isMobile} />
+          <main className="flex-1 px-4 md:px-8 py-4 md:py-8 max-w-[1400px] w-full mx-auto overflow-hidden pb-20 md:pb-8">
             <div key={pathname} className="min-h-full">
               {children}
             </div>
           </main>
         </div>
       </div>
+      <MobileNav />
     </UserContext.Provider>
   )
 }

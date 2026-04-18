@@ -63,8 +63,9 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   return (
     <div
       className={cn(
-        'fixed left-0 top-0 h-screen flex flex-col z-40 transition-[width] duration-200',
+        'fixed left-0 top-0 h-screen flex-col z-40 transition-[width] duration-200',
         'border-r border-[#141414]',
+        'hidden md:flex',
         collapsed ? 'w-16' : 'w-60'
       )}
       style={{ background: 'radial-gradient(ellipse at 60% 0%, rgba(247,147,26,0.05) 0%, transparent 60%), #161616' }}

@@ -443,7 +443,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
         <ZoneHeader title="Studio Overview" />
 
         {/* Stat cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
             icon={<AlertTriangle className="w-4 h-4" style={{ color: atRiskTasks.length > 0 ? '#ff3c00' : '#444' }} />}
             label="At Risk"
