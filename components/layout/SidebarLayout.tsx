@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { UserContext } from '@/lib/contexts/UserContext'
@@ -43,6 +44,7 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
     localStorage.setItem('sidebar-collapsed', String(next))
   }
 
+  const pathname = usePathname()
   const marginLeft = mounted ? (collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : SIDEBAR_EXPANDED
 
   return (
@@ -57,8 +59,10 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
           }}
         >
           <TopBar user={currentUser} collapsed={collapsed} onToggle={handleToggle} />
-          <main className="flex-1 px-8 py-8 max-w-[1400px] w-full mx-auto">
-            {children}
+          <main className="flex-1 px-8 py-8 max-w-[1400px] w-full mx-auto overflow-hidden">
+            <div key={pathname} className="min-h-full">
+              {children}
+            </div>
           </main>
         </div>
       </div>
