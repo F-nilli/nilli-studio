@@ -1565,6 +1565,11 @@ function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: 
 
 // ─── Integrations Tab ─────────────────────────────────────────────────────────
 
+const TASK_NOTIF_TYPES = [
+  { key: 'deadline_reminder', label: 'Deadline reminder', description: 'Notify the assignee when a task is due today' },
+  { key: 'overdue', label: 'Overdue alert', description: 'Notify the assignee and all admins when a task deadline has passed' },
+] as const
+
 const SLACK_NOTIF_TYPES = [
   { key: 'approval', label: 'Task approved', description: 'When a task is approved and next tasks unlock' },
   { key: 'review_submitted', label: 'Submitted for review', description: 'When a task is submitted for approval' },
@@ -1574,6 +1579,67 @@ const SLACK_NOTIF_TYPES = [
   { key: 'release_date_changed', label: 'Release date changed', description: 'When the release date or time is updated on a project' },
   { key: 'new_project', label: 'New project created', description: 'When a new project is created for a client' },
 ] as const
+
+function TaskNotificationsCard() {
+  const [settings, setSettings] = useState<Record<string, boolean>>({ deadline_reminder: true, overdue: true })
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/admin/task-notifications', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => { setSettings(data.settings ?? { deadline_reminder: true, overdue: true }); setLoaded(true) })
+      .catch(() => setLoaded(true))
+  }, [])
+
+  async function handleToggle(key: string, enabled: boolean) {
+    const updated = { ...settings, [key]: enabled }
+    setSettings(updated)
+    await fetch('/api/admin/task-notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: updated }),
+    })
+  }
+
+  if (!loaded) return null
+
+  return (
+    <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
+          <AlertTriangle className="w-5 h-5 text-[#ff3c00]" />
+        </div>
+        <div>
+          <h3 className="font-bold text-white">Task Notifications</h3>
+          <p className="text-xs text-[#666]">In-app and push alerts sent to assignees and admins</p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {TASK_NOTIF_TYPES.map(({ key, label, description }) => {
+          const enabled = settings[key] !== false
+          return (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-white">{label}</p>
+                <p className="text-xs text-[#555]">{description}</p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={enabled}
+                onClick={() => handleToggle(key, !enabled)}
+                className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]'}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function IntegrationsTab() {
   const [token, setToken] = useState('')
@@ -1617,6 +1683,7 @@ function IntegrationsTab() {
 
   return (
     <div className="space-y-4 max-w-lg">
+      <TaskNotificationsCard />
       <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">

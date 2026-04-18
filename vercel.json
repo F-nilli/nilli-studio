@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/overdue-check",
+      "path": "/api/task-notifications-check",
       "schedule": "0 9 * * *"
     }
   ]

@@ -117,6 +117,7 @@ export type NotificationType =
   | 'task_approved'
   | 'task_revision'
   | 'task_overdue'
+  | 'task_deadline_reminder'
   | 'task_comment_mention'
   | 'release_date_changed'
   | 'task_deadline_changed'
