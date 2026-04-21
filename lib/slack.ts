@@ -31,11 +31,13 @@ export function buildApprovalBlocks({
   guestName,
   completedTaskLabel,
   nextTasks,
+  approverName,
 }: {
   clientLabel: string
   guestName: string
   completedTaskLabel: string
   nextTasks: Array<{ label: string; assigneeName: string }>
+  approverName?: string
 }) {
   const blocks: object[] = [
     {
@@ -44,7 +46,7 @@ export function buildApprovalBlocks({
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `~${completedTaskLabel}~` },
+      text: { type: 'mrkdwn', text: `✅ Approved: ~${completedTaskLabel}~${approverName ? `\nApproved by ${approverName}` : ''}` },
     },
   ]
 
@@ -52,7 +54,7 @@ export function buildApprovalBlocks({
     const lines = nextTasks.map(t => `*${t.assigneeName}* — ${t.label}`).join('\n')
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `NEXT:\n${lines}` },
+      text: { type: 'mrkdwn', text: `*NEXT:*\n${lines}` },
     })
   }
 

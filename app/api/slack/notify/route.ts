@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody, fromName, toName, newDate, newTime, deliveredByName } = body
+  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody, fromName, toName, newDate, newTime, deliveredByName, approverName } = body
 
   const admin = createAdminClient()
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
   let blocks: object[]
   if (type === 'approval') {
-    blocks = buildApprovalBlocks({ clientLabel, guestName, completedTaskLabel, nextTasks: nextTasks || [] })
+    blocks = buildApprovalBlocks({ clientLabel, guestName, completedTaskLabel, nextTasks: nextTasks || [], approverName })
   } else if (type === 'revision') {
     blocks = buildRevisionBlocks({ clientLabel, guestName, taskLabel, assigneeName, dueDate })
   } else if (type === 'review_submitted') {

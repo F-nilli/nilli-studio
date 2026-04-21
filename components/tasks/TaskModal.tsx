@@ -260,7 +260,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     }
     fetch('/api/slack/notify', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack }),
+      body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
     }).catch(err => console.error('[Slack]', err))
     fetch('/api/episodes/check-triggers', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
