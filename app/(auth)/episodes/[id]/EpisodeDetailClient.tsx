@@ -75,8 +75,11 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const canEditDates = canEditDatesRole(currentUser)
   const canEdit = canApprove(currentUser)
   const canReassign = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
+  const canDeliver = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
   const [toast, setToast] = useState<string | null>(null)
   const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null)
+  const [delivering, setDelivering] = useState(false)
+  const [delivered, setDelivered] = useState(episode.archived ?? false)
 
   // Guest name editing
   const [currentGuestName, setCurrentGuestName] = useState(episode.guest_name)
@@ -411,6 +414,27 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     ? format(new Date(`${currentReleaseDate}T${currentReleaseTime.slice(0, 5)}`), 'h:mm a')
     : null
 
+  const allTasksDone = tasks.length > 0 && tasks.every(t => t.status === 'done' || t.status === 'approved')
+
+  async function handleDeliver() {
+    if (delivering || delivered) return
+    setDelivering(true)
+    try {
+      const res = await fetch('/api/episodes/deliver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episodeId: episode.id }),
+      })
+      if (res.ok) {
+        setDelivered(true)
+        setToast(`${episode.guest_name} marked as delivered`)
+        setTimeout(() => setToast(null), 4000)
+      }
+    } finally {
+      setDelivering(false)
+    }
+  }
+
   return (
     <div className="flex flex-col md:flex-row items-start gap-5">
       {/* Toast */}
@@ -546,14 +570,33 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
               </Link>
             )}
           </div>
-          {episode.footage_url && (
-            <a
-              href={episode.footage_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors shrink-0"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />Footage
-            </a>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {canDeliver && allTasksDone && !delivered && (
+              <button
+                onClick={handleDeliver}
+                disabled={delivering}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-black disabled:opacity-60 transition-all hover:scale-[1.02]"
+                style={{ background: 'linear-gradient(to bottom, #ff9a30, #e8820a)', border: '1px solid #f7931a' }}
+              >
+                {delivering ? <Spinner /> : <Check className="w-3.5 h-3.5" />}
+                {delivering ? 'Delivering…' : 'Mark as Delivered'}
+              </button>
+            )}
+            {delivered && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-[#22c55e]"
+                style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                <Check className="w-3.5 h-3.5" />Delivered
+              </span>
+            )}
+            {episode.footage_url && (
+              <a
+                href={episode.footage_url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#333] text-[#ccc] rounded-lg text-sm font-medium transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />Footage
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Brief & Notes */}

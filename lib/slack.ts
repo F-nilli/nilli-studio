@@ -188,6 +188,27 @@ export function buildReleaseDateChangedBlocks({
   ]
 }
 
+export function buildEpisodeDeliveredBlocks({
+  clientLabel,
+  guestName,
+  deliveredByName,
+}: {
+  clientLabel: string
+  guestName: string
+  deliveredByName: string
+}) {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${clientLabel} — ${guestName}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `Episode marked as delivered by *${deliveredByName}*` },
+    },
+  ]
+}
+
 export function buildReassignBlocks({
   clientLabel,
   guestName,

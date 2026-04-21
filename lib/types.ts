@@ -60,6 +60,8 @@ export interface Episode {
   completed_at: string | null
   restored_at: string | null
   restore_count: number
+  delivered_by: string | null
+  delivered_task_snapshot: Record<string, { status: string; label: string; assignee_id: string }> | null
   // Joined
   source?: { id: string; guest_name: string; template_name: string | null }
 }
@@ -120,6 +122,7 @@ export type NotificationType =
   | 'task_comment_mention'
   | 'release_date_changed'
   | 'task_deadline_changed'
+  | 'episode_delivered'
 
 export interface Client {
   id: string

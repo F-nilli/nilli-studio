@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks } from '@/lib/slack'
+import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks, buildEpisodeDeliveredBlocks } from '@/lib/slack'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody, fromName, toName, newDate, newTime } = body
+  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody, fromName, toName, newDate, newTime, deliveredByName } = body
 
   const admin = createAdminClient()
 
@@ -60,6 +60,8 @@ export async function POST(request: Request) {
     blocks = buildReleaseDateChangedBlocks({ clientLabel, guestName, newDate, newTime: newTime ?? null })
   } else if (type === 'new_project') {
     blocks = buildNewProjectBlocks({ clientLabel, guestName, releaseDate: newDate, releaseTime: newTime ?? null })
+  } else if (type === 'episode_delivered') {
+    blocks = buildEpisodeDeliveredBlocks({ clientLabel, guestName, deliveredByName: deliveredByName ?? 'Someone' })
   } else {
     return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
   }

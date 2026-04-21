@@ -255,16 +255,21 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
 
   const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
-  // Returns the saved timestamp on success, null on failure
-  async function persistArchive(episodeId: string, now: string): Promise<boolean> {
-    let { error } = await supabase.from('episodes').update({
-      published_at: now, archived: true, completed_at: now, restored_at: null,
-    }).eq('id', episodeId)
-    if (error) {
-      const { error: e2 } = await supabase.from('episodes').update({ published_at: now }).eq('id', episodeId)
-      if (e2) { console.error('[archive] failed:', e2); return false }
+  // Returns the completed_at timestamp on success, null on failure
+  async function persistArchive(episodeId: string): Promise<string | null> {
+    try {
+      const res = await fetch('/api/episodes/deliver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episodeId }),
+      })
+      if (!res.ok) { console.error('[archive] deliver failed:', await res.text()); return null }
+      const { completedAt } = await res.json()
+      return completedAt as string
+    } catch (err) {
+      console.error('[archive] deliver error:', err)
+      return null
     }
-    return true
   }
 
   async function togglePublish(episodeId: string, publish: boolean): Promise<boolean> {
@@ -300,17 +305,17 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     animatingRef.current.add(ep.id)
 
     // Start circle fill immediately + DB write in parallel
-    const now = new Date().toISOString()
     setCircleCompletingId(ep.id)
-    const [ok] = await Promise.all([
-      persistArchive(ep.id, now),
+    const [completedAt] = await Promise.all([
+      persistArchive(ep.id),
       sleep(600),
     ])
-    if (!ok) {
+    if (!completedAt) {
       animatingRef.current.delete(ep.id)
       setCircleCompletingId(null)
       return
     }
+    const now = completedAt
 
     // Undo toast
     if (circleUndoInfo?.timer) clearTimeout(circleUndoInfo.timer)
