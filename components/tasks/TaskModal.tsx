@@ -205,27 +205,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   }
 
   async function checkAndUnlockDependencies(episodeId: string) {
-    const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', episodeId)
-    if (!allTasks) return
-    const approvedIds = new Set(allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id))
-    for (const t of allTasks) {
-      if (t.status === 'locked' && t.dep_task_ids.length > 0) {
-        const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
-        if (allDepsApproved) {
-          await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
-          const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
-          if (assignee) {
-            const { data: ep } = await supabase.from('episodes').select('*').eq('id', episodeId).single()
-            await sendNotification(supabase, {
-              userId: assignee.id, type: 'task_unlocked',
-              title: 'New task started',
-              body: `"${t.label}" is now in progress for ${ep ? `${ep.guest_name} / ${ep.client_label}` : ''}`,
-              taskId: t.id, episodeId,
-            })
-          }
-        }
-      }
-    }
+    await fetch('/api/tasks/unlock-deps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ episodeId }),
+    })
   }
 
   async function handleApprove() {

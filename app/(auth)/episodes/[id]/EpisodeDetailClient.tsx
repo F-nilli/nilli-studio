@@ -53,30 +53,12 @@ function getDownstreamTaskIds(taskId: string, allTasks: Task[]): string[] {
 
 type SupabaseClientType = ReturnType<typeof createClient>
 
-async function checkAndUnlockDependencies(supabase: SupabaseClientType, episodeId: string) {
-  const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', episodeId)
-  if (!allTasks) return
-  const approvedIds = new Set(allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id))
-  for (const t of allTasks) {
-    if (t.status === 'locked' && t.dep_task_ids.length > 0) {
-      const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
-      if (allDepsApproved) {
-        await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
-        const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
-        if (assignee) {
-          const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()
-          await sendNotification(supabase, {
-            userId: assignee.id,
-            type: 'task_unlocked',
-            title: 'New task started',
-            body: `"${t.label}" is now in progress for ${episode ? `${episode.guest_name} / ${episode.client_label}` : ''}`,
-            taskId: t.id,
-            episodeId,
-          })
-        }
-      }
-    }
-  }
+async function checkAndUnlockDependencies(episodeId: string) {
+  await fetch('/api/tasks/unlock-deps', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ episodeId }),
+  })
 }
 
 // ─── Main client ──────────────────────────────────────────────────────────────
@@ -1016,7 +998,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     if (data) {
       onTaskUpdate(data as unknown as Task)
       try {
-        await checkAndUnlockDependencies(supabase, task.episode_id)
+        await checkAndUnlockDependencies(task.episode_id)
       } catch (depErr: unknown) {
         console.error('Dep unlock error:', depErr)
       }
@@ -1050,7 +1032,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     if (data) {
       onTaskUpdate(data as unknown as Task)
       try {
-        await checkAndUnlockDependencies(supabase, task.episode_id)
+        await checkAndUnlockDependencies(task.episode_id)
       } catch (depErr: unknown) {
         console.error('Dep unlock error:', depErr)
       }

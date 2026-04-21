@@ -87,5 +87,33 @@ export async function GET(request: Request) {
     notified++
   }
 
+  // Safety-net: unlock any tasks whose deps are all done/approved but are still locked
+  // Catches cases where the client-side unlock call was missed (network error, different page, etc.)
+  const { data: lockedTasks } = await supabase
+    .from('tasks')
+    .select('id, dep_task_ids, episode_id')
+    .eq('status', 'locked')
+    .gt('dep_task_ids', '{}')
+
+  if (lockedTasks) {
+    const episodeIds = [...new Set(lockedTasks.map(t => t.episode_id))]
+    for (const episodeId of episodeIds) {
+      const { data: episodeTasks } = await supabase
+        .from('tasks').select('id, status').eq('episode_id', episodeId)
+      if (!episodeTasks) continue
+      const approvedIds = new Set(
+        episodeTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id)
+      )
+      const stuck = lockedTasks.filter(t =>
+        t.episode_id === episodeId &&
+        t.dep_task_ids.length > 0 &&
+        t.dep_task_ids.every((d: string) => approvedIds.has(d))
+      )
+      for (const t of stuck) {
+        await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
+      }
+    }
+  }
+
   return NextResponse.json({ notified })
 }

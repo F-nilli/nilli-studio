@@ -12,6 +12,7 @@ import {
 import type { Task, Episode, User } from '@/lib/types'
 import { cn, isOverdue, parseDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -39,10 +40,12 @@ type TeamMode = 'my' | 'all'
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function CalendarClient({ currentUser, tasks, episodes }: Props) {
+export function CalendarClient({ currentUser, tasks: initialTasks, episodes }: Props) {
   const router = useRouter()
+  const supabase = createClient()
   const isAdmin = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
 
+  const [tasks, setTasks] = useState(initialTasks)
   const [viewMode, setViewMode] = useState<'month' | 'week'>('week')
   const [teamMode, setTeamMode] = useState<TeamMode>('my')
   const [currentDate, setCurrentDate] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
@@ -83,6 +86,18 @@ export function CalendarClient({ currentUser, tasks, episodes }: Props) {
     document.addEventListener('scroll', handle, true)
     return () => document.removeEventListener('scroll', handle, true)
   }, [tooltipData])
+
+  // Realtime: task updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('calendar-tasks')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, (payload) => {
+        const updated = payload.new as Task & { episode: Episode }
+        setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   // ── Derived data ──────────────────────────────────────────────────────────
 

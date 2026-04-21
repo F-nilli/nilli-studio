@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "A file was just written or edited. Tool input: $ARGUMENTS\n\nDecide if CLAUDE.md at /Users/francis/Sites/nilli-studio-app/CLAUDE.md needs updating. Only update it for structural changes: new route group, new DB table, new notification channel, new client template in lib/templates.ts, role/permission change, or new environment variable. Do NOT update for routine changes (bug fixes, styling, UI components, logic within existing patterns, updating existing features). If an update is needed, make the minimal targeted edit to the relevant section only. Keep CLAUDE.md under 200 lines and remove outdated content rather than appending.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -83,6 +83,31 @@ create trigger tasks_updated_at
   before update on public.tasks
   for each row execute function public.handle_updated_at();
 
+-- Unlock dependent tasks when a task is approved or done
+create or replace function public.unlock_dependent_tasks()
+returns trigger as $$
+begin
+  if new.status in ('done', 'approved') and old.status not in ('done', 'approved') then
+    update public.tasks
+    set status = 'in_progress'
+    where episode_id = new.episode_id
+      and status = 'locked'
+      and array_length(dep_task_ids, 1) > 0
+      and not exists (
+        select 1
+        from unnest(dep_task_ids) as dep_id
+        left join public.tasks t2 on t2.id = dep_id
+        where t2.id is null or t2.status not in ('done', 'approved')
+      );
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger trg_unlock_dependent_tasks
+  after update on public.tasks
+  for each row execute function public.unlock_dependent_tasks();
+
 -- Auto-create user profile on signup
 create or replace function public.handle_new_user()
 returns trigger as $$
