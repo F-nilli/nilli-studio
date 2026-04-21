@@ -26,7 +26,7 @@ function getEpisodeStats(tasks: Task[]) {
   const remaining = tasks.filter(t => !['approved', 'done', 'locked'].includes(t.status)).length
   const blocked = tasks.filter(t => t.status === 'locked').length
   const overdue = tasks.filter(t => isOverdue(t.due_date, t.status)).length
-  const inProgress = tasks.filter(t => ['in_progress', 'in_review', 'ready', 'revision'].includes(t.status)).length
+  const inProgress = tasks.filter(t => ['in_progress', 'in_review', 'revision'].includes(t.status)).length
   const progress = total > 0 ? Math.round((done / total) * 100) : 0
   return { total, done, remaining, blocked, overdue, inProgress, progress }
 }
@@ -48,7 +48,7 @@ function getStatusDot(tasks: Task[]): string {
 }
 
 function getActivePipelineStage(tasks: Task[]): string | null {
-  const activeTasks = tasks.filter(t => t.status === 'ready' || t.status === 'in_progress')
+  const activeTasks = tasks.filter(t => t.status === 'in_progress')
   if (activeTasks.length === 0) return null
   const counts: Record<string, number> = {}
   for (const t of activeTasks) counts[t.track] = (counts[t.track] || 0) + 1
@@ -59,7 +59,6 @@ function getActiveStatus(tasks: Task[]): string | null {
   if (tasks.some(t => t.status === 'revision')) return 'Revision'
   if (tasks.some(t => t.status === 'in_review')) return 'In Review'
   if (tasks.some(t => t.status === 'in_progress')) return 'In Progress'
-  if (tasks.some(t => t.status === 'ready')) return 'Ready'
   if (tasks.every(t => t.status === 'approved' || t.status === 'done')) return 'Complete'
   return null
 }
@@ -392,7 +391,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     if (memberFilter && !ep.tasks.some(t => t.assignee_id === memberFilter.id)) return false
     const stats = getEpisodeStats(ep.tasks)
     if (filter === 'active') {
-      if (!(stats.inProgress > 0 || ep.tasks.some(t => t.status === 'ready'))) return false
+      if (!(stats.inProgress > 0 || false)) return false
     }
     if (filter === 'overdue') {
       if (stats.overdue === 0) return false
@@ -402,7 +401,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
 
   const filterCounts = {
     all: episodesWithTasks.length,
-    active: episodesWithTasks.filter(ep => getEpisodeStats(ep.tasks).inProgress > 0 || ep.tasks.some(t => t.status === 'ready')).length,
+    active: episodesWithTasks.filter(ep => getEpisodeStats(ep.tasks).inProgress > 0 || false).length,
     overdue: episodesWithTasks.filter(ep => getEpisodeStats(ep.tasks).overdue > 0).length,
   }
 

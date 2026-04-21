@@ -264,7 +264,7 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
       .from('tasks')
       .select('id, label')
       .eq('assignee_id', user.id)
-      .in('status', ['ready', 'in_progress', 'in_review', 'revision'])
+      .in('status', ['in_progress', 'in_review', 'revision'])
     setActionTarget({ user, action, tasks: tasks ?? [] })
   }
 
@@ -1767,7 +1767,7 @@ function IntegrationsTab() {
 // ─── Activity Tab ─────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  locked: '#444', ready: '#3b82f6', in_progress: '#f59e0b',
+  locked: '#444', in_progress: '#f59e0b',
   in_review: '#8b5cf6', approved: '#10b981', revision: '#ff3c00', done: '#10b981',
 }
 

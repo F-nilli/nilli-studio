@@ -15,7 +15,7 @@ import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
 import type { EpisodeProgress } from './page'
 
-const ACTIVE_STATUSES: TaskStatus[] = ['ready', 'in_progress', 'in_review', 'revision']
+const ACTIVE_STATUSES: TaskStatus[] = ['in_progress', 'in_review', 'revision']
 
 interface Props {
   currentUser: User
@@ -883,7 +883,7 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
 }
 
 function getActionLabel(task: Task): string {
-  if (task.status === 'in_progress' || task.status === 'ready') return task.requires_approval ? 'Submit for Review' : 'Mark Complete'
+  if (task.status === 'in_progress') return task.requires_approval ? 'Submit for Review' : 'Mark Complete'
   if (task.status === 'in_review') return 'Review'
   if (task.status === 'revision') return 'Resubmit'
   return ''
@@ -914,7 +914,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
 
     async function compute() {
       const rawNext: TaskStatus =
-        task.status === 'ready' || task.status === 'in_progress' ? 'in_review' :
+        task.status === 'in_progress' ? 'in_review' :
         task.status === 'revision' ? 'in_review' : task.status
       const nextStatus: TaskStatus =
         rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
@@ -975,7 +975,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
     if (task.status === 'in_review') { onClick(); return }
 
     const rawNext: TaskStatus =
-      task.status === 'ready' || task.status === 'in_progress' ? 'in_review' :
+      task.status === 'in_progress' ? 'in_review' :
       task.status === 'revision' ? 'in_review' : task.status
     const nextStatus: TaskStatus =
       rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
@@ -1015,7 +1015,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
           )
           for (const t of allTasksForSlack) {
             if (
-              (t.status === 'ready' || t.status === 'in_progress') &&
+              (t.status === 'in_progress') &&
               t.dep_task_ids.length > 0 &&
               t.dep_task_ids.every((d: string) => approvedIds.has(d))
             ) {

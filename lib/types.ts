@@ -11,7 +11,6 @@ export function canCreateProject(user: { role: UserRole }) { return user.role ==
 
 export type TaskStatus =
   | 'locked'
-  | 'ready'
   | 'in_progress'
   | 'in_review'
   | 'approved'

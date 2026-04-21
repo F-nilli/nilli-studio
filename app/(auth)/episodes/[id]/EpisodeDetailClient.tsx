@@ -834,11 +834,10 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     (currentUser.id === task.approver_id || currentUser.role === 'admin')
 
   const showAssigneeAction = !isLocked && isAssignee &&
-    (task.status === 'ready' || task.status === 'in_progress' || task.status === 'revision')
+    (task.status === 'in_progress' || task.status === 'revision')
   const showApproverActions = !isLocked && isApprover && task.status === 'in_review'
 
   const actionLabel =
-    task.status === 'ready' ? 'Start' :
     task.status === 'in_progress' ? (task.approver_id ? 'Submit for Review' : 'Mark Done') :
     task.status === 'revision' ? 'Resubmit' :
     ''
@@ -871,7 +870,6 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     async function compute() {
       if (showAssigneeAction) {
         const resolvedStatus =
-          task.status === 'ready' ? 'in_progress' :
           task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
           task.status === 'revision' ? 'in_review' : null
         if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
@@ -950,7 +948,6 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
   async function handleStatusAction() {
     const resolvedStatus: TaskStatus | null =
-      task.status === 'ready' ? 'in_progress' :
       task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
       task.status === 'revision' ? 'in_review' :
       null
@@ -1060,7 +1057,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
         )
         for (const t of allTasksForSlack) {
           if (
-            (t.status === 'ready' || t.status === 'in_progress') &&
+            t.status === 'in_progress' &&
             t.dep_task_ids.length > 0 &&
             t.dep_task_ids.every((d: string) => approvedIds.has(d))
           ) {
@@ -1255,7 +1252,6 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
                   ? <span className="flex items-center justify-center gap-1.5"><Spinner />{
                       actionLabel === 'Submit for Review' ? 'Submitting…' :
                       actionLabel === 'Mark Done' ? 'Saving…' :
-                      actionLabel === 'Start' ? 'Starting…' :
                       actionLabel === 'Resubmit' ? 'Submitting…' : 'Updating…'
                     }</span>
                   : actionLabel}

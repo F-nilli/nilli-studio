@@ -20,7 +20,6 @@ export function formatRelativeTime(dateStr: string): string {
 
 export const STATUS_LABELS: Record<string, string> = {
   locked: 'Locked',
-  ready: 'Ready',
   in_progress: 'In Progress',
   in_review: 'In Review',
   approved: 'Approved',
@@ -118,7 +117,6 @@ export function getInitials(name: string): string {
 export function getStatusColor(status: TaskStatus): string {
   switch (status) {
     case 'locked': return 'text-gray-400 dark:text-gray-600'
-    case 'ready': return 'text-blue-500'
     case 'in_progress': return 'text-yellow-500'
     case 'in_review': return 'text-purple-500'
     case 'approved': return 'text-green-500'
@@ -131,7 +129,6 @@ export function getStatusColor(status: TaskStatus): string {
 export function getStatusBg(status: TaskStatus): string {
   switch (status) {
     case 'locked': return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-    case 'ready': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'in_progress': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'in_review': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     case 'approved': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'

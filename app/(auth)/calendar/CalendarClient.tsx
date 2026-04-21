@@ -585,12 +585,12 @@ function TaskPill({
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
-  locked: 'Locked', ready: 'Ready', in_progress: 'In Progress',
+  locked: 'Locked', in_progress: 'In Progress',
   in_review: 'In Review', approved: 'Approved', revision: 'Revision', done: 'Done',
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  locked: '#555', ready: '#60a5fa', in_progress: '#f7931a',
+  locked: '#555', in_progress: '#f7931a',
   in_review: '#fbbf24', approved: '#34d399', revision: '#ef4444', done: '#34d399',
 }
 

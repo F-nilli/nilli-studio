@@ -17,7 +17,7 @@ interface Props {
   onClose: () => void
 }
 
-const ACTIVE_STATUSES = ['ready', 'in_progress', 'in_review', 'revision']
+const ACTIVE_STATUSES = ['in_progress', 'in_review', 'revision']
 
 export function ReassignDropdown({ task, currentUser, episode, onReassigned, onClose }: Props) {
   const supabase = createClient()

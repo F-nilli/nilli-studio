@@ -28,7 +28,7 @@ export default async function SettingsPage() {
   const { data: activeTasks } = await supabase
     .from('tasks')
     .select('assignee_id')
-    .in('status', ['ready', 'in_progress', 'in_review', 'revision'])
+    .in('status', ['in_progress', 'in_review', 'revision'])
 
   const taskCountByUser: Record<string, number> = {}
   for (const t of activeTasks || []) {

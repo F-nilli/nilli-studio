@@ -102,7 +102,7 @@ export default async function DashboardPage() {
       supabase
         .from('tasks')
         .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
-        .in('status', ['ready', 'in_progress', 'revision'])
+        .in('status', ['in_progress', 'revision'])
         .lt('due_date', todayStr)
         .order('due_date', { ascending: true }),
       supabase

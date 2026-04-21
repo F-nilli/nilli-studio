@@ -231,7 +231,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       }
     }
     for (const task of createdTasks) {
-      if (task.status === 'ready' && task.assignee_id) {
+      if (task.status === 'in_progress' && task.assignee_id) {
         const assignee = allUsers.find(u => u.id === task.assignee_id)
         if (assignee) {
           await supabase.from('notifications').insert({

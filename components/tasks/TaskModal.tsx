@@ -409,13 +409,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
                   <span className="flex items-center justify-center gap-2">
                     <Spinner />
                     {task.status === 'in_progress' ? (task.approver_id ? 'Submitting...' : 'Saving...') :
-                     task.status === 'ready' ? 'Starting...' :
                      task.status === 'revision' ? 'Submitting...' : 'Updating...'}
                   </span>
                 ) : (
                   task.status === 'in_progress'
                     ? (task.approver_id ? 'Submit for Review' : 'Mark Done')
-                  : task.status === 'ready' ? 'Start Task'
                   : task.status === 'revision' ? 'Resubmit for Review'
                   : `Mark as ${STATUS_LABELS[nextStatus!]}`
                 )}
