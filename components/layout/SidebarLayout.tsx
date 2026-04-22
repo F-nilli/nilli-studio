@@ -70,7 +70,7 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
           }}
         >
           <TopBar user={currentUser} collapsed={collapsed} onToggle={handleToggle} isMobile={isMobile} />
-          <main className="flex-1 px-4 md:px-8 py-4 md:py-8 max-w-[1400px] w-full mx-auto overflow-hidden pb-20 md:pb-8">
+          <main className="flex-1 px-4 md:px-8 py-4 md:py-8 max-w-[1400px] w-full mx-auto overflow-x-clip pb-20 md:pb-8">
             <div key={pathname} className="min-h-full">
               {children}
             </div>

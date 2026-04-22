@@ -174,6 +174,13 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   // Tracks episodes currently mid-animation so Realtime doesn't interrupt them
   const animatingRef = useRef<Set<string>>(new Set())
 
+  // Clear undo timer on unmount to prevent stale state updates after navigation
+  useEffect(() => {
+    return () => {
+      if (circleUndoInfo?.timer) clearTimeout(circleUndoInfo.timer)
+    }
+  }, [circleUndoInfo?.timer])
+
   // Merge server-fetched episodes when router.refresh() brings updated props
   useEffect(() => {
     setLiveEpisodes(prev => {

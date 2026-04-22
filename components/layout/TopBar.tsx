@@ -280,6 +280,14 @@ export function TopBar({ user, collapsed = false, onToggle, isMobile = false }: 
 
   useEffect(() => { setQuery(''); setOpen(false); setResults([]) }, [pathname])
 
+  // Close drawers and modals on navigation
+  useEffect(() => {
+    setShowNotifDrawer(false)
+    setShowMsgDrawer(false)
+    setShowNewEpisodeModal(false)
+    setToast(null)
+  }, [pathname])
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (!query.trim()) { setResults([]); setOpen(false); return }

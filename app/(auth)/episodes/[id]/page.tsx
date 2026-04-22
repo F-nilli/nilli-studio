@@ -60,6 +60,7 @@ export default async function EpisodeDetailPage({
 
   return (
     <EpisodeDetailClient
+      key={id}
       currentUser={profileRes.data as User}
       episode={episodeRes.data as Episode}
       initialTasks={(tasksRes.data || []) as unknown as Task[]}
