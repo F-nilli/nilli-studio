@@ -21,10 +21,13 @@ export async function GET() {
 
   if (selectError) {
     console.error('[Slack GET] select error:', JSON.stringify(selectError))
-    return NextResponse.json({ error: `DB read error: ${selectError.message}` }, {
-      status: 500,
-      headers: { 'Cache-Control': 'no-store' },
-    })
+    return NextResponse.json({
+      connected: false,
+      workspaceName: null,
+      tokenHint: null,
+      notifications: {},
+      inappNotifications: {},
+    }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
   console.log('[Slack GET] rows:', JSON.stringify(rows))

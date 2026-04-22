@@ -1823,7 +1823,7 @@ function IntegrationsTab() {
           </div>
           <div className="space-y-3">
             {INAPP_NOTIF_TYPES.map(({ key, label, description }) => {
-              const enabled = status ? status.inappNotifications[key] !== false : true
+              const enabled = status?.inappNotifications?.[key] !== false
               return (
                 <div key={key} className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
