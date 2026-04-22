@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { User, Client, DbTaskTemplate } from '@/lib/types'
+import type { User, Client, DbTaskTemplate, Track } from '@/lib/types'
 import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const TRACKS: Track[] = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing']
 
 function getDownstreamSeqIds(seqId: number, templates: DbTaskTemplate[]): number[] {
   const result: number[] = []
@@ -47,6 +49,17 @@ export interface CreatedEpisode {
   client_label: string
 }
 
+interface CustomTask {
+  tmpId: number
+  label: string
+  track: Track
+  assignee_id: string | null
+  due_date: string
+  dep_tmp_ids: number[]
+  requires_approval: boolean
+  approver_id: string | null
+}
+
 interface Props {
   currentUser: User
   onClose: () => void
@@ -75,6 +88,12 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   const [manuallyAdjusted, setManuallyAdjusted] = useState<Set<number>>(new Set())
   const [cascadeShifts, setCascadeShifts] = useState<Record<number, number>>({})
   const [releaseDateWarning, setReleaseDateWarning] = useState(false)
+
+  // Custom task builder state
+  const [customTasks, setCustomTasks] = useState<CustomTask[]>([
+    { tmpId: 1, label: '', track: 'Long-form', assignee_id: null, due_date: '', dep_tmp_ids: [], requires_approval: false, approver_id: null },
+  ])
+  const [nextTmpId, setNextTmpId] = useState(2)
 
   // Image upload state
   const [imageFiles, setImageFiles] = useState<File[]>([])
@@ -107,6 +126,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
     setSelectedTemplateName(names.includes('Default') ? 'Default' : (names[0] || 'Default'))
   }, [clientId])
 
+  const isCustom = selectedTemplateName === 'custom'
   const clientPipelineNames = [...new Set(templates.filter(t => t.client_id === clientId).map(t => t.template_name || 'Default'))]
   const selectedClient = clients.find(c => c.id === clientId)
   const clientTemplates = templates.filter(t => t.client_id === clientId && (t.template_name || 'Default') === selectedTemplateName)
@@ -118,6 +138,32 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
     setManuallyAdjusted(new Set())
     setCascadeShifts({})
   }, [releaseDate, clientId, selectedTemplateName])
+
+  function addCustomTask() {
+    setCustomTasks(prev => [...prev, {
+      tmpId: nextTmpId,
+      label: '',
+      track: 'Long-form',
+      assignee_id: null,
+      due_date: '',
+      dep_tmp_ids: [],
+      requires_approval: false,
+      approver_id: null,
+    }])
+    setNextTmpId(n => n + 1)
+  }
+
+  function updateCustomTask(idx: number, field: keyof CustomTask, value: unknown) {
+    setCustomTasks(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t))
+  }
+
+  function removeCustomTask(idx: number) {
+    const removedId = customTasks[idx].tmpId
+    setCustomTasks(prev => prev
+      .filter((_, i) => i !== idx)
+      .map(t => ({ ...t, dep_tmp_ids: t.dep_tmp_ids.filter(id => id !== removedId) }))
+    )
+  }
 
   function addImageFiles(files: File[]) {
     const MAX_MB = 10
@@ -169,6 +215,12 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedClient) return
+
+    if (isCustom) {
+      if (customTasks.length === 0) { setError('Add at least one task'); return }
+      if (customTasks.some(t => !t.label.trim())) { setError('All tasks must have a name'); return }
+    }
+
     setError('')
     setSubmitting(true)
 
@@ -182,63 +234,109 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
         release_time: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
         footage_url: footageUrl || null,
         notes: notes || null,
-        template_name: selectedTemplateName,
+        template_name: isCustom ? 'custom' : selectedTemplateName,
         created_by: currentUser.id,
       })
       .select().single()
 
     if (epError || !episode) { setError(epError?.message || 'Failed to create episode'); setSubmitting(false); return }
 
-    const seqIdToDbId: Record<number, string> = {}
-    const taskInserts = clientTemplates.map(template => {
-      const rawDate = taskDueDates[template.seq_id]
+    if (isCustom) {
+      // ── Custom tasks ────────────────────────────────────────────────────────
+      const taskInserts = customTasks.map(ct => ({
+        episode_id: episode.id,
+        template_task_id: ct.tmpId,
+        label: ct.label.trim(),
+        assignee_id: ct.assignee_id || currentUser.id,
+        track: ct.track,
+        status: ct.dep_tmp_ids.length === 0 ? 'in_progress' : 'locked',
+        due_date: ct.due_date ? fromDatetimeLocal(ct.due_date) : null,
+        note: null,
+        dep_task_ids: [],
+        requires_approval: ct.requires_approval,
+        approver_id: ct.requires_approval ? ct.approver_id : null,
+      }))
 
-      let resolvedApproverId: string | null = null
-      if (template.requires_approval && template.approver_id) {
-        const val = template.approver_id
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
-        if (isUuid) {
-          resolvedApproverId = val
-        } else {
-          const match = allUsers.find(u => u.name.toLowerCase() === val.toLowerCase())
-          if (match) resolvedApproverId = match.id
+      const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
+      if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setSubmitting(false); return }
+
+      const tmpIdToDbId: Record<number, string> = {}
+      for (const task of createdTasks) tmpIdToDbId[task.template_task_id] = task.id
+
+      for (const ct of customTasks) {
+        if (ct.dep_tmp_ids.length > 0) {
+          const depDbIds = ct.dep_tmp_ids.map(id => tmpIdToDbId[id]).filter(Boolean)
+          if (depDbIds.length > 0) {
+            await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', tmpIdToDbId[ct.tmpId])
+          }
         }
       }
 
-      return {
-        episode_id: episode.id,
-        template_task_id: template.seq_id,
-        label: template.label,
-        assignee_id: template.assignee_id || currentUser.id,
-        track: template.track,
-        status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
-        due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
-        note: template.note || null,
-        dep_task_ids: [],
-        requires_approval: template.requires_approval || false,
-        approver_id: resolvedApproverId,
+      for (const task of createdTasks) {
+        if (task.status === 'in_progress' && task.assignee_id) {
+          const assignee = allUsers.find(u => u.id === task.assignee_id)
+          if (assignee) {
+            await supabase.from('notifications').insert({
+              user_id: assignee.id, type: 'task_unlocked', title: 'New task started',
+              body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
+              task_id: task.id, episode_id: episode.id, read: false,
+            })
+          }
+        }
       }
-    })
+    } else {
+      // ── Template tasks ──────────────────────────────────────────────────────
+      const seqIdToDbId: Record<number, string> = {}
+      const taskInserts = clientTemplates.map(template => {
+        const rawDate = taskDueDates[template.seq_id]
 
-    const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
-    if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setSubmitting(false); return }
+        let resolvedApproverId: string | null = null
+        if (template.requires_approval && template.approver_id) {
+          const val = template.approver_id
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+          if (isUuid) {
+            resolvedApproverId = val
+          } else {
+            const match = allUsers.find(u => u.name.toLowerCase() === val.toLowerCase())
+            if (match) resolvedApproverId = match.id
+          }
+        }
 
-    for (const task of createdTasks) seqIdToDbId[task.template_task_id] = task.id
-    for (const template of clientTemplates) {
-      if (template.dep_seq_ids.length > 0) {
-        const depDbIds = template.dep_seq_ids.map(id => seqIdToDbId[id]).filter(Boolean)
-        await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[template.seq_id])
+        return {
+          episode_id: episode.id,
+          template_task_id: template.seq_id,
+          label: template.label,
+          assignee_id: template.assignee_id || currentUser.id,
+          track: template.track,
+          status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
+          due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
+          note: template.note || null,
+          dep_task_ids: [],
+          requires_approval: template.requires_approval || false,
+          approver_id: resolvedApproverId,
+        }
+      })
+
+      const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
+      if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setSubmitting(false); return }
+
+      for (const task of createdTasks) seqIdToDbId[task.template_task_id] = task.id
+      for (const template of clientTemplates) {
+        if (template.dep_seq_ids.length > 0) {
+          const depDbIds = template.dep_seq_ids.map(id => seqIdToDbId[id]).filter(Boolean)
+          await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[template.seq_id])
+        }
       }
-    }
-    for (const task of createdTasks) {
-      if (task.status === 'in_progress' && task.assignee_id) {
-        const assignee = allUsers.find(u => u.id === task.assignee_id)
-        if (assignee) {
-          await supabase.from('notifications').insert({
-            user_id: assignee.id, type: 'task_unlocked', title: 'New task started',
-            body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
-            task_id: task.id, episode_id: episode.id, read: false,
-          })
+      for (const task of createdTasks) {
+        if (task.status === 'in_progress' && task.assignee_id) {
+          const assignee = allUsers.find(u => u.id === task.assignee_id)
+          if (assignee) {
+            await supabase.from('notifications').insert({
+              user_id: assignee.id, type: 'task_unlocked', title: 'New task started',
+              body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
+              task_id: task.id, episode_id: episode.id, read: false,
+            })
+          }
         }
       }
     }
@@ -296,7 +394,10 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
-        className="w-full max-w-[580px] max-h-[90vh] overflow-y-auto rounded-2xl mx-4"
+        className={cn(
+          'w-full max-h-[90vh] overflow-y-auto rounded-2xl mx-4',
+          isCustom ? 'max-w-[960px]' : 'max-w-[580px]'
+        )}
         style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -329,23 +430,30 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                   </select>
                 </div>
 
-                {/* Pipeline */}
-                {clientPipelineNames.length > 1 && (
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Pipeline</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {clientPipelineNames.map(name => (
-                        <button key={name} type="button" onClick={() => setSelectedTemplateName(name)}
-                          className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
-                            selectedTemplateName === name
-                              ? 'bg-[#f7931a] text-black border-[#f7931a]'
-                              : 'text-[#888] border-[#2e2e2e] hover:text-white')}
-                          style={selectedTemplateName !== name ? { background: '#1e1e1e' } : {}}
-                        >{name}</button>
-                      ))}
-                    </div>
+                {/* Pipeline / Custom toggle — always visible */}
+                <div>
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Pipeline</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {clientPipelineNames.map(name => (
+                      <button key={name} type="button" onClick={() => setSelectedTemplateName(name)}
+                        className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                          selectedTemplateName === name
+                            ? 'bg-[#f7931a] text-black border-[#f7931a]'
+                            : 'text-[#888] border-[#2e2e2e] hover:text-white')}
+                        style={selectedTemplateName !== name ? { background: '#1e1e1e' } : {}}
+                      >{name}</button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTemplateName('custom')}
+                      className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                        isCustom
+                          ? 'bg-[#f7931a] text-black border-[#f7931a]'
+                          : 'text-[#888] border-[#2e2e2e] hover:text-white')}
+                      style={!isCustom ? { background: '#1e1e1e' } : {}}
+                    >Custom</button>
                   </div>
-                )}
+                </div>
 
                 {/* Guest Name */}
                 <div>
@@ -431,8 +539,8 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                   )}
                 </div>
 
-                {/* Starting task due dates */}
-                {releaseDate && unlockedTemplates.length > 0 && (
+                {/* Template mode — starting task due dates */}
+                {!isCustom && releaseDate && unlockedTemplates.length > 0 && (
                   <div>
                     <p className="text-[13px] font-medium text-[#ccc] mb-1">Starting task due dates</p>
                     <p className="text-xs text-[#555] mb-2">Auto-calculated from release date. Adjust if this episode needs a faster turnaround.</p>
@@ -457,8 +565,8 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                   </div>
                 )}
 
-                {/* All tasks preview */}
-                {clientTemplates.length > 0 && (
+                {/* Template mode — all tasks preview */}
+                {!isCustom && clientTemplates.length > 0 && (
                   <div>
                     <p className="text-[13px] font-medium text-[#ccc] mb-2">All tasks ({clientTemplates.length})</p>
                     <div className="space-y-1.5 max-h-48 overflow-y-auto">
@@ -473,6 +581,50 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                         )
                       })}
                     </div>
+                  </div>
+                )}
+
+                {/* Custom mode — task builder */}
+                {isCustom && (
+                  <div>
+                    <p className="text-[13px] font-medium text-[#ccc] mb-2">
+                      Tasks <span className="text-[#555] font-normal">({customTasks.length})</span>
+                    </p>
+
+                    {/* Column headers */}
+                    <div className="hidden md:grid gap-2 px-3 pb-1.5 text-[11px] font-medium text-[#555] uppercase tracking-wide"
+                      style={{ gridTemplateColumns: '20px minmax(150px,1fr) 110px 130px 160px auto 130px 24px' }}>
+                      <span />
+                      <span>Task</span>
+                      <span>Track</span>
+                      <span>Assignee</span>
+                      <span>Due Date</span>
+                      <span>Deps</span>
+                      <span>Approver</span>
+                      <span />
+                    </div>
+
+                    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                      {customTasks.map((ct, idx) => (
+                        <CustomTaskRow
+                          key={ct.tmpId}
+                          task={ct}
+                          idx={idx}
+                          allTasks={customTasks}
+                          allUsers={allUsers}
+                          onUpdate={(field, value) => updateCustomTask(idx, field, value)}
+                          onRemove={() => removeCustomTask(idx)}
+                        />
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addCustomTask}
+                      className="mt-2.5 text-sm text-[#555] hover:text-[#f7931a] transition-colors font-medium"
+                    >
+                      + Add task
+                    </button>
                   </div>
                 )}
 
@@ -494,6 +646,106 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
           </form>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Custom task row ───────────────────────────────────────────────────────────
+
+function CustomTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: {
+  task: CustomTask
+  idx: number
+  allTasks: CustomTask[]
+  allUsers: User[]
+  onUpdate: (field: keyof CustomTask, value: unknown) => void
+  onRemove: () => void
+}) {
+  const selectStyle = 'px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] w-full'
+
+  return (
+    <div
+      className="grid gap-2 px-3 py-2.5 border-b items-center"
+      style={{
+        gridTemplateColumns: '20px minmax(150px,1fr) 110px 130px 160px auto 130px 24px',
+        borderColor: 'rgba(255,255,255,0.06)',
+      }}
+    >
+      {/* Index */}
+      <span className="text-xs text-[#555] font-mono">{idx + 1}</span>
+
+      {/* Label */}
+      <input
+        value={task.label}
+        onChange={e => onUpdate('label', e.target.value)}
+        placeholder="Task name"
+        className="px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] w-full placeholder-[#444]"
+      />
+
+      {/* Track */}
+      <select value={task.track} onChange={e => onUpdate('track', e.target.value as Track)} className={selectStyle}>
+        {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+
+      {/* Assignee */}
+      <select value={task.assignee_id || ''} onChange={e => onUpdate('assignee_id', e.target.value || null)} className={selectStyle}>
+        <option value="">Unassigned</option>
+        {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+
+      {/* Due date */}
+      <DateHourPicker value={task.due_date} onChange={v => onUpdate('due_date', v)} className="w-full" />
+
+      {/* Deps */}
+      <div className="flex flex-wrap gap-1 min-w-0">
+        {allTasks.filter((_, i) => i !== idx).length === 0 ? (
+          <span className="text-xs text-[#444]">—</span>
+        ) : (
+          allTasks.filter((_, i) => i !== idx).map(t => {
+            const pos = allTasks.findIndex(a => a.tmpId === t.tmpId) + 1
+            const selected = task.dep_tmp_ids.includes(t.tmpId)
+            return (
+              <button
+                key={t.tmpId}
+                type="button"
+                title={t.label || `Task ${pos}`}
+                onClick={() => onUpdate('dep_tmp_ids', selected
+                  ? task.dep_tmp_ids.filter(id => id !== t.tmpId)
+                  : [...task.dep_tmp_ids, t.tmpId]
+                )}
+                className={cn(
+                  'w-6 h-6 rounded text-xs font-bold transition-colors shrink-0',
+                  selected ? 'bg-[#f7931a] text-black' : 'bg-[#1e1e1e] text-[#555] hover:text-white border border-[#2e2e2e]'
+                )}
+              >
+                {pos}
+              </button>
+            )
+          })
+        )}
+      </div>
+
+      {/* Approver */}
+      <select
+        value={task.requires_approval ? (task.approver_id || '') : ''}
+        onChange={e => {
+          const val = e.target.value
+          onUpdate('requires_approval', val !== '')
+          onUpdate('approver_id', val || null)
+        }}
+        className={selectStyle}
+      >
+        <option value="">— No approval</option>
+        {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+
+      {/* Remove */}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="p-0.5 text-[#444] hover:text-[#ff3c00] transition-colors"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
     </div>
   )
 }
