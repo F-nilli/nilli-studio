@@ -19,9 +19,12 @@ export async function POST(req: NextRequest) {
   let unlocked = 0
 
   for (const t of allTasks) {
-    if (t.status !== 'locked' || t.dep_task_ids.length === 0) continue
-    const allDepsApproved = t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
-    if (!allDepsApproved) continue
+    if (t.status !== 'locked') continue
+    // A locked task with no dep_task_ids recorded is a creation bug — unlock it immediately
+    const shouldUnlock =
+      t.dep_task_ids.length === 0 ||
+      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
+    if (!shouldUnlock) continue
 
     await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
     unlocked++

@@ -213,7 +213,14 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
     for (const template of clientTemplates) {
       if (template.dep_seq_ids.length > 0) {
         const depDbIds = template.dep_seq_ids.map(depId => seqIdToDbId[depId]).filter(Boolean)
-        await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[template.seq_id])
+        if (depDbIds.length !== template.dep_seq_ids.length) {
+          console.error(`[NewEpisode] dep wiring mismatch for task ${template.seq_id}: expected ${template.dep_seq_ids.length} deps, got ${depDbIds.length}`)
+        }
+        const taskDbId = seqIdToDbId[template.seq_id]
+        if (taskDbId && depDbIds.length > 0) {
+          const { error: depErr } = await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', taskDbId)
+          if (depErr) console.error(`[NewEpisode] failed to wire deps for task ${template.seq_id}:`, depErr.message)
+        }
       }
     }
 
