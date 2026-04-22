@@ -23,14 +23,18 @@ export default async function CalendarPage() {
       supabase
         .from('episodes')
         .select('id, guest_name, client_label, release_date')
+        .eq('archived', false)
         .is('published_at', null)
         .order('release_date', { ascending: true }),
     ])
 
+    const tasks = ((tasksRes.data ?? []) as unknown as (Task & { episode: Episode })[])
+      .filter(t => !t.episode?.archived)
+
     return (
       <CalendarClient
         currentUser={currentUser}
-        tasks={(tasksRes.data ?? []) as unknown as (Task & { episode: Episode })[]}
+        tasks={tasks}
         episodes={(episodesRes.data ?? []) as Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[]}
         allUsers={[]}
       />
@@ -45,7 +49,8 @@ export default async function CalendarPage() {
     .eq('assignee_id', user.id)
     .order('due_date', { ascending: true })
 
-  const myTasks = (tasksData ?? []) as unknown as (Task & { episode: Episode })[]
+  const myTasks = ((tasksData ?? []) as unknown as (Task & { episode: Episode })[])
+    .filter(t => !t.episode?.archived)
   const episodeIds = [...new Set(myTasks.map(t => t.episode_id).filter(Boolean))]
 
   const episodes: Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[] =
@@ -54,6 +59,7 @@ export default async function CalendarPage() {
           .from('episodes')
           .select('id, guest_name, client_label, release_date')
           .in('id', episodeIds)
+          .eq('archived', false)
           .is('published_at', null)
           .order('release_date', { ascending: true })).data ?? []) as Pick<Episode, 'id' | 'guest_name' | 'client_label' | 'release_date'>[]
       : []

@@ -628,6 +628,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 track={track}
                 trackColor={trackColor}
                 tasks={trackTasks}
+                allTasks={tasks}
                 done={done}
                 canEditDates={canEditDates}
                 canReassign={canReassign}
@@ -797,6 +798,7 @@ interface TrackPanelProps {
   track: Track
   trackColor: string
   tasks: Task[]
+  allTasks: Task[]
   done: number
   canEditDates: boolean
   canReassign: boolean
@@ -815,7 +817,7 @@ interface TrackPanelProps {
   onReplyToLatest: (taskId: string) => void
 }
 
-function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onPendingAction, onReassignToast, onReplyToLatest }: TrackPanelProps) {
+function TrackPanel({ track, trackColor, tasks, allTasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onPendingAction, onReassignToast, onReplyToLatest }: TrackPanelProps) {
   return (
     <div className="bg-[#1e1e1e] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
       {/* Header */}
@@ -832,6 +834,7 @@ function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign,
           <TrackTaskCard
             key={task.id}
             task={task}
+            allTasks={allTasks}
             isSelected={activeTask?.id === task.id}
             isExpanded={expandedTaskId === task.id}
             isRecentlyUnlocked={recentlyUnlocked.has(task.id)}
@@ -858,6 +861,7 @@ function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign,
 
 interface TrackTaskCardProps {
   task: Task
+  allTasks: Task[]
   isSelected: boolean
   isExpanded: boolean
   isRecentlyUnlocked: boolean
@@ -875,10 +879,13 @@ interface TrackTaskCardProps {
   onReplyToLatest: (taskId: string) => void
 }
 
-function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onPendingAction, onReassignToast, onReplyToLatest }: TrackTaskCardProps) {
+function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onPendingAction, onReassignToast, onReplyToLatest }: TrackTaskCardProps) {
   const supabase = createClient()
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
+  const blockingTasks = isLocked && task.dep_task_ids.length > 0
+    ? allTasks.filter(t => task.dep_task_ids.includes(t.id) && !['done', 'approved'].includes(t.status))
+    : []
   const [editingDate, setEditingDate] = useState(false)
   const [dateValue, setDateValue] = useState(toDatetimeLocal(task.due_date))
   const [actionLoading, setActionLoading] = useState(false)
@@ -1235,6 +1242,13 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
             />
           )}
         </div>
+
+        {/* Waiting on indicator for locked tasks */}
+        {isLocked && blockingTasks.length > 0 && (
+          <p className="text-[11px] text-[#444] mt-1 pl-[18px] truncate">
+            Waiting on: {blockingTasks.map(t => t.label).join(', ')}
+          </p>
+        )}
 
         {/* Row 2: due date + comment count */}
         {!isLocked && (

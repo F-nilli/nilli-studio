@@ -810,6 +810,9 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
           </div>
           <p className="text-base font-medium text-[#888]">{task.label}</p>
           <p className="text-sm text-[#555] mt-0.5">{task.track}</p>
+          {task.dep_task_ids.length > 0 && (
+            <p className="text-[11px] text-[#444] mt-1">Waiting on prior tasks to complete</p>
+          )}
           <Link
             href={`/episodes/${task.episode_id}`}
             onClick={e => e.stopPropagation()}
