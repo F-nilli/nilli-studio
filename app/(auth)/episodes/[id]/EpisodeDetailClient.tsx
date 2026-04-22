@@ -1218,10 +1218,14 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
           : 'bg-[#272727] border-l-[3px] border-transparent hover:bg-[#2a2a2a]',
       isLocked && 'opacity-35'
     )}>
-      {/* Main row */}
-      <button
+      {/* Main row — div not button: nested <button> elements inside a <button> are invalid HTML
+           and trigger browser DOM repair that ejects content outside the track panel card */}
+      <div
+        role="button"
+        tabIndex={isLocked ? -1 : 0}
         onClick={isLocked ? undefined : onClick}
-        className={cn('w-full text-left px-4 py-[14px]', isLocked && 'cursor-default')}
+        onKeyDown={e => { if (!isLocked && (e.key === 'Enter' || e.key === ' ')) onClick() }}
+        className={cn('w-full text-left px-4 py-[14px]', isLocked ? 'cursor-default' : 'cursor-pointer')}
       >
         {/* Row 1: status + label + avatar */}
         <div className="flex items-center gap-2 mb-1.5">
@@ -1296,7 +1300,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             {overdue && <AlertCircle className="w-3 h-3 text-[#ff3c00] shrink-0" />}
           </div>
         )}
-      </button>
+      </div>
 
       {/* Inline note box + action buttons */}
       {(showAssigneeAction || showApproverActions) && (
