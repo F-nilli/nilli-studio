@@ -57,12 +57,15 @@ export default async function DashboardPage() {
       ? supabase
           .from('episodes')
           .select('id, guest_name, client_label, release_date, tasks(id, status, due_date, requires_approval, review_started_at)')
+          .eq('archived', false)
           .order('release_date', { ascending: true, nullsFirst: false })
       : Promise.resolve({ data: null, error: null }),
   ])
 
-  const myTasks = (myTasksData.data || []) as unknown as (Task & { episode: Episode })[]
-  const reviewTasks = (reviewData.data || []) as unknown as (Task & { episode: Episode })[]
+  const myTasks = ((myTasksData.data || []) as unknown as (Task & { episode: Episode })[])
+    .filter(t => !t.episode?.archived)
+  const reviewTasks = ((reviewData.data || []) as unknown as (Task & { episode: Episode })[])
+    .filter(t => !t.episode?.archived)
 
   type EpTask = { id: string; status: string; due_date: string | null; requires_approval: boolean; review_started_at: string | null }
   type EpRow = { id: string; guest_name: string; client_label: string; release_date: string; tasks: EpTask[] }
@@ -127,7 +130,7 @@ export default async function DashboardPage() {
     ].filter(t => {
       if (seen.has(t.id)) return false
       seen.add(t.id)
-      return true
+      return !t.episode?.archived
     })
 
     upcomingReleases = (upcomingRes.data || []) as Episode[]
