@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { EpisodeDetailClient } from './EpisodeDetailClient'
 import type { User, Episode, Task } from '@/lib/types'
+import { canSeeAllEpisodes } from '@/lib/types'
 
 export default async function EpisodeDetailPage({
   params,
@@ -27,6 +28,15 @@ export default async function EpisodeDetailPage({
   ])
 
   if (!episodeRes.data) notFound()
+
+  // Members can only view episodes they have a task in
+  const currentUser = profileRes.data as User
+  if (!canSeeAllEpisodes(currentUser)) {
+    const involved = (tasksRes.data || []).some(
+      t => t.assignee_id === user.id || t.approver_id === user.id
+    )
+    if (!involved) notFound()
+  }
 
   const taskIds = (tasksRes.data || []).map(t => t.id)
 
