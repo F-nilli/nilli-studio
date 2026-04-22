@@ -361,6 +361,10 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     setAllComments(prev => prev.filter(c => c.id !== id))
   }
 
+  function handleEditComment(id: string, newBody: string) {
+    setAllComments(prev => prev.map(c => c.id === id ? { ...c, body: newBody } : c))
+  }
+
   function handleReplyToLatest(taskId: string) {
     // Find latest non-internal top-level comment on this task
     const latest = [...allComments]
@@ -663,6 +667,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
           onNewComment={handleNewComment}
           onReplaceComment={handleReplaceComment}
           onRemoveComment={handleRemoveComment}
+          onEditComment={handleEditComment}
           highlightCommentId={initialCommentId}
           replyToCommentId={replyToCommentId}
           onReplyConsumed={() => setReplyToCommentId(null)}

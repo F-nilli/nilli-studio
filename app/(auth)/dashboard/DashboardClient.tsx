@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal } from 'lucide-react'
+import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2 } from 'lucide-react'
 import { usePendingActions } from '@/lib/usePendingActions'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
@@ -915,10 +915,13 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   const [noteText, setNoteText] = useState('')
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentsLoaded, setCommentsLoaded] = useState(false)
-  const [comments, setComments] = useState<Array<{ id: string; body: string; created_at: string; author: { name: string; avatar_color: string; avatar_url: string | null } | null }>>([])
+  const [comments, setComments] = useState<Array<{ id: string; body: string; created_at: string; author_id: string; author: { name: string; avatar_color: string; avatar_url: string | null } | null; reactions: { emoji: string; user_id: string }[] }>>([])
   const [commentCount, setCommentCount] = useState<number | null>(null)
   const [newComment, setNewComment] = useState('')
   const [sendingComment, setSendingComment] = useState(false)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [commentHoverId, setCommentHoverId] = useState<string | null>(null)
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseDate(task.due_date), new Date()) : null
@@ -992,7 +995,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   async function loadComments() {
     const { data } = await supabase
       .from('comments')
-      .select('id, body, created_at, author:users!author_id(name, avatar_color, avatar_url)')
+      .select('id, body, created_at, author_id, author:users!author_id(name, avatar_color, avatar_url)')
       .eq('task_id', task.id)
       .eq('internal', false)
       .order('created_at', { ascending: true })
@@ -1001,8 +1004,28 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         id: c.id as string,
         body: c.body as string,
         created_at: c.created_at as string,
+        author_id: c.author_id as string,
         author: Array.isArray(c.author) ? (c.author[0] ?? null) : (c.author ?? null),
+        reactions: [] as { emoji: string; user_id: string }[],
       }))
+
+      // Load reactions for these comments
+      const ids = normalized.map(c => c.id)
+      if (ids.length > 0) {
+        const { data: rxData } = await supabase
+          .from('comment_reactions')
+          .select('comment_id, emoji, user_id')
+          .in('comment_id', ids)
+        if (rxData) {
+          const rxMap: Record<string, { emoji: string; user_id: string }[]> = {}
+          for (const r of rxData) {
+            if (!rxMap[r.comment_id]) rxMap[r.comment_id] = []
+            rxMap[r.comment_id].push({ emoji: r.emoji, user_id: r.user_id })
+          }
+          for (const c of normalized) c.reactions = rxMap[c.id] ?? []
+        }
+      }
+
       setComments(normalized)
       setCommentCount(normalized.length)
       setCommentsLoaded(true)
@@ -1025,7 +1048,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
       .select('id, body, created_at').single()
     if (comment) {
-      const entry = { id: comment.id, body: comment.body, created_at: comment.created_at, author: { name: currentUser.name, avatar_color: currentUser.avatar_color, avatar_url: currentUser.avatar_url } }
+      const entry = { id: comment.id, body: comment.body, created_at: comment.created_at, author_id: currentUser.id, author: { name: currentUser.name, avatar_color: currentUser.avatar_color, avatar_url: currentUser.avatar_url }, reactions: [] as { emoji: string; user_id: string }[] }
       setComments(prev => [...prev, entry])
       setCommentCount(prev => (prev ?? 0) + 1)
       setNewComment('')
@@ -1036,6 +1059,44 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       }).catch(() => {})
     }
     setSendingComment(false)
+  }
+
+  function toggleCommentReaction(commentId: string, emoji: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setComments(prev => prev.map(c => {
+      if (c.id !== commentId) return c
+      const has = c.reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id)
+      return { ...c, reactions: has ? c.reactions.filter(r => !(r.emoji === emoji && r.user_id === currentUser.id)) : [...c.reactions, { emoji, user_id: currentUser.id }] }
+    }))
+    fetch(`/api/comments/${commentId}/react`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emoji }),
+    }).catch(console.error)
+  }
+
+  function startEditComment(comment: typeof comments[0], e: React.MouseEvent) {
+    e.stopPropagation()
+    setEditingCommentId(comment.id)
+    setEditDraft(comment.body)
+  }
+
+  async function saveEditComment(commentId: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    const trimmed = editDraft.trim()
+    if (!trimmed) return
+    const original = comments.find(c => c.id === commentId)?.body ?? ''
+    setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: trimmed } : c))
+    setEditingCommentId(null)
+    const res = await fetch(`/api/comments/${commentId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: trimmed }),
+    })
+    if (!res.ok) setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: original } : c))
+  }
+
+  function deleteComment(commentId: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setComments(prev => prev.filter(c => c.id !== commentId))
+    setCommentCount(prev => (prev ?? 1) - 1)
+    fetch(`/api/comments/${commentId}`, { method: 'DELETE' }).catch(console.error)
   }
 
   function handleAction(e: React.MouseEvent) {
@@ -1224,20 +1285,77 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
             <p className="text-xs text-[#555]">No comments yet</p>
           ) : (
             <div className="space-y-2.5">
-              {comments.slice(-3).map(c => (
-                <div key={c.id} className="flex gap-2">
-                  {c.author && (
-                    <Avatar name={c.author.name} color={c.author.avatar_color} avatarUrl={c.author.avatar_url} size="sm" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-[11px] font-medium text-[#ccc]">{c.author?.name ?? 'Unknown'}</span>
-                      <span className="text-[10px] text-[#444]">{format(new Date(c.created_at), 'MMM d')}</span>
+              {comments.slice(-3).map(c => {
+                const isOwn = c.author_id === currentUser.id
+                const isEditing = editingCommentId === c.id
+                const isHovered = commentHoverId === c.id
+                return (
+                  <div
+                    key={c.id}
+                    className="flex gap-2"
+                    onMouseEnter={() => setCommentHoverId(c.id)}
+                    onMouseLeave={() => setCommentHoverId(null)}
+                  >
+                    {c.author && (
+                      <Avatar name={c.author.name} color={c.author.avatar_color} avatarUrl={c.author.avatar_url} size="sm" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-medium text-[#ccc]">{c.author?.name ?? 'Unknown'}</span>
+                        <span className="text-[10px] text-[#444]">{format(new Date(c.created_at), 'MMM d')}</span>
+                        {isOwn && isHovered && !isEditing && (
+                          <>
+                            <button onClick={e => startEditComment(c, e)} className="p-0.5 text-[#444] hover:text-[#888] transition-colors">
+                              <Pencil className="w-2.5 h-2.5" />
+                            </button>
+                            <button onClick={e => deleteComment(c.id, e)} className="p-0.5 text-[#444] hover:text-[#ff6644] transition-colors">
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <div onClick={e => e.stopPropagation()}>
+                          <textarea
+                            value={editDraft}
+                            onChange={e => setEditDraft(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditComment(c.id, e as any) } if (e.key === 'Escape') setEditingCommentId(null) }}
+                            autoFocus
+                            rows={2}
+                            className="w-full mt-1 px-2 py-1.5 bg-[#141414] border border-[#f7931a]/40 rounded text-xs text-white resize-none focus:outline-none leading-snug"
+                          />
+                          <div className="flex gap-3 mt-1">
+                            <button onClick={e => { e.stopPropagation(); setEditingCommentId(null) }} className="text-[10px] text-[#555] hover:text-[#888]">Cancel</button>
+                            <button onClick={e => saveEditComment(c.id, e)} className="text-[10px] text-[#f7931a] font-semibold hover:text-[#e07d10]">Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#aaa] leading-snug break-words">{c.body}</p>
+                      )}
+                      {/* Reactions */}
+                      {!isEditing && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {['👍', '✅', '🔥'].map(emoji => {
+                            const count = c.reactions.filter(r => r.emoji === emoji).length
+                            const isMine = c.reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id)
+                            if (count === 0 && !isHovered) return null
+                            return (
+                              <button
+                                key={emoji}
+                                onClick={e => toggleCommentReaction(c.id, emoji, e)}
+                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] transition-all select-none ${isMine ? 'bg-[#f7931a]/15 border border-[#f7931a]/40 text-[#f7931a]' : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#555] hover:text-[#aaa]'}`}
+                              >
+                                <span>{emoji}</span>
+                                {count > 0 && <span className="text-[9px] font-medium ml-0.5">{count}</span>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-[#aaa] leading-snug break-words">{c.body}</p>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               <Link
                 href={`/episodes/${task.episode_id}?t=${task.id}`}
                 onClick={e => e.stopPropagation()}

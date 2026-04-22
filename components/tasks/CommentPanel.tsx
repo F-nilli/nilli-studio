@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, ArrowUpDown, Lock, CornerDownLeft } from 'lucide-react'
+import { X, Send, ArrowUpDown, Lock, CornerDownLeft, Pencil, Trash2 } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
 import { Comment, User, Task, Track, canAccessSettings } from '@/lib/types'
@@ -10,8 +10,10 @@ import { TRACK_COLORS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { isYesterday, format } from 'date-fns'
 
+const REACTION_EMOJIS = ['👍', '✅', '🔥']
 
 type Tab = 'all' | 'tasks' | 'internal'
+type Reaction = { emoji: string; user_id: string }
 
 function relativeTime(iso: string): string {
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -49,6 +51,7 @@ interface Props {
   onNewComment: (comment: Comment) => void
   onReplaceComment: (tempId: string, real: Comment) => void
   onRemoveComment: (id: string) => void
+  onEditComment: (id: string, newBody: string) => void
   highlightCommentId?: string
   replyToCommentId?: string | null
   onReplyConsumed?: () => void
@@ -69,6 +72,7 @@ export function CommentPanel({
   onNewComment,
   onReplaceComment,
   onRemoveComment,
+  onEditComment,
   highlightCommentId,
   replyToCommentId,
   onReplyConsumed,
@@ -91,11 +95,87 @@ export function CommentPanel({
   const bottomRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
 
+  // Edit / delete state
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+
+  // Reactions state: commentId → list of { emoji, user_id }
+  const [reactionsMap, setReactionsMap] = useState<Record<string, Reaction[]>>({})
+
   const canInternal = canAccessSettings(currentUser)
 
   // Derived
   const taskLabels = useMemo(() => Object.fromEntries(tasks.map(t => [t.id, t.label])), [tasks])
   const taskTracks = useMemo(() => Object.fromEntries(tasks.map(t => [t.id, t.track as Track])), [tasks])
+
+  // Load reactions whenever comment list changes
+  useEffect(() => {
+    if (allComments.length === 0) return
+    const ids = allComments.map(c => c.id).filter(id => !id.startsWith('optimistic-'))
+    if (ids.length === 0) return
+    supabase
+      .from('comment_reactions')
+      .select('comment_id, emoji, user_id')
+      .in('comment_id', ids)
+      .then(({ data }) => {
+        if (!data) return
+        const map: Record<string, Reaction[]> = {}
+        for (const r of data) {
+          if (!map[r.comment_id]) map[r.comment_id] = []
+          map[r.comment_id].push({ emoji: r.emoji, user_id: r.user_id })
+        }
+        setReactionsMap(map)
+      })
+  }, [allComments.length])
+
+  function toggleReaction(commentId: string, emoji: string) {
+    const reactions = reactionsMap[commentId] ?? []
+    const isMine = reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id)
+    setReactionsMap(prev => ({
+      ...prev,
+      [commentId]: isMine
+        ? reactions.filter(r => !(r.emoji === emoji && r.user_id === currentUser.id))
+        : [...reactions, { emoji, user_id: currentUser.id }],
+    }))
+    fetch(`/api/comments/${commentId}/react`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emoji }),
+    }).catch(() => {
+      // revert on failure
+      setReactionsMap(prev => ({ ...prev, [commentId]: reactions }))
+    })
+  }
+
+  function startEdit(comment: Comment) {
+    setEditingCommentId(comment.id)
+    setEditDraft(comment.body)
+  }
+
+  function cancelEdit() {
+    setEditingCommentId(null)
+    setEditDraft('')
+  }
+
+  async function saveEdit(commentId: string) {
+    const trimmed = editDraft.trim()
+    if (!trimmed) return
+    const original = allComments.find(c => c.id === commentId)?.body ?? ''
+    onEditComment(commentId, trimmed)
+    setEditingCommentId(null)
+    setEditDraft('')
+    const res = await fetch(`/api/comments/${commentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: trimmed }),
+    })
+    if (!res.ok) onEditComment(commentId, original)
+  }
+
+  async function deleteComment(commentId: string) {
+    onRemoveComment(commentId)
+    await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }).catch(console.error)
+  }
 
   // Build replies map: parent ID → sorted children
   const repliesMap = useMemo(() => {
@@ -119,7 +199,6 @@ export function CommentPanel({
         : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
 
-  // Top-level only (no parent) per tab
   const topLevelAll = useMemo(() =>
     sorted(allComments.filter(c => !c.parent_comment_id && !c.internal)),
     [allComments, sortDesc])
@@ -135,37 +214,22 @@ export function CommentPanel({
     activeTab === 'tasks' ? topLevelTask :
     topLevelInternal
 
-  // Total visible comment count including replies (for scroll trigger)
   const totalVisibleCount = useMemo(() => {
     let count = visibleTopLevel.length
     for (const c of visibleTopLevel) {
       const replies = repliesMap[c.id] ?? []
       count += replies.length
-      for (const r of replies) {
-        count += (repliesMap[r.id] ?? []).length
-      }
+      for (const r of replies) count += (repliesMap[r.id] ?? []).length
     }
     return count
   }, [visibleTopLevel, repliesMap])
 
   const totalUnreadTasks = tasks.filter(t => hasUnread(t.id)).length
 
-  // Auto-switch to TASKS tab when a task is selected
-  useEffect(() => {
-    if (activeTask) setActiveTab('tasks')
-  }, [activeTask?.id])
+  useEffect(() => { if (activeTask) setActiveTab('tasks') }, [activeTask?.id])
+  useEffect(() => { if (!activeTask && activeTab === 'tasks') setActiveTab('all') }, [activeTask])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [totalVisibleCount])
 
-  // Close TASKS tab if task deselected while on it
-  useEffect(() => {
-    if (!activeTask && activeTab === 'tasks') setActiveTab('all')
-  }, [activeTask])
-
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [totalVisibleCount])
-
-  // Close sort menu on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (sortRef.current && !sortRef.current.contains(e.target as Node)) setShowSortMenu(false)
@@ -174,14 +238,12 @@ export function CommentPanel({
     return () => document.removeEventListener('mousedown', handle)
   }, [])
 
-  // Clear error after 4 seconds
   useEffect(() => {
     if (!submitError) return
     const t = setTimeout(() => setSubmitError(null), 4000)
     return () => clearTimeout(t)
   }, [submitError])
 
-  // Scroll to and flash highlighted comment
   useEffect(() => {
     if (!highlightCommentId || highlightApplied.current) return
     const el = commentRefs.current[highlightCommentId]
@@ -192,7 +254,6 @@ export function CommentPanel({
     setTimeout(() => setFlashedCommentId(null), 2000)
   }, [highlightCommentId, allComments.length])
 
-  // Consume external replyToCommentId (from task row ↩ button)
   useEffect(() => {
     if (!replyToCommentId) return
     const comment = allComments.find(c => c.id === replyToCommentId)
@@ -208,7 +269,6 @@ export function CommentPanel({
     onReplyConsumed?.()
   }, [replyToCommentId])
 
-  // @mention options
   const mentionOptions = mentionQuery !== null
     ? allUsers.filter(u => u.id !== currentUser.id && u.name.toLowerCase().includes(mentionQuery.toLowerCase()))
     : []
@@ -253,7 +313,6 @@ export function CommentPanel({
 
   function startReply(comment: Comment) {
     setReplyingTo(comment)
-    // Switch to the right tab
     if (comment.internal) {
       setActiveTab('internal')
     } else if (comment.task_id) {
@@ -278,7 +337,6 @@ export function CommentPanel({
     const taskId = replyParent ? replyParent.task_id : (activeTask?.id ?? null)
     const depth = replyParent ? Math.min((replyParent.depth ?? 0) + 1, 2) : 0
 
-    // Optimistic comment
     const tempId = `optimistic-${Date.now()}`
     const optimisticComment: Comment = {
       id: tempId,
@@ -325,7 +383,6 @@ export function CommentPanel({
     const newComment = data as unknown as Comment
     onReplaceComment(tempId, newComment)
 
-    // Notifications (non-blocking)
     if (taskId && !isInternal) {
       const replyTask = tasks.find(t => t.id === taskId)
       fetch('/api/notifications/comment', {
@@ -342,7 +399,6 @@ export function CommentPanel({
         }),
       }).catch(() => {})
 
-      // Skip Slack for handoff notes
       if (!trimmedBody.startsWith('→ ')) {
         fetch('/api/slack/notify', {
           method: 'POST',
@@ -361,12 +417,8 @@ export function CommentPanel({
     setSubmitting(false)
   }
 
-  // Input is disabled when: no reply mode AND on "all" tab
   const inputDisabled = !replyingTo && activeTab === 'all'
-
-  // Effective internal status for textarea styling
   const effectiveInternal = replyingTo ? replyingTo.internal : activeTab === 'internal'
-
   const inputPlaceholder = replyingTo
     ? `Reply to ${replyingTo.author?.name ?? 'comment'}…`
     : activeTab === 'internal'
@@ -386,7 +438,9 @@ export function CommentPanel({
     const commentUnread = comment.task_id ? hasUnread(comment.task_id) : false
     const isHandoff = comment.body.startsWith('→ ')
     const isHovered = hoveredCommentId === comment.id
+    const isEditing = editingCommentId === comment.id
     const canDepthReply = (comment.depth ?? 0) < 2
+    const reactions = reactionsMap[comment.id] ?? []
 
     return (
       <div
@@ -413,7 +467,6 @@ export function CommentPanel({
           {isHandoff && (
             <span className="text-[10px] text-[#555] mb-0.5">↗ handoff note</span>
           )}
-          {/* Task pill (ALL tab only, top-level only) */}
           {activeTab === 'all' && taskLabel && depth === 0 && (
             <span
               className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full mb-0.5 truncate max-w-full"
@@ -422,7 +475,8 @@ export function CommentPanel({
               {taskLabel}
             </span>
           )}
-          <div className={cn('flex items-baseline gap-1.5 flex-wrap', isOwn && 'flex-row-reverse')}>
+          {/* Name + timestamp + edit/delete actions */}
+          <div className={cn('flex items-center gap-1.5 flex-wrap', isOwn && 'flex-row-reverse')}>
             {!isOwn && (
               <span className="text-[13px] font-semibold text-[#bbb]">{comment.author?.name}</span>
             )}
@@ -435,25 +489,95 @@ export function CommentPanel({
             <span className="text-[11px] text-white/30">
               {isOptimistic ? 'sending…' : relativeTime(comment.created_at)}
             </span>
+            {isOwn && !isOptimistic && !isHandoff && isHovered && (
+              <div className={cn('flex items-center gap-1', isOwn ? 'mr-1' : 'ml-1')}>
+                <button
+                  onClick={() => startEdit(comment)}
+                  className="p-0.5 text-[#444] hover:text-[#888] transition-colors"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => deleteComment(comment.id)}
+                  className="p-0.5 text-[#444] hover:text-[#ff6644] transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
-          <div className={cn(
-            'px-3 py-2.5 rounded-xl text-[14px] leading-relaxed',
-            comment.internal
-              ? isOwn
-                ? 'bg-purple-900/25 border border-purple-700/25 text-purple-200'
-                : 'bg-purple-900/15 border border-purple-700/20 text-purple-300'
-              : isOwn
-                ? 'text-[#ffe8d8]'
-                : 'text-[#d0d0d0]'
+
+          {/* Bubble or inline edit */}
+          {isEditing ? (
+            <div className="w-full">
+              <textarea
+                value={editDraft}
+                onChange={e => setEditDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(comment.id) }
+                  if (e.key === 'Escape') cancelEdit()
+                }}
+                autoFocus
+                rows={2}
+                maxLength={500}
+                className="w-full px-3 py-2 rounded-xl text-[14px] text-white bg-[#2a2a2a] border border-[#f7931a]/40 focus:outline-none resize-none leading-relaxed"
+              />
+              <div className={cn('flex gap-3 mt-1', isOwn ? 'justify-end' : 'justify-start')}>
+                <button onClick={cancelEdit} className="text-[11px] text-[#555] hover:text-[#888] transition-colors">
+                  Cancel
+                </button>
+                <button onClick={() => saveEdit(comment.id)} className="text-[11px] text-[#f7931a] hover:text-[#e07d10] font-semibold transition-colors">
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className={cn(
+              'px-3 py-2.5 rounded-xl text-[14px] leading-relaxed',
+              comment.internal
+                ? isOwn
+                  ? 'bg-purple-900/25 border border-purple-700/25 text-purple-200'
+                  : 'bg-purple-900/15 border border-purple-700/20 text-purple-300'
+                : isOwn
+                  ? 'text-[#ffe8d8]'
+                  : 'text-[#d0d0d0]'
+            )}
+            style={!comment.internal ? (isOwn
+              ? { background: '#2d1f0e', border: '1px solid rgba(247,147,26,0.2)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
+              : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
+            ) : {}}
+            >
+              {renderBody(comment.body)}
+            </div>
           )}
-          style={!comment.internal ? (isOwn
-            ? { background: '#2d1f0e', border: '1px solid rgba(247,147,26,0.2)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
-            : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
-          ) : {}}
-          >
-            {renderBody(comment.body)}
-          </div>
-          {/* Reply button — shown on hover, only for non-optimistic, max depth 2 */}
+
+          {/* Reactions */}
+          {!isOptimistic && !isEditing && (
+            <div className={cn('flex gap-1 mt-1', isOwn ? 'justify-end' : 'justify-start')}>
+              {REACTION_EMOJIS.map(emoji => {
+                const count = reactions.filter(r => r.emoji === emoji).length
+                const isMine = reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id)
+                if (count === 0 && !isHovered) return null
+                return (
+                  <button
+                    key={emoji}
+                    onClick={() => toggleReaction(comment.id, emoji)}
+                    className={cn(
+                      'flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[12px] transition-all select-none',
+                      isMine
+                        ? 'bg-[#f7931a]/15 border border-[#f7931a]/40 text-[#f7931a]'
+                        : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#555] hover:text-[#aaa] hover:border-[#3a3a3a]'
+                    )}
+                  >
+                    <span>{emoji}</span>
+                    {count > 0 && <span className="text-[10px] font-medium ml-0.5">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Reply button */}
           {!isOptimistic && canDepthReply && (
             <button
               onClick={() => startReply(comment)}
@@ -571,7 +695,6 @@ export function CommentPanel({
              'No internal notes yet.'}
           </p>
         )}
-
         {visibleTopLevel.map(comment => renderThread(comment, 0))}
         <div ref={bottomRef} />
       </div>
@@ -592,7 +715,6 @@ export function CommentPanel({
         </div>
       ) : (
         <div className="border-t shrink-0 relative" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          {/* Replying-to preview strip */}
           {replyingTo && (
             <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)', background: '#1e1e1e' }}>
               <CornerDownLeft className="w-3 h-3 text-[#555] shrink-0" />
@@ -613,7 +735,6 @@ export function CommentPanel({
           )}
 
           <div className="p-4 relative">
-            {/* @mention dropdown */}
             {mentionQuery !== null && (
               <div className="absolute bottom-full left-3 right-3 mb-1 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg overflow-hidden shadow-xl z-20">
                 {mentionOptions.length > 0

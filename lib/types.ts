@@ -98,6 +98,11 @@ export interface Task {
   episode?: Episode
 }
 
+export interface CommentReaction {
+  emoji: string
+  user_id: string
+}
+
 export interface Comment {
   id: string
   task_id: string | null
@@ -110,6 +115,7 @@ export interface Comment {
   depth?: number
   // Joined
   author?: User
+  reactions?: CommentReaction[]
 }
 
 export type NotificationType =
