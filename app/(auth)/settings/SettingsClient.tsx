@@ -13,7 +13,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEn
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-type Tab = 'team' | 'clients' | 'activity' | 'integrations'
+type Tab = 'team' | 'clients' | 'activity' | 'notifications'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -70,7 +70,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
     { id: 'team' as Tab, label: 'Team', icon: Users },
     { id: 'clients' as Tab, label: 'Clients & Templates', icon: Building2 },
     { id: 'activity' as Tab, label: 'Activity', icon: Activity },
-    ...(currentUser.role === 'admin' ? [{ id: 'integrations' as Tab, label: 'Integrations', icon: Zap }] : []),
+    ...(currentUser.role === 'admin' ? [{ id: 'notifications' as Tab, label: 'Notifications', icon: Zap }] : []),
   ]
 
   return (
@@ -116,7 +116,7 @@ export function SettingsClient({ currentUser, allUsers, taskCountByUser, clients
         />
       )}
       {activeTab === 'activity' && <ActivityTab activity={activity} />}
-      {activeTab === 'integrations' && <IntegrationsTab />}
+      {activeTab === 'notifications' && <IntegrationsTab />}
     </div>
   )
 }
@@ -1682,84 +1682,93 @@ function IntegrationsTab() {
   }
 
   return (
-    <div className="space-y-4 max-w-lg">
-      <TaskNotificationsCard />
-      <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5 text-[#ff3c00]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-white">Slack</h3>
-            <p className="text-xs text-[#666]">Post Block Kit notifications to client channels</p>
-          </div>
-          {status && (
-            status.connected
-              ? <span className="text-xs font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full shrink-0">Connected · {status.workspaceName}</span>
-              : <span className="text-xs font-medium text-[#888] bg-[#1e1e1e] px-2 py-0.5 rounded-full shrink-0">Not connected</span>
-          )}
-        </div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-6 items-start">
 
-        {toast && <p className="text-sm text-green-400">{toast}</p>}
-        {error && <p className="text-sm text-[#ff3c00]">{error}</p>}
-
-        <form onSubmit={handleSave} className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-[#ccc] mb-1.5">
-              Bot Token{status?.tokenHint && <span className="text-[#555] font-normal ml-1">({status.tokenHint})</span>}
-            </label>
-            <input
-              type="password"
-              value={token}
-              onChange={e => setToken(e.target.value)}
-              required
-              placeholder="xoxb-..."
-              className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
-            />
-            <p className="text-xs text-[#555] mt-1">
-              From your Slack app&apos;s &ldquo;OAuth &amp; Permissions&rdquo; page. Requires <code className="text-[#888]">chat:write</code> scope.
-            </p>
-          </div>
-          <button
-            type="submit"
-            disabled={saving || !token}
-            className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
-          >
-            {saving ? 'Connecting...' : status?.connected ? 'Update token' : 'Connect Slack'}
-          </button>
-        </form>
-      </div>
-      {status?.connected && (
+        {/* Column 1 — Slack */}
         <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
-          <h4 className="text-sm font-semibold text-white">Notification events</h4>
-          <div className="space-y-3">
-            {SLACK_NOTIF_TYPES.map(({ key, label, description }) => {
-              const enabled = status.notifications[key] !== false
-              return (
-                <div key={key} className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{label}</p>
-                    <p className="text-xs text-[#555]">{description}</p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={enabled}
-                    onClick={() => handleToggle(key, !enabled)}
-                    className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]'}`}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
-                    />
-                  </button>
-                </div>
-              )
-            })}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
+              <Zap className="w-5 h-5 text-[#ff3c00]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-white">Slack</h3>
+              <p className="text-xs text-[#666]">Post Block Kit notifications to client channels</p>
+            </div>
+            {status && (
+              status.connected
+                ? <span className="text-xs font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full shrink-0">Connected · {status.workspaceName}</span>
+                : <span className="text-xs font-medium text-[#888] bg-[#1e1e1e] px-2 py-0.5 rounded-full shrink-0">Not connected</span>
+            )}
           </div>
+
+          {toast && <p className="text-sm text-green-400">{toast}</p>}
+          {error && <p className="text-sm text-[#ff3c00]">{error}</p>}
+
+          <form onSubmit={handleSave} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-[#ccc] mb-1.5">
+                Bot Token{status?.tokenHint && <span className="text-[#555] font-normal ml-1">({status.tokenHint})</span>}
+              </label>
+              <input
+                type="password"
+                value={token}
+                onChange={e => setToken(e.target.value)}
+                required
+                placeholder="xoxb-..."
+                className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+              />
+              <p className="text-xs text-[#555] mt-1">
+                From your Slack app&apos;s &ldquo;OAuth &amp; Permissions&rdquo; page. Requires <code className="text-[#888]">chat:write</code> scope.
+              </p>
+            </div>
+            <button
+              type="submit"
+              disabled={saving || !token}
+              className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
+            >
+              {saving ? 'Connecting...' : status?.connected ? 'Update token' : 'Connect Slack'}
+            </button>
+          </form>
+          <p className="text-xs text-[#555]">
+            Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
+          </p>
         </div>
-      )}
-      <p className="text-xs text-[#555]">
-        Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
-      </p>
+
+        {/* Column 2 — Task Notifications */}
+        <TaskNotificationsCard />
+
+        {/* Column 3 — Notification Events */}
+        {status?.connected && (
+          <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+            <h4 className="text-sm font-semibold text-white">Notification events</h4>
+            <div className="space-y-3">
+              {SLACK_NOTIF_TYPES.map(({ key, label, description }) => {
+                const enabled = status.notifications[key] !== false
+                return (
+                  <div key={key} className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white">{label}</p>
+                      <p className="text-xs text-[#555]">{description}</p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={enabled}
+                      onClick={() => handleToggle(key, !enabled)}
+                      className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
+                      />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }
