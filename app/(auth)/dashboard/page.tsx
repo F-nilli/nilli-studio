@@ -95,13 +95,15 @@ export default async function DashboardPage() {
 
   let atRiskTasks: (Task & { episode: Episode })[] = []
   let upcomingReleases: Episode[] = []
+  let teamTasks: (Task & { episode: Episode })[] = []
+  let allUsers: User[] = []
 
   if (currentUser.role === 'admin') {
     const todayStr = now.toISOString().split('T')[0]
     const twoWeeksStr = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const twelveHoursAgo = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString()
 
-    const [atRiskByDateRes, atRiskInReviewRes, upcomingRes] = await Promise.all([
+    const [atRiskByDateRes, atRiskInReviewRes, upcomingRes, teamTasksRes, allUsersRes] = await Promise.all([
       supabase
         .from('tasks')
         .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
@@ -121,6 +123,14 @@ export default async function DashboardPage() {
         .gte('release_date', todayStr)
         .lte('release_date', twoWeeksStr)
         .order('release_date', { ascending: true }),
+      // All active team tasks for workload view
+      supabase
+        .from('tasks')
+        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+        .in('status', ['in_progress', 'in_review', 'revision'])
+        .order('due_date', { ascending: true, nullsFirst: false }),
+      // All users for workload headers
+      supabase.from('users').select('*').neq('active', false).order('name'),
     ])
 
     const seen = new Set<string>()
@@ -134,6 +144,9 @@ export default async function DashboardPage() {
     })
 
     upcomingReleases = (upcomingRes.data || []) as Episode[]
+    teamTasks = ((teamTasksRes.data || []) as unknown as (Task & { episode: Episode })[])
+      .filter(t => !t.episode?.archived)
+    allUsers = ((allUsersRes.data || []) as unknown as User[])
   }
 
   return (
@@ -144,6 +157,8 @@ export default async function DashboardPage() {
       episodesProgress={episodesProgress}
       atRiskTasks={atRiskTasks}
       upcomingReleases={upcomingReleases}
+      teamTasks={teamTasks}
+      allUsers={allUsers}
     />
   )
 }

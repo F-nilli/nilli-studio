@@ -26,6 +26,8 @@ interface Props {
   episodesProgress: EpisodeProgress[]
   atRiskTasks: (Task & { episode: Episode })[]
   upcomingReleases: Episode[]
+  teamTasks: (Task & { episode: Episode })[]
+  allUsers: User[]
 }
 
 export function DashboardClient({
@@ -35,6 +37,8 @@ export function DashboardClient({
   episodesProgress,
   atRiskTasks,
   upcomingReleases,
+  teamTasks,
+  allUsers,
 }: Props) {
   const supabase = createClient()
   const [tasks, setTasks] = useState(initialTasks)
@@ -164,6 +168,8 @@ export function DashboardClient({
           episodesProgress={episodesProgress}
           atRiskTasks={atRiskTasks}
           upcomingReleases={upcomingReleases}
+          teamTasks={teamTasks}
+          allUsers={allUsers}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
           onReassignToast={setToast}
@@ -379,13 +385,15 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
 
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
 
-function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
+function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, teamTasks, allUsers, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   reviewTasks: (Task & { episode: Episode })[]
   episodesProgress: EpisodeProgress[]
   atRiskTasks: (Task & { episode: Episode })[]
   upcomingReleases: Episode[]
+  teamTasks: (Task & { episode: Episode })[]
+  allUsers: User[]
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
@@ -549,7 +557,143 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
           </div>
         )}
       </div>
+
+      {/* Zone 4: Team Workload */}
+      <div className="space-y-4">
+        <ZoneHeader title="Team Workload" count={teamTasks.length} />
+        <WorkloadSection teamTasks={teamTasks} allUsers={allUsers} onTaskClick={onTaskClick} />
+      </div>
     </div>
+  )
+}
+
+// ─── Team Workload ───────────────────────────────────────────────────────────
+
+const ROLE_LABELS_SHORT: Record<string, string> = {
+  admin: 'Admin',
+  ops_manager: 'Ops',
+  member: 'Member',
+}
+
+function WorkloadSection({ teamTasks, allUsers, onTaskClick }: {
+  teamTasks: (Task & { episode: Episode })[]
+  allUsers: User[]
+  onTaskClick: (task: Task & { episode?: Episode }) => void
+}) {
+  const tasksByUser = teamTasks.reduce<Record<string, (Task & { episode: Episode })[]>>((acc, t) => {
+    const id = t.assignee_id
+    if (!id) return acc
+    if (!acc[id]) acc[id] = []
+    acc[id].push(t)
+    return acc
+  }, {})
+
+  const withTasks = allUsers.filter(u => (tasksByUser[u.id] || []).length > 0)
+    .sort((a, b) => (tasksByUser[b.id]?.length ?? 0) - (tasksByUser[a.id]?.length ?? 0))
+  const withoutTasks = allUsers.filter(u => !tasksByUser[u.id]?.length)
+
+  if (allUsers.length === 0) return <p className="text-sm text-[#555]">No team members found.</p>
+
+  return (
+    <div className="space-y-3">
+      {withTasks.map(user => (
+        <WorkloadPersonCard
+          key={user.id}
+          user={user}
+          tasks={tasksByUser[user.id] || []}
+          onTaskClick={onTaskClick}
+        />
+      ))}
+
+      {withoutTasks.length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {withoutTasks.map(user => (
+            <div
+              key={user.id}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+              style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 opacity-40"
+                style={{ background: user.avatar_color || '#444' }}
+              >
+                {user.name[0].toUpperCase()}
+              </div>
+              <span className="text-xs text-[#444]">{user.name.split(' ')[0]}</span>
+              <span className="text-[10px] text-[#333]">no tasks</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WorkloadPersonCard({ user, tasks, onTaskClick }: {
+  user: User
+  tasks: (Task & { episode: Episode })[]
+  onTaskClick: (task: Task & { episode?: Episode }) => void
+}) {
+  const overdue = tasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at))
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* Person header */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ background: '#1a1a1a', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Avatar name={user.name} color={user.avatar_color} size="sm" avatarUrl={user.avatar_url} />
+          <span className="text-sm font-semibold text-white truncate">{user.name}</span>
+          <span className="text-[11px] text-[#555]">{ROLE_LABELS_SHORT[user.role] ?? user.role}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {overdue.length > 0 && (
+            <span className="text-[11px] font-semibold text-[#ff3c00] bg-[#ff3c00]/10 px-2 py-0.5 rounded-full">
+              {overdue.length} overdue
+            </span>
+          )}
+          <span className="text-[11px] text-[#666] bg-[#222] border border-[#2a2a2a] px-2 py-0.5 rounded-full">
+            {tasks.length} active
+          </span>
+        </div>
+      </div>
+
+      {/* Task rows */}
+      <div>
+        {tasks.map(task => (
+          <WorkloadTaskRow key={task.id} task={task} onTaskClick={onTaskClick} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function WorkloadTaskRow({ task, onTaskClick }: {
+  task: Task & { episode: Episode }
+  onTaskClick: (task: Task & { episode?: Episode }) => void
+}) {
+  const late = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
+  const trackColor = (TRACK_COLORS as Record<string, string>)[task.track] || '#444'
+
+  return (
+    <button
+      onClick={() => onTaskClick(task)}
+      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition-colors text-left border-b last:border-0"
+      style={{ borderColor: 'rgba(255,255,255,0.04)' }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: trackColor }} />
+      <span className="flex-1 text-sm text-white truncate min-w-0">{task.label}</span>
+      <span className="text-xs text-[#555] shrink-0 hidden sm:block truncate max-w-[140px]">
+        {task.episode?.guest_name}
+        {task.episode?.client_label ? ` · ${task.episode.client_label}` : ''}
+      </span>
+      <StatusBadge status={task.status as TaskStatus} />
+      <span className={cn('text-xs shrink-0 tabular-nums', late ? 'text-[#ff3c00] font-medium' : 'text-[#555]')}>
+        {formatDate(task.due_date)}
+      </span>
+    </button>
   )
 }
 
