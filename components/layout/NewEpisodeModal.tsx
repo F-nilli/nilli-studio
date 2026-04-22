@@ -661,91 +661,110 @@ function CustomTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: {
   onRemove: () => void
 }) {
   const selectStyle = 'px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] w-full'
+  const borderStyle = { borderColor: 'rgba(255,255,255,0.06)' }
+
+  const depButtons = allTasks.filter((_, i) => i !== idx).map(t => {
+    const pos = allTasks.findIndex(a => a.tmpId === t.tmpId) + 1
+    const selected = task.dep_tmp_ids.includes(t.tmpId)
+    return (
+      <button
+        key={t.tmpId}
+        type="button"
+        title={t.label || `Task ${pos}`}
+        onClick={() => onUpdate('dep_tmp_ids', selected
+          ? task.dep_tmp_ids.filter(id => id !== t.tmpId)
+          : [...task.dep_tmp_ids, t.tmpId]
+        )}
+        className={cn(
+          'w-6 h-6 rounded text-xs font-bold transition-colors shrink-0',
+          selected ? 'bg-[#f7931a] text-black' : 'bg-[#1e1e1e] text-[#555] hover:text-white border border-[#2e2e2e]'
+        )}
+      >
+        {pos}
+      </button>
+    )
+  })
+
+  const approverSelect = (
+    <select
+      value={task.requires_approval ? (task.approver_id || '') : ''}
+      onChange={e => {
+        const val = e.target.value
+        onUpdate('requires_approval', val !== '')
+        onUpdate('approver_id', val || null)
+      }}
+      className={selectStyle}
+    >
+      <option value="">— No approval</option>
+      {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+    </select>
+  )
 
   return (
-    <div
-      className="grid gap-2 px-3 py-2.5 border-b items-center"
-      style={{
-        gridTemplateColumns: '20px minmax(150px,1fr) 110px 130px 160px auto 130px 24px',
-        borderColor: 'rgba(255,255,255,0.06)',
-      }}
-    >
-      {/* Index */}
-      <span className="text-xs text-[#555] font-mono">{idx + 1}</span>
-
-      {/* Label */}
-      <input
-        value={task.label}
-        onChange={e => onUpdate('label', e.target.value)}
-        placeholder="Task name"
-        className="px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] w-full placeholder-[#444]"
-      />
-
-      {/* Track */}
-      <select value={task.track} onChange={e => onUpdate('track', e.target.value as Track)} className={selectStyle}>
-        {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
-      </select>
-
-      {/* Assignee */}
-      <select value={task.assignee_id || ''} onChange={e => onUpdate('assignee_id', e.target.value || null)} className={selectStyle}>
-        <option value="">Unassigned</option>
-        {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-      </select>
-
-      {/* Due date */}
-      <DateHourPicker value={task.due_date} onChange={v => onUpdate('due_date', v)} className="w-full" />
-
-      {/* Deps */}
-      <div className="flex flex-wrap gap-1 min-w-0">
-        {allTasks.filter((_, i) => i !== idx).length === 0 ? (
-          <span className="text-xs text-[#444]">—</span>
-        ) : (
-          allTasks.filter((_, i) => i !== idx).map(t => {
-            const pos = allTasks.findIndex(a => a.tmpId === t.tmpId) + 1
-            const selected = task.dep_tmp_ids.includes(t.tmpId)
-            return (
-              <button
-                key={t.tmpId}
-                type="button"
-                title={t.label || `Task ${pos}`}
-                onClick={() => onUpdate('dep_tmp_ids', selected
-                  ? task.dep_tmp_ids.filter(id => id !== t.tmpId)
-                  : [...task.dep_tmp_ids, t.tmpId]
-                )}
-                className={cn(
-                  'w-6 h-6 rounded text-xs font-bold transition-colors shrink-0',
-                  selected ? 'bg-[#f7931a] text-black' : 'bg-[#1e1e1e] text-[#555] hover:text-white border border-[#2e2e2e]'
-                )}
-              >
-                {pos}
-              </button>
-            )
-          })
+    <>
+      {/* Mobile card (< md) */}
+      <div className="md:hidden px-3 py-3 border-b" style={borderStyle}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-[#555] font-mono shrink-0">{idx + 1}</span>
+          <input
+            value={task.label}
+            onChange={e => onUpdate('label', e.target.value)}
+            placeholder="Task name"
+            className="flex-1 px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#444]"
+          />
+          <button type="button" onClick={onRemove} className="p-0.5 text-[#444] hover:text-[#ff3c00] transition-colors shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <select value={task.track} onChange={e => onUpdate('track', e.target.value as Track)} className={selectStyle}>
+            {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={task.assignee_id || ''} onChange={e => onUpdate('assignee_id', e.target.value || null)} className={selectStyle}>
+            <option value="">Unassigned</option>
+            {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <DateHourPicker value={task.due_date} onChange={v => onUpdate('due_date', v)} className="w-full" />
+          {approverSelect}
+        </div>
+        {depButtons.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#555]">Deps:</span>
+            <div className="flex flex-wrap gap-1">{depButtons}</div>
+          </div>
         )}
       </div>
 
-      {/* Approver */}
-      <select
-        value={task.requires_approval ? (task.approver_id || '') : ''}
-        onChange={e => {
-          const val = e.target.value
-          onUpdate('requires_approval', val !== '')
-          onUpdate('approver_id', val || null)
-        }}
-        className={selectStyle}
+      {/* Desktop grid (md+) */}
+      <div
+        className="hidden md:grid gap-2 px-3 py-2.5 border-b items-center"
+        style={{ gridTemplateColumns: '20px minmax(150px,1fr) 110px 130px 160px auto 130px 24px', ...borderStyle }}
       >
-        <option value="">— No approval</option>
-        {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-      </select>
-
-      {/* Remove */}
-      <button
-        type="button"
-        onClick={onRemove}
-        className="p-0.5 text-[#444] hover:text-[#ff3c00] transition-colors"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
-    </div>
+        <span className="text-xs text-[#555] font-mono">{idx + 1}</span>
+        <input
+          value={task.label}
+          onChange={e => onUpdate('label', e.target.value)}
+          placeholder="Task name"
+          className="px-2 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] w-full placeholder-[#444]"
+        />
+        <select value={task.track} onChange={e => onUpdate('track', e.target.value as Track)} className={selectStyle}>
+          {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={task.assignee_id || ''} onChange={e => onUpdate('assignee_id', e.target.value || null)} className={selectStyle}>
+          <option value="">Unassigned</option>
+          {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+        <DateHourPicker value={task.due_date} onChange={v => onUpdate('due_date', v)} className="w-full" />
+        <div className="flex flex-wrap gap-1 min-w-0">
+          {depButtons.length === 0 ? <span className="text-xs text-[#444]">—</span> : depButtons}
+        </div>
+        {approverSelect}
+        <button type="button" onClick={onRemove} className="p-0.5 text-[#444] hover:text-[#ff3c00] transition-colors">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </>
   )
 }

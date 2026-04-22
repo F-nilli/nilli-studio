@@ -985,7 +985,7 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
 
             {/* Date range filter */}
             <div className={cn(
-              'flex items-center gap-1.5 border rounded-lg px-2.5 py-1',
+              'hidden sm:flex items-center gap-1.5 border rounded-lg px-2.5 py-1',
               (dateFrom || dateTo) ? 'border-[#f7931a]/40' : 'border-[#2a2a2a]'
             )}>
               <input

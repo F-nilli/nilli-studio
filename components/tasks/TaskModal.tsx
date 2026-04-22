@@ -396,7 +396,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
 
             {/* Reviewer: two note fields aligned above their respective buttons */}
             {canReview && (task.assignee || nextUserForNote) && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {task.assignee && task.assignee_id !== currentUser.id ? (
                   <NoteField
                     user={task.assignee as User}

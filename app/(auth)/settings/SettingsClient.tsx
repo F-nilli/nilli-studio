@@ -466,7 +466,7 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
 
       {/* Users table */}
       <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
-        <div className="grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b" style={{ background: '#1a1a1a', borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className="hidden md:grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b" style={{ background: '#1a1a1a', borderColor: 'rgba(255,255,255,0.08)' }}>
           <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Member</span>
           <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Role</span>
           <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Tasks</span>
@@ -551,7 +551,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
   return (
     <div
       className={cn(
-        'grid grid-cols-[1fr_140px_80px_120px] px-4 border-b last:border-0 items-center hover:bg-white/[0.02] transition-colors group',
+        'grid grid-cols-1 md:grid-cols-[1fr_140px_80px_120px] px-4 border-b last:border-0 items-center hover:bg-white/[0.02] transition-colors group',
         inactive && 'opacity-50'
       )}
       style={{ minHeight: '56px', borderColor: 'rgba(255,255,255,0.06)' }}
@@ -574,7 +574,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
           )}
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 py-3 md:py-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <p className="text-[14px] font-medium text-white truncate">
               {user.name}
@@ -595,11 +595,12 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
             })()}
           </div>
           <p className="text-[13px] text-[#666] truncate">{user.email}</p>
+          <p className="md:hidden text-[11px] text-[#555] mt-0.5">{ROLE_LABELS[user.role]}</p>
         </div>
       </div>
 
       {/* Role */}
-      <div className="relative">
+      <div className="hidden md:block relative">
         {isAdmin && !isSelf && !inactive ? (
           <>
             <button
@@ -634,7 +635,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
       </div>
 
       {/* Active tasks */}
-      <div>
+      <div className="hidden md:block">
         <span className={cn('text-sm font-semibold', activeTasks > 0 ? 'text-white' : 'text-[#444]')}>
           {activeTasks > 0 ? activeTasks : '—'}
         </span>
@@ -643,7 +644,7 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
 
       {/* Actions */}
       {isAdmin && !isSelf && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="hidden md:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {!inactive && (
             <button onClick={() => onResetPassword(user.id)} disabled={actionLoading === user.id + '-reset'}
               title="Send password reset"
@@ -1724,7 +1725,7 @@ function IntegrationsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
 
         {/* Column 1 — Slack */}
         <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
