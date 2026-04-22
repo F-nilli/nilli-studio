@@ -16,7 +16,7 @@ export async function GET() {
   const admin = createAdminClient()
   const { data: rows, error: selectError } = await admin
     .from('workspace_settings')
-    .select('slack_bot_token, workspace_name, slack_notifications')
+    .select('slack_bot_token, workspace_name, slack_notifications, inapp_notifications')
     .limit(1)
 
   if (selectError) {
@@ -36,6 +36,7 @@ export async function GET() {
     workspaceName: row?.workspace_name || null,
     tokenHint: row?.slack_bot_token ? '…' + row.slack_bot_token.slice(-4) : null,
     notifications: (row as any)?.slack_notifications ?? {},
+    inappNotifications: (row as any)?.inapp_notifications ?? {},
   }, {
     headers: { 'Cache-Control': 'no-store' },
   })
@@ -85,12 +86,16 @@ export async function PATCH(request: Request) {
   const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { notifications } = await request.json()
+  const { notifications, inappNotifications } = await request.json()
 
   const admin = createAdminClient()
+  const updates: Record<string, unknown> = {}
+  if (notifications !== undefined) updates.slack_notifications = notifications
+  if (inappNotifications !== undefined) updates.inapp_notifications = inappNotifications
+
   const { error } = await admin
     .from('workspace_settings')
-    .update({ slack_notifications: notifications })
+    .update(updates)
     .not('id', 'is', null)
 
   if (error) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, canManageTeam } from '@/lib/types'
+import { invalidateInappPrefsCache } from '@/lib/notifications'
 import { Avatar } from '@/components/ui/Avatar'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { cn, formatDate, parseDate } from '@/lib/utils'
@@ -1641,9 +1642,37 @@ function TaskNotificationsCard() {
   )
 }
 
+const INAPP_NOTIF_TYPES = [
+  { key: 'task_approved', label: 'Task approved', description: 'When a task is approved and next tasks unlock' },
+  { key: 'task_submitted_review', label: 'Submitted for review', description: 'When a task is submitted for approval' },
+  { key: 'task_revision', label: 'Revision requested', description: 'When a task is sent back for revision' },
+  { key: 'task_comment_mention', label: 'New comment', description: 'When someone posts a comment on a task' },
+  { key: 'task_unlocked', label: 'Task unlocked', description: 'When a task becomes available after dependencies are completed' },
+  { key: 'release_date_changed', label: 'Release date changed', description: 'When the release date or time is updated on a project' },
+] as const
+
+function NotifToggle({ enabled, onClick }: { enabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={enabled}
+      onClick={onClick}
+      className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]'}`}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+    </button>
+  )
+}
+
 function IntegrationsTab() {
   const [token, setToken] = useState('')
-  const [status, setStatus] = useState<{ connected: boolean; workspaceName: string | null; tokenHint: string | null; notifications: Record<string, boolean> } | null>(null)
+  const [status, setStatus] = useState<{
+    connected: boolean
+    workspaceName: string | null
+    tokenHint: string | null
+    notifications: Record<string, boolean>
+    inappNotifications: Record<string, boolean>
+  } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
@@ -1652,7 +1681,7 @@ function IntegrationsTab() {
     fetch('/api/admin/slack', { cache: 'no-store' }).then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
-  async function handleToggle(key: string, enabled: boolean) {
+  async function handleSlackToggle(key: string, enabled: boolean) {
     if (!status) return
     const updated = { ...status.notifications, [key]: enabled }
     setStatus(prev => prev ? { ...prev, notifications: updated } : prev)
@@ -1660,6 +1689,18 @@ function IntegrationsTab() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notifications: updated }),
+    })
+  }
+
+  async function handleInappToggle(key: string, enabled: boolean) {
+    if (!status) return
+    const updated = { ...status.inappNotifications, [key]: enabled }
+    setStatus(prev => prev ? { ...prev, inappNotifications: updated } : prev)
+    invalidateInappPrefsCache()
+    await fetch('/api/admin/slack', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inappNotifications: updated }),
     })
   }
 
@@ -1674,7 +1715,7 @@ function IntegrationsTab() {
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error || 'Failed to connect'); setSaving(false); return }
-    setStatus(prev => ({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4), notifications: prev?.notifications ?? {} }))
+    setStatus(prev => ({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4), notifications: prev?.notifications ?? {}, inappNotifications: prev?.inappNotifications ?? {} }))
     setToken('')
     setToast('Slack connected!')
     setTimeout(() => setToast(''), 3000)
@@ -1730,43 +1771,71 @@ function IntegrationsTab() {
               {saving ? 'Connecting...' : status?.connected ? 'Update token' : 'Connect Slack'}
             </button>
           </form>
-          <p className="text-xs text-[#555]">
-            Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
-          </p>
+
+          {status?.connected && (
+            <>
+              <div className="border-t border-[#2e2e2e] pt-4">
+                <p className="text-xs font-semibold text-[#888] uppercase tracking-wider mb-3">Slack Events</p>
+                <div className="space-y-3">
+                  {SLACK_NOTIF_TYPES.map(({ key, label, description }) => {
+                    const enabled = status.notifications[key] !== false
+                    return (
+                      <div key={key} className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white">{label}</p>
+                          <p className="text-xs text-[#555]">{description}</p>
+                        </div>
+                        <NotifToggle enabled={enabled} onClick={() => handleSlackToggle(key, !enabled)} />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <p className="text-xs text-[#555]">
+                Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
+              </p>
+            </>
+          )}
+
+          {!status?.connected && (
+            <p className="text-xs text-[#555]">
+              Set each client&apos;s Slack channel ID in Clients &amp; Templates → select a client → the channel field next to &ldquo;Active&rdquo;.
+            </p>
+          )}
         </div>
 
         {/* Column 2 — Task Notifications */}
         <TaskNotificationsCard />
 
-        {/* Column 3 — Notification Events */}
-        {status?.connected && (
-          <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
-            <h4 className="text-sm font-semibold text-white">Notification events</h4>
-            <div className="space-y-3">
-              {SLACK_NOTIF_TYPES.map(({ key, label, description }) => {
-                const enabled = status.notifications[key] !== false
-                return (
-                  <div key={key} className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-white">{label}</p>
-                      <p className="text-xs text-[#555]">{description}</p>
-                    </div>
-                    <button
-                      role="switch"
-                      aria-checked={enabled}
-                      onClick={() => handleToggle(key, !enabled)}
-                      className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-[#ff3c00]' : 'bg-[#2e2e2e]'}`}
-                    >
-                      <span
-                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
-                      />
-                    </button>
-                  </div>
-                )
-              })}
+        {/* Column 3 — In-app & Push */}
+        <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff3c00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-bold text-white">In-app &amp; Push</h3>
+              <p className="text-xs text-[#666]">Bell notifications and mobile push delivery</p>
             </div>
           </div>
-        )}
+          <div className="space-y-3">
+            {INAPP_NOTIF_TYPES.map(({ key, label, description }) => {
+              const enabled = status ? status.inappNotifications[key] !== false : true
+              return (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white">{label}</p>
+                    <p className="text-xs text-[#555]">{description}</p>
+                  </div>
+                  <NotifToggle enabled={enabled} onClick={() => handleInappToggle(key, !enabled)} />
+                </div>
+              )
+            })}
+          </div>
+        </div>
 
       </div>
     </div>
