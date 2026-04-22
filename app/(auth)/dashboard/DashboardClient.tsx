@@ -1133,6 +1133,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       if (!data) return
 
       onUpdate(data as unknown as Task)
+      supabase.from('task_history').insert({ task_id: originalTask.id, episode_id: originalTask.episode_id, from_status: originalTask.status, to_status: nextStatus, changed_by: currentUser.id }).then(() => {})
 
       if (nextStatus === 'approved') {
         const { data: allTasksForSlack } = await supabase.from('tasks').select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)').eq('episode_id', task.episode_id)

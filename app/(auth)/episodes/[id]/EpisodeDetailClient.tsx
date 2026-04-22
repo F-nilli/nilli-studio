@@ -1059,6 +1059,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
       const { data } = await supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single()
       if (data) {
         onTaskUpdate(data as unknown as Task)
+        supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
         checkAndUnlockDependencies(capturedTask.episode_id).catch(console.error)
         if (resolvedStatus === 'done') {
           fetch('/api/episodes/check-triggers', {
@@ -1100,6 +1101,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
       const { data } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', capturedTask.id).select('*').single()
       if (data) {
         onTaskUpdate(data as unknown as Task)
+        supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: 'approved', changed_by: currentUser.id }).then(() => {})
         checkAndUnlockDependencies(capturedTask.episode_id).catch(console.error)
         if (capturedTask.assignee_id !== currentUser.id) {
           await sendNotification(supabase, {
@@ -1162,6 +1164,7 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
 
       if (data) {
         onTaskUpdate(data as unknown as Task)
+        supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: 'revision', changed_by: currentUser.id }).then(() => {})
         const { data: assignee } = await supabase.from('users').select('*').eq('id', capturedTask.assignee_id).single()
         if (assignee) {
           const dueDateLabel = capturedDate ? format(parseISO(capturedDate), 'MMM d, yyyy') : ''
