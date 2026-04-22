@@ -443,6 +443,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   }
 
   return (
+    <>
     <div className="flex flex-col md:flex-row items-start gap-5">
       {/* Toast */}
       {toast && (
@@ -674,8 +675,9 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
           onReplyConsumed={() => setReplyToCommentId(null)}
         />
       </div>
-      <UndoToastStack actions={pendingActions} onUndo={undoPending} />
     </div>
+    <UndoToastStack actions={pendingActions} onUndo={undoPending} />
+    </>
   )
 }
 
@@ -1245,9 +1247,9 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
 
         {/* Waiting on indicator for locked tasks */}
         {isLocked && blockingTasks.length > 0 && (
-          <p className="text-[11px] text-[#444] mt-1 pl-[18px] truncate">
+          <span className="block text-[11px] text-[#444] mt-1 pl-[18px] truncate">
             Waiting on: {blockingTasks.map(t => t.label).join(', ')}
-          </p>
+          </span>
         )}
 
         {/* Row 2: due date + comment count */}
