@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users } from 'lucide-react'
+import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal } from 'lucide-react'
 import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
@@ -900,6 +900,12 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
   const [acting, setActing] = useState(false)
   const [reassignOpen, setReassignOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [commentsLoaded, setCommentsLoaded] = useState(false)
+  const [comments, setComments] = useState<Array<{ id: string; body: string; created_at: string; author: { name: string; avatar_color: string; avatar_url: string | null } | null }>>([])
+  const [commentCount, setCommentCount] = useState<number | null>(null)
+  const [newComment, setNewComment] = useState('')
+  const [sendingComment, setSendingComment] = useState(false)
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseDate(task.due_date), new Date()) : null
@@ -968,6 +974,55 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
         }),
       }).catch(() => {})
     }
+  }
+
+  async function loadComments() {
+    const { data } = await supabase
+      .from('comments')
+      .select('id, body, created_at, author:users!author_id(name, avatar_color, avatar_url)')
+      .eq('task_id', task.id)
+      .eq('internal', false)
+      .order('created_at', { ascending: true })
+    if (data) {
+      const normalized = (data as any[]).map(c => ({
+        id: c.id as string,
+        body: c.body as string,
+        created_at: c.created_at as string,
+        author: Array.isArray(c.author) ? (c.author[0] ?? null) : (c.author ?? null),
+      }))
+      setComments(normalized)
+      setCommentCount(normalized.length)
+      setCommentsLoaded(true)
+    }
+  }
+
+  function handleToggleComments(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!commentsOpen && !commentsLoaded) loadComments()
+    setCommentsOpen(o => !o)
+  }
+
+  async function handleSendComment(e: React.MouseEvent) {
+    e.stopPropagation()
+    const body = newComment.trim()
+    if (!body || sendingComment) return
+    setSendingComment(true)
+    const { data: comment } = await supabase
+      .from('comments')
+      .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+      .select('id, body, created_at').single()
+    if (comment) {
+      const entry = { id: comment.id, body: comment.body, created_at: comment.created_at, author: { name: currentUser.name, avatar_color: currentUser.avatar_color, avatar_url: currentUser.avatar_url } }
+      setComments(prev => [...prev, entry])
+      setCommentCount(prev => (prev ?? 0) + 1)
+      setNewComment('')
+      fetch('/api/notifications/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: task.id, episodeId: task.episode_id, body, assigneeId: task.assignee_id }),
+      }).catch(() => {})
+    }
+    setSendingComment(false)
   }
 
   async function handleAction(e: React.MouseEvent) {
@@ -1087,13 +1142,22 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
               Footage →
             </a>
           )}
-          <Link
-            href={`/episodes/${task.episode_id}`}
-            onClick={e => e.stopPropagation()}
-            className="text-[11px] text-[#555] hover:text-[#888] transition-colors mt-1.5 inline-block"
-          >
-            Go to project →
-          </Link>
+          <div className="flex items-center gap-3 mt-1.5">
+            <Link
+              href={`/episodes/${task.episode_id}`}
+              onClick={e => e.stopPropagation()}
+              className="text-[11px] text-[#555] hover:text-[#888] transition-colors"
+            >
+              Go to project →
+            </Link>
+            <button
+              onClick={handleToggleComments}
+              className={cn('flex items-center gap-1 text-[11px] transition-colors', commentsOpen ? 'text-[#f7931a]' : 'text-[#555] hover:text-[#888]')}
+            >
+              <MessageSquare className="w-3 h-3" />
+              {commentCount !== null ? `${commentCount} comment${commentCount !== 1 ? 's' : ''}` : 'Comments'}
+            </button>
+          </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <StatusBadge status={task.status} />
@@ -1154,6 +1218,57 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast }: {
               onClose={() => setReassignOpen(false)}
             />
           )}
+        </div>
+      )}
+
+      {commentsOpen && (
+        <div className="mt-3 pt-3 border-t border-[#222] space-y-3" onClick={e => e.stopPropagation()}>
+          {!commentsLoaded ? (
+            <p className="text-xs text-[#555] text-center py-1">Loading…</p>
+          ) : comments.length === 0 ? (
+            <p className="text-xs text-[#555]">No comments yet</p>
+          ) : (
+            <div className="space-y-2.5">
+              {comments.slice(-3).map(c => (
+                <div key={c.id} className="flex gap-2">
+                  {c.author && (
+                    <Avatar name={c.author.name} color={c.author.avatar_color} avatarUrl={c.author.avatar_url} size="sm" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-[11px] font-medium text-[#ccc]">{c.author?.name ?? 'Unknown'}</span>
+                      <span className="text-[10px] text-[#444]">{format(new Date(c.created_at), 'MMM d')}</span>
+                    </div>
+                    <p className="text-xs text-[#aaa] leading-snug break-words">{c.body}</p>
+                  </div>
+                </div>
+              ))}
+              <Link
+                href={`/episodes/${task.episode_id}?t=${task.id}`}
+                onClick={e => e.stopPropagation()}
+                className="text-[11px] text-[#f7931a]/70 hover:text-[#f7931a] transition-colors block"
+              >
+                See more in project →
+              </Link>
+            </div>
+          )}
+          <div className="flex gap-2 items-end">
+            <textarea
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment(e as any) } }}
+              placeholder="Leave a comment…"
+              rows={2}
+              className="flex-1 px-2.5 py-2 bg-[#141414] border border-[#2e2e2e] rounded-lg text-xs text-white placeholder-[#444] resize-none focus:outline-none focus:ring-1 focus:ring-[#f7931a] leading-relaxed"
+            />
+            <button
+              onClick={handleSendComment}
+              disabled={!newComment.trim() || sendingComment}
+              className="p-2 rounded-lg bg-[#f7931a] disabled:opacity-30 text-black transition-opacity shrink-0"
+            >
+              <SendHorizonal className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
     </div>
