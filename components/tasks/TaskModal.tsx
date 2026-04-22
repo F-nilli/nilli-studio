@@ -17,6 +17,7 @@ interface Props {
   onClose: () => void
   onUpdate: (task: Task) => void
   episode?: Episode
+  onPendingAction?: (label: string, revert: () => void, commit: () => Promise<void>) => void
 }
 
 function getDomain(url: string) {
@@ -30,7 +31,7 @@ const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
   revision: 'in_review',
 }
 
-export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Props) {
+export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPendingAction }: Props) {
   const supabase = createClient()
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [sendingBack, setSendingBack] = useState(false)
@@ -154,54 +155,54 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
     const resolvedStatus: TaskStatus =
       newStatus === 'in_review' && !task.approver_id ? 'done' : newStatus
 
-    if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
-      await sendNotification(supabase, {
-        userId: task.approver_id,
-        type: 'task_submitted_review',
-        title: 'Task submitted for review',
-        body: `${currentUser.name} submitted "${task.label}" for review`,
-        taskId: task.id,
-        episodeId: task.episode_id,
-      })
-      fetch('/api/slack/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }),
-      }).catch(err => console.error('[Slack]', err))
+    const originalTask = task
+    const capturedNote = noteText
+    const capturedNextUser = nextUserForNote
+    const actionLabel =
+      resolvedStatus === 'in_review' ? `Submitted "${task.label}" for review`
+      : resolvedStatus === 'done' ? `Marked "${task.label}" as done`
+      : `Updated "${task.label}"`
+
+    onUpdate({ ...task, status: resolvedStatus } as unknown as Task)
+    onClose()
+
+    const commit = async () => {
+      if (capturedNote.trim() && capturedNextUser) {
+        const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
+        const { data: comment } = await supabase
+          .from('comments')
+          .insert({ task_id: capturedNextUser.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
+          .select('id').single()
+        if (comment) {
+          fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: capturedNextUser.taskId, episodeId: task.episode_id, body, assigneeId: capturedNextUser.user.id }) }).catch(() => {})
+        }
+      }
+
+      const updatePayload: Record<string, unknown> = { status: resolvedStatus }
+      if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
+      const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single()
+      if (error || !data) { onUpdate(originalTask); return }
+
+      supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
+      onUpdate(data as unknown as Task)
+
+      if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
+        sendNotification(supabase, { userId: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}" for review`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
+        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }) }).catch(() => {})
+      }
+
+      await checkAndUnlockDependencies(task.episode_id)
+      if (resolvedStatus === 'approved' || resolvedStatus === 'done') {
+        fetch('/api/episodes/check-triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }) }).catch(() => {})
+      }
     }
 
-    setUpdatingStatus(true)
-    await maybePostNote()
-
-    const updatePayload: Record<string, unknown> = { status: resolvedStatus }
-    if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
-    const { data, error } = await supabase
-      .from('tasks')
-      .update(updatePayload)
-      .eq('id', task.id)
-      .select('*')
-      .single()
-
-    if (error || !data) {
-      console.error('Task update error:', error)
-      setUpdatingStatus(false)
-      return
+    if (onPendingAction) {
+      onPendingAction(actionLabel, () => onUpdate(originalTask), commit)
+    } else {
+      await commit()
     }
-
-    supabase.from('task_history').insert({
-      task_id: task.id, episode_id: task.episode_id,
-      from_status: task.status, to_status: resolvedStatus,
-      changed_by: currentUser.id,
-    }).then(() => {})
-    onUpdate(data as unknown as Task)
-    await checkAndUnlockDependencies(task.episode_id)
-    if (resolvedStatus === 'approved' || resolvedStatus === 'done') {
-      fetch('/api/episodes/check-triggers', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
-      }).catch(() => {})
-    }
-    setUpdatingStatus(false)
   }
 
   async function checkAndUnlockDependencies(episodeId: string) {
@@ -213,102 +214,84 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
   }
 
   async function handleApprove() {
-    setUpdatingStatus(true)
-    await maybePostNote()
+    const originalTask = task
+    const capturedNote = noteText
+    const capturedNextUser = nextUserForNote
 
-    const { data, error } = await supabase
-      .from('tasks').update({ status: 'approved' }).eq('id', task.id)
-      .select('*').single()
+    onUpdate({ ...task, status: 'approved' } as unknown as Task)
+    onClose()
 
-    if (error || !data) {
-      console.error('Approve error:', error)
-      setUpdatingStatus(false)
-      return
-    }
+    const commit = async () => {
+      if (capturedNote.trim() && capturedNextUser) {
+        const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
+        const { data: comment } = await supabase.from('comments').insert({ task_id: capturedNextUser.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false }).select('id').single()
+        if (comment) fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: capturedNextUser.taskId, episodeId: task.episode_id, body, assigneeId: capturedNextUser.user.id }) }).catch(() => {})
+      }
 
-    supabase.from('task_history').insert({
-      task_id: task.id, episode_id: task.episode_id,
-      from_status: task.status, to_status: 'approved',
-      changed_by: currentUser.id,
-    }).then(() => {})
+      const { data, error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id).select('*').single()
+      if (error || !data) { onUpdate(originalTask); return }
 
-    // Compute which locked tasks will be unlocked by this approval (before unlocking them)
-    const { data: allTasksForSlack } = await supabase
-      .from('tasks')
-      .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
-      .eq('episode_id', task.episode_id)
-    const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
-    if (allTasksForSlack) {
-      const approvedIds = new Set(
-        allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id)
-      )
-      for (const t of allTasksForSlack) {
-        if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
-          nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+      supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: 'approved', changed_by: currentUser.id }).then(() => {})
+
+      const { data: allTasksForSlack } = await supabase.from('tasks').select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)').eq('episode_id', task.episode_id)
+      const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
+      if (allTasksForSlack) {
+        const approvedIds = new Set(allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id))
+        for (const t of allTasksForSlack) {
+          if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+            nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+          }
         }
       }
+
+      await checkAndUnlockDependencies(task.episode_id)
+      if (task.assignee_id !== currentUser.id) {
+        sendNotification(supabase, { userId: task.assignee_id, type: 'task_approved', title: 'Task approved', body: `"${task.label}" was approved by ${currentUser.name}`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
+      }
+      fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }) }).catch(() => {})
+      fetch('/api/episodes/check-triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }) }).catch(() => {})
+      onUpdate(data as unknown as Task)
     }
 
-    await checkAndUnlockDependencies(task.episode_id)
-    if (task.assignee_id !== currentUser.id) {
-      await sendNotification(supabase, {
-        userId: task.assignee_id, type: 'task_approved',
-        title: 'Task approved',
-        body: `"${task.label}" was approved by ${currentUser.name}`,
-        taskId: task.id, episodeId: task.episode_id,
-      })
+    if (onPendingAction) {
+      onPendingAction(`Approved "${task.label}"`, () => onUpdate(originalTask), commit)
+    } else {
+      await commit()
     }
-    fetch('/api/slack/notify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
-    }).catch(err => console.error('[Slack]', err))
-    fetch('/api/episodes/check-triggers', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
-    }).catch(err => console.error('[Slack]', err))
-    onUpdate(data as unknown as Task)
-    onClose()
-    setUpdatingStatus(false)
   }
 
   async function handleRevision() {
-    setUpdatingStatus(true)
-    setSendingBack(true)
-    await maybePostSendBackNote()
+    const originalTask = task
+    const capturedSendBackNote = sendBackNote
 
-    const { data, error } = await supabase
-      .from('tasks').update({ status: 'revision' }).eq('id', task.id)
-      .select('*').single()
-
-    if (error || !data) {
-      console.error('Send back error:', error)
-      setUpdatingStatus(false)
-      setSendingBack(false)
-      return
-    }
-
-    supabase.from('task_history').insert({
-      task_id: task.id, episode_id: task.episode_id,
-      from_status: task.status, to_status: 'revision',
-      changed_by: currentUser.id,
-    }).then(() => {})
-    const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
-    if (assignee) {
-      await sendNotification(supabase, {
-        userId: assignee.id, type: 'task_revision',
-        title: 'Task sent back for revision',
-        body: `"${task.label}" was sent back for revision by ${currentUser.name}`,
-        taskId: task.id, episodeId: task.episode_id,
-      })
-      fetch('/api/slack/notify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'revision', episodeId: task.episode_id, taskLabel: task.label, assigneeName: assignee.name }),
-      }).catch(err => console.error('[Slack]', err))
-    }
-    onUpdate(data as unknown as Task)
+    onUpdate({ ...task, status: 'revision' } as unknown as Task)
     onClose()
-    setUpdatingStatus(false)
-    setSendingBack(false)
+
+    const commit = async () => {
+      if (capturedSendBackNote.trim() && task.assignee && task.assignee_id !== currentUser.id) {
+        const assignee = task.assignee as User
+        const body = `→ ${assignee.name}: ${capturedSendBackNote.trim()}`
+        const { data: comment } = await supabase.from('comments').insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false }).select('id').single()
+        if (comment) fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: task.id, episodeId: task.episode_id, body, assigneeId: task.assignee_id }) }).catch(() => {})
+      }
+
+      const { data, error } = await supabase.from('tasks').update({ status: 'revision' }).eq('id', task.id).select('*').single()
+      if (error || !data) { onUpdate(originalTask); return }
+
+      supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: 'revision', changed_by: currentUser.id }).then(() => {})
+      const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
+      if (assignee) {
+        sendNotification(supabase, { userId: assignee.id, type: 'task_revision', title: 'Task sent back for revision', body: `"${task.label}" was sent back for revision by ${currentUser.name}`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
+        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'revision', episodeId: task.episode_id, taskLabel: task.label, assigneeName: assignee.name }) }).catch(() => {})
+      }
+      onUpdate(data as unknown as Task)
+    }
+
+    if (onPendingAction) {
+      onPendingAction(`Sent back "${task.label}" for revision`, () => onUpdate(originalTask), commit)
+    } else {
+      await commit()
+    }
   }
 
   return (
@@ -402,21 +385,12 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
             {canAction && (
               <button
                 onClick={() => updateStatus(nextStatus!)}
-                disabled={updatingStatus}
-                className="btn-primary w-full py-2.5 px-4 disabled:cursor-not-allowed cursor-pointer text-white font-semibold rounded-lg text-base"
+                className="btn-primary w-full py-2.5 px-4 cursor-pointer text-white font-semibold rounded-lg text-base"
               >
-                {updatingStatus ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Spinner />
-                    {task.status === 'in_progress' ? (task.approver_id ? 'Submitting...' : 'Saving...') :
-                     task.status === 'revision' ? 'Submitting...' : 'Updating...'}
-                  </span>
-                ) : (
-                  task.status === 'in_progress'
-                    ? (task.approver_id ? 'Submit for Review' : 'Mark Done')
+                {task.status === 'in_progress'
+                  ? (task.approver_id ? 'Submit for Review' : 'Mark Done')
                   : task.status === 'revision' ? 'Resubmit for Review'
-                  : `Mark as ${STATUS_LABELS[nextStatus!]}`
-                )}
+                  : `Mark as ${STATUS_LABELS[nextStatus!]}`}
               </button>
             )}
 
@@ -444,17 +418,15 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode }: Pro
               <div className="flex gap-2">
                 <button
                   onClick={handleRevision}
-                  disabled={updatingStatus}
-                  className="flex-1 py-2.5 px-4 bg-[#1a1a1a] hover:bg-[#222] border border-[#ff3c00]/30 hover:border-[#ff3c00]/60 text-[#ff6644] font-semibold rounded-lg text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex-1 py-2.5 px-4 bg-[#1a1a1a] hover:bg-[#222] border border-[#ff3c00]/30 hover:border-[#ff3c00]/60 text-[#ff6644] font-semibold rounded-lg text-base transition-colors cursor-pointer"
                 >
-                  {updatingStatus && sendingBack ? <span className="flex items-center justify-center gap-2"><Spinner />Sending...</span> : 'Send Back'}
+                  Send Back
                 </button>
                 <button
                   onClick={handleApprove}
-                  disabled={updatingStatus}
-                  className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base disabled:cursor-not-allowed cursor-pointer"
+                  className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base cursor-pointer"
                 >
-                  {updatingStatus && !sendingBack ? <span className="flex items-center justify-center gap-2"><Spinner />Approving...</span> : 'Approve'}
+                  Approve
                 </button>
               </div>
             )}

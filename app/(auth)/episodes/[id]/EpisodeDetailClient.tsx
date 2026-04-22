@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, X, MessageSquare, CornerDownLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -13,6 +13,8 @@ import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
+import { usePendingActions } from '@/lib/usePendingActions'
+import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { format, parseISO, startOfToday, differenceInDays } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
@@ -80,6 +82,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null)
   const [delivering, setDelivering] = useState(false)
   const [delivered, setDelivered] = useState(episode.archived ?? false)
+  const { pendingActions, addPending, undoPending } = usePendingActions()
 
   // Guest name editing
   const [currentGuestName, setCurrentGuestName] = useState(episode.guest_name)
@@ -634,6 +637,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 onTaskClick={handleTaskClick}
                 onDateChange={(taskId, oldDate, newDate) => handleDateChange(taskId, oldDate, newDate)}
                 onTaskUpdate={handleTaskUpdate}
+                onPendingAction={addPending}
                 onReassignToast={setToast}
                 onReplyToLatest={handleReplyToLatest}
               />
@@ -664,6 +668,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
           onReplyConsumed={() => setReplyToCommentId(null)}
         />
       </div>
+      <UndoToastStack actions={pendingActions} onUndo={undoPending} />
     </div>
   )
 }
@@ -800,11 +805,12 @@ interface TrackPanelProps {
   onTaskClick: (task: Task) => void
   onDateChange: (taskId: string, oldDate: string | null, newDate: string) => void
   onTaskUpdate: (task: Task) => void
+  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
   onReassignToast: (msg: string) => void
   onReplyToLatest: (taskId: string) => void
 }
 
-function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onReassignToast, onReplyToLatest }: TrackPanelProps) {
+function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign, liveTaskComments, hasUnread, activeTask, expandedTaskId, recentlyUnlocked, currentUser, episode, onTaskClick, onDateChange, onTaskUpdate, onPendingAction, onReassignToast, onReplyToLatest }: TrackPanelProps) {
   return (
     <div className="bg-[#1e1e1e] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
       {/* Header */}
@@ -832,6 +838,7 @@ function TrackPanel({ track, trackColor, tasks, done, canEditDates, canReassign,
             onDateChange={(oldDate, newDate) => onDateChange(task.id, oldDate, newDate)}
             onClick={() => onTaskClick(task)}
             onTaskUpdate={onTaskUpdate}
+            onPendingAction={onPendingAction}
             canReassign={canReassign}
             onReassignToast={onReassignToast}
             onReplyToLatest={onReplyToLatest}
@@ -858,11 +865,12 @@ interface TrackTaskCardProps {
   onDateChange: (oldDate: string | null, newDate: string) => void
   onClick: () => void
   onTaskUpdate: (task: Task) => void
+  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
   onReassignToast: (msg: string) => void
   onReplyToLatest: (taskId: string) => void
 }
 
-function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onReassignToast, onReplyToLatest }: TrackTaskCardProps) {
+function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEditDates, canReassign, taskComment, hasUnread, currentUser, episode, onDateChange, onClick, onTaskUpdate, onPendingAction, onReassignToast, onReplyToLatest }: TrackTaskCardProps) {
   const supabase = createClient()
   const isLocked = task.status === 'locked'
   const overdue = isOverdue(task.due_date, task.status)
@@ -989,193 +997,195 @@ function TrackTaskCard({ task, isSelected, isExpanded, isRecentlyUnlocked, canEd
     }
   }
 
-  async function handleStatusAction() {
+  function handleStatusAction() {
+    const capturedTask = task
     const resolvedStatus: TaskStatus | null =
-      task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
-      task.status === 'revision' ? 'in_review' :
+      capturedTask.status === 'in_progress' ? (capturedTask.approver_id ? 'in_review' : 'done') :
+      capturedTask.status === 'revision' ? 'in_review' :
       null
-
     if (!resolvedStatus) return
-    setActionLoading(true)
-    setActionError(null)
-    await maybePostNote()
 
+    const capturedNote = noteText
+    const capturedNextUser = nextUserForNote
     const updatePayload: Record<string, unknown> = { status: resolvedStatus }
     if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
 
-    if (resolvedStatus === 'in_review' && task.requires_approval) {
-      if (task.approver_id && task.approver_id !== currentUser.id) {
-        await sendNotification(supabase, {
-          userId: task.approver_id,
-          type: 'task_submitted_review',
-          title: 'Task submitted for review',
-          body: `${currentUser.name} submitted "${task.label}" for review`,
-          taskId: task.id,
-          episodeId: task.episode_id,
-        })
-      }
-      fetch('/api/slack/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }),
-      }).catch(err => console.error('[Slack]', err))
-    }
-
-    const { data, error } = await supabase
-      .from('tasks')
-      .update(updatePayload)
-      .eq('id', task.id)
-      .select('*')
-      .single()
-
-    if (error) {
-      console.error('Task update error:', error.message, error.code, error.details)
-      setActionError(error.message || 'Failed to update task')
-      setActionLoading(false)
-      return
-    }
-
-    if (data) {
-      onTaskUpdate(data as unknown as Task)
-      try {
-        await checkAndUnlockDependencies(task.episode_id)
-      } catch (depErr: unknown) {
-        console.error('Dep unlock error:', depErr)
-      }
-      if (resolvedStatus === 'done') {
-        fetch('/api/episodes/check-triggers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
-        }).catch(() => {})
-      }
-    }
-    setActionLoading(false)
-  }
-
-  async function handleApprove() {
-    setActionLoading(true)
+    onTaskUpdate({ ...capturedTask, ...updatePayload } as Task)
+    setNoteText('')
+    setNextUserForNote(null)
     setActionError(null)
-    await maybePostNote()
 
-    const { data, error } = await supabase
-      .from('tasks').update({ status: 'approved' }).eq('id', task.id)
-      .select('*').single()
+    const label = resolvedStatus === 'in_review'
+      ? `Submitted "${capturedTask.label}" for review`
+      : `Marked "${capturedTask.label}" done`
 
-    if (error) {
-      console.error('Approve error:', error.message, error.code, error.details)
-      setActionError(error.message || 'Failed to approve')
-      setActionLoading(false)
-      return
-    }
-
-    if (data) {
-      onTaskUpdate(data as unknown as Task)
-      try {
-        await checkAndUnlockDependencies(task.episode_id)
-      } catch (depErr: unknown) {
-        console.error('Dep unlock error:', depErr)
-      }
-      if (task.assignee_id !== currentUser.id) {
-        await sendNotification(supabase, {
-          userId: task.assignee_id,
-          type: 'task_approved',
-          title: 'Task approved',
-          body: `"${task.label}" was approved by ${currentUser.name}`,
-          taskId: task.id,
-          episodeId: task.episode_id,
-        })
-      }
-      // Compute active tasks to show as "next" in the Slack approval message.
-      // We look for ready/in_progress tasks (not locked) because checkAndUnlockDependencies
-      // has already run and transitioned newly-unblocked tasks from locked → ready.
-      const { data: allTasksForSlack } = await supabase
-        .from('tasks')
-        .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
-        .eq('episode_id', task.episode_id)
-      const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
-      if (allTasksForSlack) {
-        const approvedIds = new Set(
-          allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id)
-        )
-        for (const t of allTasksForSlack) {
-          if (
-            t.status === 'in_progress' &&
-            t.dep_task_ids.length > 0 &&
-            t.dep_task_ids.every((d: string) => approvedIds.has(d))
-          ) {
-            nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
-          }
+    const commit = async () => {
+      if (capturedNote.trim() && capturedNextUser) {
+        const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
+        const { data: comment } = await supabase
+          .from('comments')
+          .insert({ task_id: capturedNextUser.taskId, episode_id: capturedTask.episode_id, author_id: currentUser.id, body, internal: false })
+          .select('id').single()
+        if (comment) {
+          fetch('/api/notifications/comment', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: capturedNextUser.taskId, episodeId: capturedTask.episode_id, body, assigneeId: capturedNextUser.user.id }),
+          }).catch(() => {})
         }
       }
-      fetch('/api/slack/notify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
-      }).catch(err => console.error('[Slack]', err))
-      fetch('/api/episodes/check-triggers', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }),
-      }).catch(err => console.error('[check-triggers]', err))
-    }
-    setActionLoading(false)
-  }
 
-  async function handleSendBack() {
-    setActionLoading(true)
-    setSendingBack(true)
-    setActionError(null)
-
-    // Convert bare date string (yyyy-MM-dd) to proper UTC ISO via local midnight
-    const dueDateIso = sendBackDate ? fromDatetimeLocal(sendBackDate + 'T00:00') : null
-
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ status: 'revision', due_date: dueDateIso })
-      .eq('id', task.id)
-      .select('*')
-      .single()
-
-    if (error) {
-      console.error('Send back error:', error.message, error.code, error.details)
-      setActionError(error.message || 'Failed to send back')
-      setActionLoading(false)
-      return
-    }
-
-    if (data) {
-      onTaskUpdate(data as unknown as Task)
-      const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()
-      if (assignee) {
-        // Use parseISO so date-only strings are treated as local midnight, not UTC midnight
-        const dueDateLabel = sendBackDate ? format(parseISO(sendBackDate), 'MMM d, yyyy') : ''
-        const noteBody = sendBackReason
-          ? `"${task.label}" was sent back: ${sendBackReason}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
-          : `"${task.label}" was sent back for revision by ${currentUser.name}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
-        await sendNotification(supabase, {
-          userId: assignee.id,
-          type: 'task_revision',
-          title: 'Task sent back for revision',
-          body: noteBody,
-          taskId: task.id,
-          episodeId: task.episode_id,
-        })
+      if (resolvedStatus === 'in_review' && capturedTask.requires_approval) {
+        if (capturedTask.approver_id && capturedTask.approver_id !== currentUser.id) {
+          await sendNotification(supabase, {
+            userId: capturedTask.approver_id,
+            type: 'task_submitted_review',
+            title: 'Task submitted for review',
+            body: `${currentUser.name} submitted "${capturedTask.label}" for review`,
+            taskId: capturedTask.id,
+            episodeId: capturedTask.episode_id,
+          })
+        }
         fetch('/api/slack/notify', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'revision',
-            episodeId: task.episode_id,
-            taskLabel: task.label,
-            assigneeName: assignee.name,
-            dueDate: sendBackDate ? format(parseISO(sendBackDate), 'MMM d') : undefined,
-          }),
+          body: JSON.stringify({ type: 'review_submitted', episodeId: capturedTask.episode_id, taskLabel: capturedTask.label, assigneeName: currentUser.name }),
         }).catch(err => console.error('[Slack]', err))
       }
-      setSendBackOpen(false)
-      setSendBackDate('')
-      setSendBackReason('')
+
+      const { data } = await supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single()
+      if (data) {
+        onTaskUpdate(data as unknown as Task)
+        checkAndUnlockDependencies(capturedTask.episode_id).catch(console.error)
+        if (resolvedStatus === 'done') {
+          fetch('/api/episodes/check-triggers', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: capturedTask.id, episodeId: capturedTask.episode_id }),
+          }).catch(() => {})
+        }
+      }
     }
-    setActionLoading(false)
-    setSendingBack(false)
+
+    onPendingAction(label, () => onTaskUpdate(capturedTask), commit)
+  }
+
+  function handleApprove() {
+    const capturedTask = task
+    const capturedNote = noteText
+    const capturedNextUser = nextUserForNote
+
+    onTaskUpdate({ ...capturedTask, status: 'approved' } as Task)
+    setNoteText('')
+    setNextUserForNote(null)
+    setActionError(null)
+
+    const commit = async () => {
+      if (capturedNote.trim() && capturedNextUser) {
+        const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
+        const { data: comment } = await supabase
+          .from('comments')
+          .insert({ task_id: capturedNextUser.taskId, episode_id: capturedTask.episode_id, author_id: currentUser.id, body, internal: false })
+          .select('id').single()
+        if (comment) {
+          fetch('/api/notifications/comment', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: capturedNextUser.taskId, episodeId: capturedTask.episode_id, body, assigneeId: capturedNextUser.user.id }),
+          }).catch(() => {})
+        }
+      }
+
+      const { data } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', capturedTask.id).select('*').single()
+      if (data) {
+        onTaskUpdate(data as unknown as Task)
+        checkAndUnlockDependencies(capturedTask.episode_id).catch(console.error)
+        if (capturedTask.assignee_id !== currentUser.id) {
+          await sendNotification(supabase, {
+            userId: capturedTask.assignee_id,
+            type: 'task_approved',
+            title: 'Task approved',
+            body: `"${capturedTask.label}" was approved by ${currentUser.name}`,
+            taskId: capturedTask.id,
+            episodeId: capturedTask.episode_id,
+          })
+        }
+        const { data: allTasksForSlack } = await supabase
+          .from('tasks')
+          .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
+          .eq('episode_id', capturedTask.episode_id)
+        const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
+        if (allTasksForSlack) {
+          const approvedIds = new Set(
+            allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === capturedTask.id).map(t => t.id)
+          )
+          for (const t of allTasksForSlack) {
+            if (t.status === 'in_progress' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+              nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+            }
+          }
+        }
+        fetch('/api/slack/notify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'approval', episodeId: capturedTask.episode_id, completedTaskLabel: capturedTask.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
+        }).catch(err => console.error('[Slack]', err))
+        fetch('/api/episodes/check-triggers', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: capturedTask.id, episodeId: capturedTask.episode_id }),
+        }).catch(err => console.error('[check-triggers]', err))
+      }
+    }
+
+    onPendingAction(`Approved "${capturedTask.label}"`, () => onTaskUpdate(capturedTask), commit)
+  }
+
+  function handleSendBack() {
+    const capturedTask = task
+    const capturedDate = sendBackDate
+    const capturedReason = sendBackReason
+    const dueDateIso = capturedDate ? fromDatetimeLocal(capturedDate + 'T00:00') : null
+
+    onTaskUpdate({ ...capturedTask, status: 'revision', due_date: dueDateIso } as Task)
+    setActionError(null)
+    setSendBackOpen(false)
+    setSendBackDate('')
+    setSendBackReason('')
+
+    const commit = async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .update({ status: 'revision', due_date: dueDateIso })
+        .eq('id', capturedTask.id)
+        .select('*')
+        .single()
+
+      if (data) {
+        onTaskUpdate(data as unknown as Task)
+        const { data: assignee } = await supabase.from('users').select('*').eq('id', capturedTask.assignee_id).single()
+        if (assignee) {
+          const dueDateLabel = capturedDate ? format(parseISO(capturedDate), 'MMM d, yyyy') : ''
+          const noteBody = capturedReason
+            ? `"${capturedTask.label}" was sent back: ${capturedReason}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
+            : `"${capturedTask.label}" was sent back for revision by ${currentUser.name}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
+          await sendNotification(supabase, {
+            userId: assignee.id,
+            type: 'task_revision',
+            title: 'Task sent back for revision',
+            body: noteBody,
+            taskId: capturedTask.id,
+            episodeId: capturedTask.episode_id,
+          })
+          fetch('/api/slack/notify', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'revision',
+              episodeId: capturedTask.episode_id,
+              taskLabel: capturedTask.label,
+              assigneeName: assignee.name,
+              dueDate: capturedDate ? format(parseISO(capturedDate), 'MMM d') : undefined,
+            }),
+          }).catch(err => console.error('[Slack]', err))
+        }
+      }
+    }
+
+    onPendingAction(`Sent back "${capturedTask.label}"`, () => onTaskUpdate(capturedTask), commit)
   }
 
   const commentCount = taskComment?.count ?? 0
