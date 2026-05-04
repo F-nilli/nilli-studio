@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { episodeId } = await req.json()
+  const { episodeId, silent } = await req.json()
   if (!episodeId) return NextResponse.json({ error: 'Missing episodeId' }, { status: 400 })
 
   const admin = createAdminClient()
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     episodeId,
     deliveredBy: user.id,
     origin,
+    silent: Boolean(silent),
   })
 
   if (!result.ok) {

@@ -8,7 +8,10 @@ export interface PendingAction {
 
 interface PendingEntry extends PendingAction {
   revert: () => void
-  commit: () => Promise<void>
+  // commit accepts a silent flag — when true, the action is committed but
+  // any notification side effects (in-app, push, slack, downstream comment
+  // pings) are skipped. The DB write and activity log still happen.
+  commit: (silent: boolean) => Promise<void>
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -16,14 +19,18 @@ export function usePendingActions() {
   const [visible, setVisible] = useState<PendingAction[]>([])
   const entriesRef = useRef<Map<string, PendingEntry>>(new Map())
 
-  function addPending(label: string, revert: () => void, commit: () => Promise<void>): string {
+  function addPending(
+    label: string,
+    revert: () => void,
+    commit: (silent: boolean) => Promise<void>
+  ): string {
     const id = Math.random().toString(36).slice(2, 9)
     const expiresAt = Date.now() + 5000
 
     const timer = setTimeout(async () => {
       entriesRef.current.delete(id)
       setVisible(prev => prev.filter(a => a.id !== id))
-      await commit().catch(console.error)
+      await commit(false).catch(console.error)
     }, 5000)
 
     entriesRef.current.set(id, { id, label, expiresAt, revert, commit, timer })
@@ -40,17 +47,28 @@ export function usePendingActions() {
     entry.revert()
   }
 
-  // Auto-commit all pending on unmount (page navigation)
+  // Commit immediately, but tell the commit to skip all notifications.
+  function silentPending(id: string) {
+    const entry = entriesRef.current.get(id)
+    if (!entry) return
+    clearTimeout(entry.timer)
+    entriesRef.current.delete(id)
+    setVisible(prev => prev.filter(a => a.id !== id))
+    entry.commit(true).catch(console.error)
+  }
+
+  // Auto-commit all pending on unmount (page navigation). Falls back to
+  // non-silent commit so the user's action isn't lost if they navigate away.
   useEffect(() => {
     return () => {
       const entries = Array.from(entriesRef.current.values())
       for (const entry of entries) {
         clearTimeout(entry.timer)
-        entry.commit().catch(console.error)
+        entry.commit(false).catch(console.error)
       }
       entriesRef.current.clear()
     }
   }, [])
 
-  return { pendingActions: visible, addPending, undoPending }
+  return { pendingActions: visible, addPending, undoPending, silentPending }
 }

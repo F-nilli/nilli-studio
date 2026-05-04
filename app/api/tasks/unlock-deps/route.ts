@@ -4,7 +4,7 @@ import { deliverEpisode } from '@/lib/deliver'
 import { headers } from 'next/headers'
 
 export async function POST(req: NextRequest) {
-  const { episodeId } = await req.json()
+  const { episodeId, silent } = await req.json()
   if (!episodeId) return NextResponse.json({ unlocked: 0 })
 
   const supabase = createAdminClient()
@@ -69,6 +69,9 @@ export async function POST(req: NextRequest) {
         episodeId,
         deliveredBy: null,
         origin,
+        // Per product spec: when the user issued the original action silently,
+        // the auto-archive that cascades from it is also silent.
+        silent: Boolean(silent),
       })
       autoArchived = result.ok && !result.alreadyDelivered
     }

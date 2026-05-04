@@ -45,7 +45,7 @@ export function DashboardClient({
   const [reviewTasks, setReviewTasks] = useState(initialReviewTasks)
   const [selectedTask, setSelectedTask] = useState<(Task & { episode?: Episode }) | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const { pendingActions, addPending, undoPending } = usePendingActions()
+  const { pendingActions, addPending, undoPending, silentPending } = usePendingActions()
 
   useEffect(() => {
     if (!toast) return
@@ -224,7 +224,7 @@ export function DashboardClient({
           {toast}
         </div>
       )}
-      <UndoToastStack actions={pendingActions} onUndo={undoPending} />
+      <UndoToastStack actions={pendingActions} onUndo={undoPending} onSilent={silentPending} />
     </>
   )
 }
@@ -237,7 +237,7 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReas
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
-  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
@@ -345,7 +345,7 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
-  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
@@ -427,7 +427,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
-  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const hour = new Date().getHours()
@@ -786,7 +786,7 @@ function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate, onReassign
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
-  onPendingAction?: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction?: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
@@ -1084,7 +1084,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   onClick: () => void
   onUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
-  onPendingAction?: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction?: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
   const supabase = createClient()
   const [acting, setActing] = useState(false)
@@ -1296,8 +1296,8 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
 
     onUpdate({ ...task, status: nextStatus } as unknown as Task)
 
-    const commit = async () => {
-      if (capturedNote.trim() && capturedNextUser) {
+    const commit = async (silent: boolean) => {
+      if (!silent && capturedNote.trim() && capturedNextUser) {
         const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
         const { data: comment } = await supabase.from('comments').insert({ task_id: capturedNextUser.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false }).select('id').single()
         if (comment) fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: capturedNextUser.taskId, episodeId: task.episode_id, body, assigneeId: capturedNextUser.user.id }) }).catch(() => {})
@@ -1312,21 +1312,30 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       onUpdate(data as unknown as Task)
       supabase.from('task_history').insert({ task_id: originalTask.id, episode_id: originalTask.episode_id, from_status: originalTask.status, to_status: nextStatus, changed_by: currentUser.id }).then(() => {})
 
+      // Trigger downstream unlock + auto-archive cascade. Pass silent through
+      // so an auto-archive triggered by this action also stays silent.
+      fetch('/api/tasks/unlock-deps', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episodeId: task.episode_id, silent }),
+      }).catch(() => {})
+
       if (nextStatus === 'approved') {
-        const { data: allTasksForSlack } = await supabase.from('tasks').select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)').eq('episode_id', task.episode_id)
-        const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
-        if (allTasksForSlack) {
-          const approvedIds = new Set(allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id))
-          for (const t of allTasksForSlack) {
-            if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
-              nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+        if (!silent) {
+          const { data: allTasksForSlack } = await supabase.from('tasks').select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)').eq('episode_id', task.episode_id)
+          const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
+          if (allTasksForSlack) {
+            const approvedIds = new Set(allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id))
+            for (const t of allTasksForSlack) {
+              if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+                nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+              }
             }
           }
+          fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }) }).catch(() => {})
         }
-        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }) }).catch(() => {})
         fetch('/api/episodes/check-triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }) }).catch(() => {})
       }
-      if (nextStatus === 'in_review' && task.requires_approval && task.approver_id && task.approver_id !== currentUser.id) {
+      if (!silent && nextStatus === 'in_review' && task.requires_approval && task.approver_id && task.approver_id !== currentUser.id) {
         supabase.from('notifications').insert({ user_id: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}" for review`, task_id: task.id, episode_id: task.episode_id, read: false }).then(() => {})
         fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }) }).catch(() => {})
       }
@@ -1335,7 +1344,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
     if (onPendingAction) {
       onPendingAction(actionLabel, () => onUpdate(originalTask as unknown as Task), commit)
     } else {
-      commit().catch(console.error)
+      commit(false).catch(console.error)
     }
   }
 

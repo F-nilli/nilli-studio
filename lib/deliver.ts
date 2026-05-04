@@ -7,6 +7,9 @@ export interface DeliverOptions {
   deliveredBy: string | null
   // origin (e.g. https://app.example.com) used for push notifications
   origin: string
+  // when true, skip in-app notifications, web push, and the slack message.
+  // The DB update, snapshot, and activity log still happen.
+  silent?: boolean
 }
 
 export interface DeliverResult {
@@ -29,7 +32,7 @@ export interface DeliverResult {
  */
 export async function deliverEpisode(
   admin: SupabaseClient,
-  { episodeId, deliveredBy, origin }: DeliverOptions
+  { episodeId, deliveredBy, origin, silent = false }: DeliverOptions
 ): Promise<DeliverResult> {
   const autoCompleted = deliveredBy === null
 
@@ -98,7 +101,8 @@ export async function deliverEpisode(
   const guestName = episode?.guest_name ?? 'Episode'
   const clientLabel = episode?.client_label ?? ''
 
-  // In-app + push notifications for all assignees except the deliverer
+  // In-app + push notifications for all assignees except the deliverer.
+  // Skipped entirely when silent.
   const assigneeIds = [
     ...new Set(
       tasks
@@ -106,7 +110,7 @@ export async function deliverEpisode(
         .filter((id): id is string => !!id && id !== deliveredBy)
     ),
   ]
-  if (assigneeIds.length > 0) {
+  if (!silent && assigneeIds.length > 0) {
     const notifBody = autoCompleted
       ? `${guestName} / ${clientLabel} auto-completed — all tasks done`
       : `${guestName} / ${clientLabel} has been marked as delivered`
@@ -138,8 +142,8 @@ export async function deliverEpisode(
     }
   }
 
-  // Slack notification (fire-and-forget)
-  if (episode?.client_key) {
+  // Slack notification (fire-and-forget). Skipped when silent.
+  if (!silent && episode?.client_key) {
     const { data: settingsRows } = await admin
       .from('workspace_settings')
       .select('slack_bot_token, slack_notifications')

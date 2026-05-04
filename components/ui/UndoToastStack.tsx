@@ -6,9 +6,10 @@ import type { PendingAction } from '@/lib/usePendingActions'
 interface Props {
   actions: PendingAction[]
   onUndo: (id: string) => void
+  onSilent?: (id: string) => void
 }
 
-export function UndoToastStack({ actions, onUndo }: Props) {
+export function UndoToastStack({ actions, onUndo, onSilent }: Props) {
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -42,9 +43,22 @@ export function UndoToastStack({ actions, onUndo }: Props) {
             <button
               onClick={() => onUndo(action.id)}
               className="text-[#f7931a] font-semibold hover:text-[#e07d10] transition-colors shrink-0"
+              title="Cancel this action"
             >
               Undo
             </button>
+            {onSilent && (
+              <>
+                <span className="text-[#444] shrink-0">·</span>
+                <button
+                  onClick={() => onSilent(action.id)}
+                  className="text-[#888] font-medium hover:text-white transition-colors shrink-0"
+                  title="Commit now without notifying anyone"
+                >
+                  Silent
+                </button>
+              </>
+            )}
           </div>
         )
       })}

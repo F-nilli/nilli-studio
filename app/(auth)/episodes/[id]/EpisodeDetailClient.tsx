@@ -55,12 +55,12 @@ function getDownstreamTaskIds(taskId: string, allTasks: Task[]): string[] {
 
 type SupabaseClientType = ReturnType<typeof createClient>
 
-async function checkAndUnlockDependencies(episodeId: string): Promise<{ autoArchived: boolean }> {
+async function checkAndUnlockDependencies(episodeId: string, silent = false): Promise<{ autoArchived: boolean }> {
   try {
     const res = await fetch('/api/tasks/unlock-deps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ episodeId }),
+      body: JSON.stringify({ episodeId, silent }),
     })
     if (!res.ok) return { autoArchived: false }
     const json = await res.json().catch(() => ({}))
@@ -89,7 +89,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
   const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null)
   const [delivering, setDelivering] = useState(false)
   const [delivered, setDelivered] = useState(episode.archived ?? false)
-  const { pendingActions, addPending, undoPending } = usePendingActions()
+  const { pendingActions, addPending, undoPending, silentPending } = usePendingActions()
 
   // Guest name editing
   const [currentGuestName, setCurrentGuestName] = useState(episode.guest_name)
@@ -693,7 +693,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         />
       </div>
     </div>
-    <UndoToastStack actions={pendingActions} onUndo={undoPending} />
+    <UndoToastStack actions={pendingActions} onUndo={undoPending} onSilent={silentPending} />
     </>
   )
 }
@@ -831,7 +831,7 @@ interface TrackPanelProps {
   onTaskClick: (task: Task) => void
   onDateChange: (taskId: string, oldDate: string | null, newDate: string) => void
   onTaskUpdate: (task: Task) => void
-  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
   onReassignToast: (msg: string) => void
   onReplyToLatest: (taskId: string) => void
 }
@@ -893,7 +893,7 @@ interface TrackTaskCardProps {
   onDateChange: (oldDate: string | null, newDate: string) => void
   onClick: () => void
   onTaskUpdate: (task: Task) => void
-  onPendingAction: (label: string, revert: () => void, commit: () => Promise<void>) => void
+  onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
   onReassignToast: (msg: string) => void
   onReplyToLatest: (taskId: string) => void
 }
@@ -1050,8 +1050,9 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       ? `Submitted "${capturedTask.label}" for review`
       : `Marked "${capturedTask.label}" done`
 
-    const commit = async () => {
-      if (capturedNote.trim() && capturedNextUser) {
+    const commit = async (silent: boolean) => {
+      // Comment + comment notification: skipped on silent
+      if (!silent && capturedNote.trim() && capturedNextUser) {
         const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
         const { data: comment } = await supabase
           .from('comments')
@@ -1065,7 +1066,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         }
       }
 
-      if (resolvedStatus === 'in_review' && capturedTask.requires_approval) {
+      if (!silent && resolvedStatus === 'in_review' && capturedTask.requires_approval) {
         if (capturedTask.approver_id && capturedTask.approver_id !== currentUser.id) {
           await sendNotification(supabase, {
             userId: capturedTask.approver_id,
@@ -1086,7 +1087,9 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       if (data) {
         onTaskUpdate(data as unknown as Task)
         supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
-        checkAndUnlockDependencies(capturedTask.episode_id).catch(console.error)
+        // Pass silent through so any auto-archive triggered by this status
+        // change also stays silent.
+        checkAndUnlockDependencies(capturedTask.episode_id, silent).catch(console.error)
         if (resolvedStatus === 'done') {
           fetch('/api/episodes/check-triggers', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1109,8 +1112,8 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     setNextUserForNote(null)
     setActionError(null)
 
-    const commit = async () => {
-      if (capturedNote.trim() && capturedNextUser) {
+    const commit = async (silent: boolean) => {
+      if (!silent && capturedNote.trim() && capturedNextUser) {
         const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
         const { data: comment } = await supabase
           .from('comments')
@@ -1128,8 +1131,8 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       if (data) {
         onTaskUpdate(data as unknown as Task)
         supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: 'approved', changed_by: currentUser.id }).then(() => {})
-        checkAndUnlockDependencies(capturedTask.episode_id).catch(console.error)
-        if (capturedTask.assignee_id !== currentUser.id) {
+        checkAndUnlockDependencies(capturedTask.episode_id, silent).catch(console.error)
+        if (!silent && capturedTask.assignee_id !== currentUser.id) {
           await sendNotification(supabase, {
             userId: capturedTask.assignee_id,
             type: 'task_approved',
@@ -1139,25 +1142,27 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             episodeId: capturedTask.episode_id,
           })
         }
-        const { data: allTasksForSlack } = await supabase
-          .from('tasks')
-          .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
-          .eq('episode_id', capturedTask.episode_id)
-        const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
-        if (allTasksForSlack) {
-          const approvedIds = new Set(
-            allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === capturedTask.id).map(t => t.id)
-          )
-          for (const t of allTasksForSlack) {
-            if (t.status === 'in_progress' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
-              nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+        if (!silent) {
+          const { data: allTasksForSlack } = await supabase
+            .from('tasks')
+            .select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)')
+            .eq('episode_id', capturedTask.episode_id)
+          const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
+          if (allTasksForSlack) {
+            const approvedIds = new Set(
+              allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === capturedTask.id).map(t => t.id)
+            )
+            for (const t of allTasksForSlack) {
+              if (t.status === 'in_progress' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
+                nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
+              }
             }
           }
+          fetch('/api/slack/notify', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'approval', episodeId: capturedTask.episode_id, completedTaskLabel: capturedTask.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
+          }).catch(err => console.error('[Slack]', err))
         }
-        fetch('/api/slack/notify', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'approval', episodeId: capturedTask.episode_id, completedTaskLabel: capturedTask.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
-        }).catch(err => console.error('[Slack]', err))
         fetch('/api/episodes/check-triggers', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taskId: capturedTask.id, episodeId: capturedTask.episode_id }),
@@ -1180,7 +1185,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     setSendBackDate('')
     setSendBackReason('')
 
-    const commit = async () => {
+    const commit = async (silent: boolean) => {
       const { data } = await supabase
         .from('tasks')
         .update({ status: 'revision', due_date: dueDateIso })
@@ -1191,30 +1196,32 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       if (data) {
         onTaskUpdate(data as unknown as Task)
         supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: 'revision', changed_by: currentUser.id }).then(() => {})
-        const { data: assignee } = await supabase.from('users').select('*').eq('id', capturedTask.assignee_id).single()
-        if (assignee) {
-          const dueDateLabel = capturedDate ? format(parseISO(capturedDate), 'MMM d, yyyy') : ''
-          const noteBody = capturedReason
-            ? `"${capturedTask.label}" was sent back: ${capturedReason}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
-            : `"${capturedTask.label}" was sent back for revision by ${currentUser.name}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
-          await sendNotification(supabase, {
-            userId: assignee.id,
-            type: 'task_revision',
-            title: 'Task sent back for revision',
-            body: noteBody,
-            taskId: capturedTask.id,
-            episodeId: capturedTask.episode_id,
-          })
-          fetch('/api/slack/notify', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'revision',
+        if (!silent) {
+          const { data: assignee } = await supabase.from('users').select('*').eq('id', capturedTask.assignee_id).single()
+          if (assignee) {
+            const dueDateLabel = capturedDate ? format(parseISO(capturedDate), 'MMM d, yyyy') : ''
+            const noteBody = capturedReason
+              ? `"${capturedTask.label}" was sent back: ${capturedReason}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
+              : `"${capturedTask.label}" was sent back for revision by ${currentUser.name}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
+            await sendNotification(supabase, {
+              userId: assignee.id,
+              type: 'task_revision',
+              title: 'Task sent back for revision',
+              body: noteBody,
+              taskId: capturedTask.id,
               episodeId: capturedTask.episode_id,
-              taskLabel: capturedTask.label,
-              assigneeName: assignee.name,
-              dueDate: capturedDate ? format(parseISO(capturedDate), 'MMM d') : undefined,
-            }),
-          }).catch(err => console.error('[Slack]', err))
+            })
+            fetch('/api/slack/notify', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'revision',
+                episodeId: capturedTask.episode_id,
+                taskLabel: capturedTask.label,
+                assigneeName: assignee.name,
+                dueDate: capturedDate ? format(parseISO(capturedDate), 'MMM d') : undefined,
+              }),
+            }).catch(err => console.error('[Slack]', err))
+          }
         }
       }
     }
