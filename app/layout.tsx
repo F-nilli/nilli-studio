@@ -31,14 +31,7 @@ export default function RootLayout({
                 numOctaves="2"
                 seed="3"
                 result="noise"
-              >
-                <animate
-                  attributeName="seed"
-                  values="3;9;3"
-                  dur="22s"
-                  repeatCount="indefinite"
-                />
-              </feTurbulence>
+              />
               <feDisplacementMap in="SourceGraphic" in2="noise" scale="12" />
             </filter>
           </defs>
