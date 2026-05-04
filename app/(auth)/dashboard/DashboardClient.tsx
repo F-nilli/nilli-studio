@@ -70,13 +70,40 @@ export function DashboardClient({
               .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
               .eq('id', updated.id)
               .single()
-            if (data) {
+            // Drop tasks whose episode is archived — they don't belong on the dashboard.
+            if (data && !(data as { episode?: { archived?: boolean } }).episode?.archived) {
               setTasks(prev => {
                 const exists = prev.find(t => t.id === data.id)
                 if (exists) return prev.map(t => t.id === data.id ? data as unknown as Task & { episode: Episode } : t)
                 return [...prev, data as unknown as Task & { episode: Episode }]
               })
+            } else if (data) {
+              // Episode was archived between fetches — make sure it's not in state.
+              setTasks(prev => prev.filter(t => t.id !== data.id))
             }
+          }
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [currentUser.id])
+
+  // Realtime: episode archives — when a project archives, drop all its tasks
+  // from the dashboard's local state immediately (no refresh required).
+  useEffect(() => {
+    const channel = supabase
+      .channel(`dash-episodes-${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'episodes' },
+        (payload) => {
+          const before = payload.old as { archived?: boolean } | null
+          const after = payload.new as { id: string; archived?: boolean } | null
+          if (!after?.id) return
+          // Only react when archived flipped to true
+          if (after.archived && !before?.archived) {
+            setTasks(prev => prev.filter(t => t.episode_id !== after.id))
+            setReviewTasks(prev => prev.filter(t => t.episode_id !== after.id))
           }
         }
       )
@@ -107,12 +134,15 @@ export function DashboardClient({
                 .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
                 .eq('id', updated.id)
                 .single()
-              if (data) {
+              // Drop tasks whose episode is archived — they don't belong on the dashboard.
+              if (data && !(data as { episode?: { archived?: boolean } }).episode?.archived) {
                 setReviewTasks(prev => {
                   const exists = prev.find(t => t.id === data.id)
                   if (exists) return prev.map(t => t.id === data.id ? data as unknown as Task & { episode: Episode } : t)
                   return [...prev, data as unknown as Task & { episode: Episode }]
                 })
+              } else if (data) {
+                setReviewTasks(prev => prev.filter(t => t.id !== data.id))
               }
             }
           }
