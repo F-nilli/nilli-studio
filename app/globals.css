@@ -49,13 +49,26 @@ html {
 
 body {
   background-color: #0d0d0d;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 120px 120px;
   color: var(--foreground);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 15px;
+}
+
+/* Wavy grid background — fixed under all content. The SVG filter
+   #wavyGrid (defined in layout.tsx) animates the displacement seed
+   so the grid lines slowly oscillate. The slight negative inset
+   prevents edge artifacts from the displacement filter. */
+.wavy-grid-bg {
+  position: fixed;
+  inset: -32px;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #0d0d0d;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  filter: url(#wavyGrid);
 }
 
 h1 {

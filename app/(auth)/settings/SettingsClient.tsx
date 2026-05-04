@@ -465,7 +465,7 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
       )}
 
       {/* Users table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+      <div className="rounded-xl overflow-hidden bg-[#141414]" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
         <div className="hidden md:grid grid-cols-[1fr_140px_80px_120px] px-4 py-3 border-b" style={{ background: '#1a1a1a', borderColor: 'rgba(255,255,255,0.08)' }}>
           <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Member</span>
           <span className="text-[12px] font-semibold text-[#666] uppercase tracking-[0.08em]">Role</span>

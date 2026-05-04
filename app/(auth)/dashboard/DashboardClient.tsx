@@ -667,7 +667,7 @@ function WorkloadPersonCard({ user, tasks, onTaskClick }: {
   const overdue = tasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at))
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div className="rounded-xl overflow-hidden bg-[#141414]" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
       {/* Person header */}
       <div
         className="flex items-center justify-between px-4 py-2.5"
@@ -759,7 +759,7 @@ function SectionLabel({ label, count }: { label: string; count: number }) {
 function EmptyZone({ message }: { message: string }) {
   return (
     <div
-      className="flex flex-col items-center justify-center py-12 text-center rounded-xl"
+      className="flex flex-col items-center justify-center py-12 text-center rounded-xl bg-[#141414]"
       style={{ border: '1px solid rgba(255,255,255,0.05)' }}
     >
       <Clock className="w-7 h-7 text-[#2a2a2a] mb-2.5" />
