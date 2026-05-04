@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2 } from 'lucide-react'
+import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2, ArrowRight } from 'lucide-react'
 import { usePendingActions } from '@/lib/usePendingActions'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
@@ -294,14 +294,16 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReas
             </div>
           )}
 
-          <div className="space-y-8">
+          <div className="dashboard-scroll-column space-y-8 overflow-y-auto pr-2" style={{ maxHeight: '620px' }}>
             {ACTIVE_STATUSES.map(status => {
               const statusTasks = grouped[status]
               if (!statusTasks || statusTasks.length === 0) return null
               const hasOverdue = statusTasks.some(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at))
               return (
                 <div key={status} id={hasOverdue ? 'overdue-section' : undefined}>
-                  <SectionLabel label={STATUS_LABELS[status]} count={statusTasks.length} />
+                  <div className="sticky top-0 z-[5] -mx-1 px-1 py-1 backdrop-blur-sm" style={{ background: 'rgba(13,13,13,0.85)' }}>
+                    <SectionLabel label={STATUS_LABELS[status]} count={statusTasks.length} />
+                  </div>
                   <div className="space-y-2 mt-3">
                     {statusTasks.map(task => (
                       <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => onTaskClick(task)} onUpdate={onTaskUpdate} onReassignToast={onReassignToast} onPendingAction={onPendingAction} />
@@ -313,7 +315,7 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReas
 
             {lockedTasks.length > 0 && (
               <div>
-                <div className="flex items-center gap-2 mb-3">
+                <div className="sticky top-0 z-[5] -mx-1 px-1 py-1 backdrop-blur-sm flex items-center gap-2 mb-3" style={{ background: 'rgba(13,13,13,0.85)' }}>
                   <h2 className="text-[12px] font-semibold text-[#555] uppercase tracking-[0.08em] flex items-center gap-1.5">
                     <Lock className="w-3 h-3" /> Queued
                   </h2>
@@ -364,12 +366,11 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
       <div className="grid grid-cols-1 min-[900px]:grid-cols-2 items-start" style={{ gap: 0 }}>
         {/* Zone 1: My Tasks */}
         <div
-          className="space-y-4 overflow-y-auto"
+          className="space-y-4"
           style={{
             padding: 24,
             paddingLeft: 0,
             borderRight: '1px solid rgba(255,255,255,0.06)',
-            maxHeight: 'calc(100vh - 200px)',
           }}
         >
           <ZoneHeader title="My Tasks" count={activeTasks.length} />
@@ -382,18 +383,17 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
 
         {/* Zone 2: Review Queue */}
         <div
-          className="space-y-4 overflow-y-auto"
+          className="space-y-4"
           style={{
             padding: 24,
             paddingRight: 0,
-            maxHeight: 'calc(100vh - 200px)',
           }}
         >
           <ZoneHeader title="Review Queue" count={reviewTasks.length} color="purple" />
           {reviewTasks.length === 0 ? (
             <EmptyZone message="No tasks awaiting review" />
           ) : (
-            <div className="space-y-2">
+            <div className="dashboard-scroll-column space-y-2 overflow-y-auto pr-2" style={{ maxHeight: '620px' }}>
               {reviewTasks.map(task => (
                 <ReviewTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} showAssignee />
               ))}
@@ -478,7 +478,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
           {reviewTasks.length === 0 ? (
             <EmptyZone message="No pending approvals" />
           ) : (
-            <div className="space-y-2">
+            <div className="dashboard-scroll-column space-y-2 overflow-y-auto pr-2" style={{ maxHeight: '620px' }}>
               {reviewTasks.map(task => (
                 <ReviewTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} showAssignee />
               ))}
@@ -796,13 +796,15 @@ function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate, onReassign
   )
 
   return (
-    <div className="space-y-6">
+    <div className="dashboard-scroll-column space-y-6 overflow-y-auto pr-2" style={{ maxHeight: '620px' }}>
       {ACTIVE_STATUSES.map(status => {
         const statusTasks = grouped[status]
         if (!statusTasks || statusTasks.length === 0) return null
         return (
           <div key={status}>
-            <SectionLabel label={STATUS_LABELS[status]} count={statusTasks.length} />
+            <div className="sticky top-0 z-[5] -mx-1 px-1 py-1 backdrop-blur-sm" style={{ background: 'rgba(13,13,13,0.85)' }}>
+              <SectionLabel label={STATUS_LABELS[status]} count={statusTasks.length} />
+            </div>
             <div className="space-y-2 mt-3">
               {statusTasks.map(task => (
                 <TaskCard key={task.id} task={task} currentUser={currentUser} onClick={() => onTaskClick(task)} onUpdate={onTaskUpdate} onReassignToast={onReassignToast} onPendingAction={onPendingAction} />
@@ -816,7 +818,7 @@ function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate, onReassign
       )}
       {lockedTasks.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
+          <div className="sticky top-0 z-[5] -mx-1 px-1 py-1 backdrop-blur-sm flex items-center gap-2 mb-3" style={{ background: 'rgba(13,13,13,0.85)' }}>
             <h3 className="text-[12px] font-semibold text-[#555] uppercase tracking-[0.08em] flex items-center gap-1.5">
               <Lock className="w-3 h-3" /> Queued
               <InfoIcon text="These tasks are waiting for other tasks to be completed first. They will unlock automatically once their dependencies are approved." />
@@ -987,13 +989,17 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
           {task.dep_task_ids.length > 0 && (
             <p className="text-[11px] text-[#444] mt-1">Waiting on prior tasks to complete</p>
           )}
-          <Link
-            href={`/episodes/${task.episode_id}`}
-            onClick={e => e.stopPropagation()}
-            className="text-[11px] text-[#444] hover:text-[#888] transition-colors mt-1.5 inline-block"
-          >
-            Go to project →
-          </Link>
+          <div className="mt-2">
+            <Link
+              href={`/episodes/${task.episode_id}`}
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] text-[11px] font-medium text-[#666] hover:text-white transition-colors"
+              title="Open project"
+            >
+              <ArrowRight className="w-3 h-3" />
+              Project
+            </Link>
+          </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex items-center gap-1.5 text-xs text-[#555] bg-[#222] px-2 py-0.5 rounded-full border border-[#2e2e2e]">
@@ -1036,13 +1042,17 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
           <p className="text-[13px] text-[#888] mt-0.5">
             {task.track}{showAssignee && task.assignee ? ` · ${(task.assignee as User).name}` : ''}
           </p>
-          <Link
-            href={`/episodes/${task.episode_id}`}
-            onClick={e => e.stopPropagation()}
-            className="text-[11px] text-[#555] hover:text-[#888] transition-colors mt-1.5 inline-block"
-          >
-            Go to project →
-          </Link>
+          <div className="mt-2">
+            <Link
+              href={`/episodes/${task.episode_id}`}
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] text-[11px] font-medium text-[#888] hover:text-white transition-colors"
+              title="Open project"
+            >
+              <ArrowRight className="w-3 h-3" />
+              Project
+            </Link>
+          </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           {task.due_date && (
@@ -1385,22 +1395,6 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
               Footage →
             </a>
           )}
-          <div className="flex items-center gap-3 mt-1.5">
-            <Link
-              href={`/episodes/${task.episode_id}`}
-              onClick={e => e.stopPropagation()}
-              className="text-[11px] text-[#555] hover:text-[#888] transition-colors"
-            >
-              Go to project →
-            </Link>
-            <button
-              onClick={handleToggleComments}
-              className={cn('flex items-center gap-1 text-[11px] transition-colors', commentsOpen ? 'text-[#f7931a]' : 'text-[#555] hover:text-[#888]')}
-            >
-              <MessageSquare className="w-3 h-3" />
-              {commentCount !== null ? `${commentCount} comment${commentCount !== 1 ? 's' : ''}` : 'Comments'}
-            </button>
-          </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <StatusBadge status={task.status} />
@@ -1436,31 +1430,65 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
           />
         </div>
       )}
-      {canReassign && taskAssignee && !['done', 'approved'].includes(task.status) && (
-        <div className="mt-3 pt-3 border-t border-[#222]" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center gap-2">
-            <Avatar name={taskAssignee.name} color={taskAssignee.avatar_color} size="sm" avatarUrl={taskAssignee.avatar_url} />
-            <span className="text-xs text-[#666]">{taskAssignee.name}</span>
-            <button
-              onClick={() => setReassignOpen(o => !o)}
-              className="text-[11px] text-[#f7931a]/60 hover:text-[#f7931a] hover:underline cursor-pointer transition-colors ml-1"
-            >
-              Reassign
-            </button>
-          </div>
-          {reassignOpen && (
-            <ReassignDropdown
-              task={task}
-              currentUser={currentUser}
-              episode={task.episode}
-              onReassigned={(updated, msg) => {
-                onUpdate(updated)
-                setReassignOpen(false)
-                onReassignToast?.(msg)
-              }}
-              onClose={() => setReassignOpen(false)}
-            />
-          )}
+      {/* Footer: assignee + Reassign on the left, action pills on the right */}
+      <div className="mt-3 pt-3 border-t border-[#222] flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 min-w-0">
+          {canReassign && taskAssignee && !['done', 'approved'].includes(task.status) ? (
+            <>
+              <Avatar name={taskAssignee.name} color={taskAssignee.avatar_color} size="sm" avatarUrl={taskAssignee.avatar_url} />
+              <span className="text-xs text-[#666] truncate">{taskAssignee.name}</span>
+              <button
+                onClick={() => setReassignOpen(o => !o)}
+                className="text-[11px] text-[#f7931a]/60 hover:text-[#f7931a] hover:underline cursor-pointer transition-colors ml-1 shrink-0"
+              >
+                Reassign
+              </button>
+            </>
+          ) : taskAssignee ? (
+            <>
+              <Avatar name={taskAssignee.name} color={taskAssignee.avatar_color} size="sm" avatarUrl={taskAssignee.avatar_url} />
+              <span className="text-xs text-[#666] truncate">{taskAssignee.name}</span>
+            </>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Link
+            href={`/episodes/${task.episode_id}`}
+            onClick={e => e.stopPropagation()}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] text-[11px] font-medium text-[#888] hover:text-white transition-colors"
+            title="Open project"
+          >
+            <ArrowRight className="w-3 h-3" />
+            Project
+          </Link>
+          <button
+            onClick={handleToggleComments}
+            className={cn(
+              'flex items-center gap-1 px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors',
+              commentsOpen
+                ? 'bg-[#f7931a]/15 border-[#f7931a]/40 text-[#f7931a]'
+                : 'bg-[#1a1a1a] hover:bg-[#222] border-[#2a2a2a] text-[#888] hover:text-white'
+            )}
+            title={commentsOpen ? 'Close comments' : 'Show comments'}
+          >
+            <MessageSquare className="w-3 h-3" />
+            {commentCount ?? 0}
+          </button>
+        </div>
+      </div>
+      {reassignOpen && (
+        <div onClick={e => e.stopPropagation()}>
+          <ReassignDropdown
+            task={task}
+            currentUser={currentUser}
+            episode={task.episode}
+            onReassigned={(updated, msg) => {
+              onUpdate(updated)
+              setReassignOpen(false)
+              onReassignToast?.(msg)
+            }}
+            onClose={() => setReassignOpen(false)}
+          />
         </div>
       )}
 

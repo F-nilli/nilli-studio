@@ -71,6 +71,23 @@ body {
   filter: url(#wavyGrid);
 }
 
+/* Dashboard task columns: capped height + thin styled scrollbar so the
+   page doesn't get arbitrarily long when there are many queued tasks. */
+.dashboard-scroll-column {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a2a transparent;
+}
+.dashboard-scroll-column::-webkit-scrollbar {
+  width: 6px;
+}
+.dashboard-scroll-column::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 3px;
+}
+.dashboard-scroll-column::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+
 h1 {
   font-family: 'Inter', sans-serif;
   font-weight: 700;

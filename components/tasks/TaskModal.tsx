@@ -31,6 +31,16 @@ const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
   revision: 'in_review',
 }
 
+interface DepTaskInfo {
+  id: string
+  label: string
+  status: TaskStatus
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_avatar_color: string | null
+  assignee_avatar_url: string | null
+}
+
 export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPendingAction }: Props) {
   const supabase = createClient()
   const [updatingStatus, setUpdatingStatus] = useState(false)
@@ -39,6 +49,8 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
   const [sendBackNote, setSendBackNote] = useState('') // note for send back action (→ assignee)
   // downstream task assignee for approve action
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
+  // dependencies for locked tasks
+  const [depTasks, setDepTasks] = useState<DepTaskInfo[] | null>(null)
 
   const isAssignee = task.assignee_id === currentUser.id
   const isReviewer = task.requires_approval
@@ -109,6 +121,50 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
     compute()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.status])
+
+  // Fetch dep tasks for locked tasks so we can show what's blocking unlock.
+  useEffect(() => {
+    if (task.status !== 'locked' || task.dep_task_ids.length === 0) {
+      setDepTasks(null)
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('tasks')
+      .select('id, label, status, assignee_id, assignee:users!assignee_id(name, avatar_color, avatar_url)')
+      .in('id', task.dep_task_ids)
+      .then(({ data }) => {
+        if (cancelled || !data) return
+        const flat: DepTaskInfo[] = (data as Array<{
+          id: string
+          label: string
+          status: string
+          assignee_id: string | null
+          assignee?: { name: string; avatar_color: string; avatar_url: string | null } | { name: string; avatar_color: string; avatar_url: string | null }[] | null
+        }>).map(d => {
+          const assigneeRaw = Array.isArray(d.assignee) ? d.assignee[0] : d.assignee
+          return {
+            id: d.id,
+            label: d.label,
+            status: d.status as TaskStatus,
+            assignee_id: d.assignee_id,
+            assignee_name: assigneeRaw?.name ?? null,
+            assignee_avatar_color: assigneeRaw?.avatar_color ?? null,
+            assignee_avatar_url: assigneeRaw?.avatar_url ?? null,
+          }
+        })
+        // Incomplete tasks first so the user sees what's still missing.
+        flat.sort((a, b) => {
+          const aDone = a.status === 'done' || a.status === 'approved'
+          const bDone = b.status === 'done' || b.status === 'approved'
+          if (aDone !== bDone) return aDone ? 1 : -1
+          return a.label.localeCompare(b.label)
+        })
+        setDepTasks(flat)
+      })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.status, task.dep_task_ids.join(',')])
 
   async function maybePostSendBackNote() {
     if (!sendBackNote.trim() || !task.assignee || task.assignee_id === currentUser.id) return
@@ -366,9 +422,54 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
             )}
 
             {task.status === 'locked' && (
-              <div className="flex items-center gap-2 text-base text-[#555] bg-[#141414] border border-[#1e1e1e] rounded-lg p-3">
-                <Lock className="w-4 h-4" />
-                <span>Waiting for dependencies to be approved</span>
+              <div className="bg-[#141414] border border-[#1e1e1e] rounded-lg p-3 space-y-2.5">
+                <div className="flex items-center gap-2 text-sm text-[#888]">
+                  <Lock className="w-4 h-4" />
+                  <span>
+                    Waiting on{' '}
+                    {depTasks
+                      ? `${depTasks.filter(d => d.status !== 'done' && d.status !== 'approved').length} of ${depTasks.length} task${depTasks.length === 1 ? '' : 's'}`
+                      : 'dependencies'}
+                  </span>
+                </div>
+                {depTasks && depTasks.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {depTasks.map(d => {
+                      const done = d.status === 'done' || d.status === 'approved'
+                      return (
+                        <li
+                          key={d.id}
+                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-md"
+                          style={{
+                            background: done ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${done ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.06)'}`,
+                          }}
+                        >
+                          {d.assignee_name && (
+                            <Avatar
+                              name={d.assignee_name}
+                              color={d.assignee_avatar_color || '#444'}
+                              avatarUrl={d.assignee_avatar_url}
+                              size="sm"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className={cn('text-sm truncate', done ? 'text-[#666] line-through' : 'text-[#ccc]')}>
+                              {d.label}
+                            </p>
+                            {d.assignee_name && (
+                              <p className="text-[11px] text-[#555] truncate">{d.assignee_name}</p>
+                            )}
+                          </div>
+                          <StatusBadge status={d.status} />
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+                {!depTasks && task.dep_task_ids.length > 0 && (
+                  <p className="text-[12px] text-[#555]">Loading dependencies…</p>
+                )}
               </div>
             )}
           </div>
