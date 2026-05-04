@@ -108,6 +108,40 @@ create trigger trg_unlock_dependent_tasks
   after update on public.tasks
   for each row execute function public.unlock_dependent_tasks();
 
+-- Strip self-references from tasks.dep_task_ids
+-- Defense-in-depth: prevents a task from ever listing itself as its own
+-- dependency, which would create an unbreakable lock.
+create or replace function public.strip_self_dep_task()
+returns trigger as $$
+begin
+  if new.dep_task_ids is not null and new.id = any(new.dep_task_ids) then
+    new.dep_task_ids := array_remove(new.dep_task_ids, new.id);
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_strip_self_dep_task
+  before insert or update of dep_task_ids on public.tasks
+  for each row execute function public.strip_self_dep_task();
+
+-- Strip self-references from task_templates.dep_seq_ids
+-- Same protection at the template layer so newly-spawned episodes can't
+-- inherit a self-referencing dependency.
+create or replace function public.strip_self_dep_template()
+returns trigger as $$
+begin
+  if new.dep_seq_ids is not null and new.seq_id = any(new.dep_seq_ids) then
+    new.dep_seq_ids := array_remove(new.dep_seq_ids, new.seq_id);
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_strip_self_dep_template
+  before insert or update of dep_seq_ids, seq_id on public.task_templates
+  for each row execute function public.strip_self_dep_template();
+
 -- Auto-create user profile on signup
 create or replace function public.handle_new_user()
 returns trigger as $$
