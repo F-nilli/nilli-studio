@@ -55,12 +55,19 @@ function getDownstreamTaskIds(taskId: string, allTasks: Task[]): string[] {
 
 type SupabaseClientType = ReturnType<typeof createClient>
 
-async function checkAndUnlockDependencies(episodeId: string) {
-  await fetch('/api/tasks/unlock-deps', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ episodeId }),
-  })
+async function checkAndUnlockDependencies(episodeId: string): Promise<{ autoArchived: boolean }> {
+  try {
+    const res = await fetch('/api/tasks/unlock-deps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ episodeId }),
+    })
+    if (!res.ok) return { autoArchived: false }
+    const json = await res.json().catch(() => ({}))
+    return { autoArchived: Boolean(json?.autoArchived) }
+  } catch {
+    return { autoArchived: false }
+  }
 }
 
 // ─── Main client ──────────────────────────────────────────────────────────────
@@ -263,6 +270,18 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     return () => { supabase.removeChannel(channel) }
   }, [episode.id])
 
+  // Realtime: episode updates (e.g. auto-archive when all tasks complete)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`episode-${episode.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'episodes', filter: `id=eq.${episode.id}` },
+        (payload) => {
+          if (payload.new?.archived) setDelivered(true)
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [episode.id, supabase])
+
   // Derived task comment counts (live, non-internal only)
   const liveTaskComments = useMemo(() => {
     if (allComments.length === 0) return taskComments
@@ -421,8 +440,6 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     ? format(new Date(`${currentReleaseDate}T${currentReleaseTime.slice(0, 5)}`), 'h:mm a')
     : null
 
-  const allTasksDone = tasks.length > 0 && tasks.every(t => t.status === 'done' || t.status === 'approved')
-
   async function handleDeliver() {
     if (delivering || delivered) return
     setDelivering(true)
@@ -579,7 +596,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {canDeliver && allTasksDone && !delivered && (
+            {canDeliver && !delivered && (
               <button
                 onClick={handleDeliver}
                 disabled={delivering}

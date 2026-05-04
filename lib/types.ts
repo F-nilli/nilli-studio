@@ -61,6 +61,7 @@ export interface Episode {
   restored_at: string | null
   restore_count: number
   delivered_by: string | null
+  auto_completed: boolean
   delivered_task_snapshot: Record<string, { status: string; label: string; assignee_id: string }> | null
   // Joined
   source?: { id: string; guest_name: string; template_name: string | null }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { deliverEpisode } from '@/lib/deliver'
+import { headers } from 'next/headers'
 
 export async function POST(req: NextRequest) {
   const { episodeId } = await req.json()
@@ -54,5 +56,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ unlocked })
+  // Auto-archive: if every task on this episode is now done/approved, mark
+  // the episode delivered automatically. Skips if the episode is already
+  // archived (idempotent inside deliverEpisode).
+  let autoArchived = false
+  if (episode && !episode.archived && allTasks.length > 0) {
+    const allTerminal = allTasks.every(t => t.status === 'done' || t.status === 'approved')
+    if (allTerminal) {
+      const hdrs = await headers()
+      const origin = `${req.nextUrl.protocol}//${hdrs.get('host')}`
+      const result = await deliverEpisode(supabase, {
+        episodeId,
+        deliveredBy: null,
+        origin,
+      })
+      autoArchived = result.ok && !result.alreadyDelivered
+    }
+  }
+
+  return NextResponse.json({ unlocked, autoArchived })
 }

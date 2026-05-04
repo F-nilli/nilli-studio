@@ -194,11 +194,16 @@ export function buildEpisodeDeliveredBlocks({
   clientLabel,
   guestName,
   deliveredByName,
+  autoCompleted,
 }: {
   clientLabel: string
   guestName: string
-  deliveredByName: string
+  deliveredByName?: string | null
+  autoCompleted?: boolean
 }) {
+  const message = autoCompleted
+    ? 'Episode auto-completed — all tasks done'
+    : `Episode marked as delivered by *${deliveredByName ?? 'unknown'}*`
   return [
     {
       type: 'header',
@@ -206,7 +211,7 @@ export function buildEpisodeDeliveredBlocks({
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `Episode marked as delivered by *${deliveredByName}*` },
+      text: { type: 'mrkdwn', text: message },
     },
   ]
 }
