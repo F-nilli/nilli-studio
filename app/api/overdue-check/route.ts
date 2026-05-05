@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { isAfter, startOfDay, parseISO } from 'date-fns'
+import { isAfter, startOfDay } from 'date-fns'
+import { parseDate } from '@/lib/utils'
 
 // This route can be called by a Vercel cron job daily
 // Add to vercel.json: { "crons": [{ "path": "/api/overdue-check", "schedule": "0 9 * * *" }] }
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
 
   for (const task of overdueTasks) {
     if (!task.due_date) continue
-    const dueDate = startOfDay(parseISO(task.due_date))
+    const dueDate = startOfDay(parseDate(task.due_date))
     if (!isAfter(today, dueDate)) continue
 
     const assignee = task.assignee

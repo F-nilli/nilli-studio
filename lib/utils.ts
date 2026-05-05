@@ -50,6 +50,34 @@ export function formatDate(date: string | Date | null): string {
   return hasTime ? format(d, 'MMM d, yyyy · h:mm a') : format(d, 'MMM d, yyyy')
 }
 
+// Returns the browser's current timezone abbreviation (e.g. "EDT", "EEST", "COT").
+// Used by formatDateWithTZ below when baking a date string into Slack/notification
+// content that other people in other timezones will read.
+export function getCurrentTimezoneAbbr(date: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZoneName: 'short',
+    }).formatToParts(date)
+    return parts.find(p => p.type === 'timeZoneName')?.value ?? ''
+  } catch {
+    return ''
+  }
+}
+
+// Same as formatDate but appends the browser's timezone abbreviation when
+// the value has a time component. Use this when the formatted string is going
+// to be persisted (Slack message, notification body) and read by people in
+// other timezones who need to know which zone the time refers to.
+export function formatDateWithTZ(date: string | Date | null): string {
+  if (!date) return '—'
+  const d = typeof date === 'string' ? parseDate(date) : date
+  const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0
+  if (!hasTime) return format(d, 'MMM d, yyyy')
+  const tz = getCurrentTimezoneAbbr(d)
+  const base = format(d, 'MMM d, yyyy · h:mm a')
+  return tz ? `${base} ${tz}` : base
+}
+
 // Convert DB timestamp string to datetime-local input value in the user's LOCAL timezone
 export function toDatetimeLocal(isoString: string | null): string {
   if (!isoString) return ''

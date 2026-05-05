@@ -9,7 +9,7 @@ import { EpisodeImages } from '@/components/episodes/EpisodeImages'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { CommentPanel } from '@/components/tasks/CommentPanel'
-import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils'
+import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, parseDate, getCurrentTimezoneAbbr } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification } from '@/lib/notifications'
@@ -147,7 +147,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       const toUpdate = tasks.filter(t => t.due_date && !['done', 'approved'].includes(t.status))
       const updates = toUpdate.map(t => ({
         id: t.id,
-        due_date: new Date(new Date(t.due_date!).getTime() + deltaMs).toISOString(),
+        due_date: new Date(parseDate(t.due_date!).getTime() + deltaMs).toISOString(),
       }))
       await Promise.all(updates.map(u => supabase.from('tasks').update({ due_date: u.due_date }).eq('id', u.id)))
       setTasks(prev => prev.map(t => {
@@ -160,7 +160,9 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     if (notifyUsers) {
       const assigneeIds = [...new Set(tasks.map(t => t.assignee_id).filter(id => id !== currentUser.id))]
       const newDateFormatted = format(new Date(newDate + 'T00:00:00'), 'MMM d, yyyy')
-      const newTimeFormatted = newTime ? format(new Date(`${newDate}T${newTime}`), 'h:mm a') : null
+      const newTimeFormatted = newTime
+        ? `${format(new Date(`${newDate}T${newTime}`), 'h:mm a')} ${getCurrentTimezoneAbbr()}`.trim()
+        : null
       const body = `Release date for ${episode.guest_name} updated to ${newDateFormatted}${newTimeFormatted ? ` · ${newTimeFormatted}` : ''}`
       await Promise.all(assigneeIds.map(userId =>
         sendNotification(supabase, {
@@ -406,7 +408,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       for (const downId of downstream) {
         const downTask = tasks.find(t => t.id === downId)
         if (downTask?.due_date && downTask.status === 'locked') {
-          const shifted = new Date(new Date(downTask.due_date).getTime() + delta)
+          const shifted = new Date(parseDate(downTask.due_date).getTime() + delta)
           updates.push({ id: downId, due_date: shifted.toISOString() })
         }
       }

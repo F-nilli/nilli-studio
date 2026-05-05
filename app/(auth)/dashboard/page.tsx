@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardClient } from './DashboardClient'
+import { parseDate } from '@/lib/utils'
 import type { User, Task, Episode } from '@/lib/types'
 
 export interface EpisodeProgress {
@@ -82,7 +83,7 @@ export default async function DashboardPage() {
           const done = tasks.filter(t => t.status === 'done' || t.status === 'approved').length
           const overdue = tasks.filter(t => {
             if (['done', 'approved', 'locked'].includes(t.status)) return false
-            if (t.due_date && new Date(t.due_date) < todayMidnight) return true
+            if (t.due_date && parseDate(t.due_date) < todayMidnight) return true
             if (t.status === 'in_review' && t.requires_approval && t.review_started_at) {
               return Date.now() - new Date(t.review_started_at).getTime() >= 12 * 60 * 60 * 1000
             }

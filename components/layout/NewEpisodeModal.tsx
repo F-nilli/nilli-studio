@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Client, DbTaskTemplate, Track } from '@/lib/types'
-import { cn, fromDatetimeLocal, roundToHour } from '@/lib/utils'
+import { cn, fromDatetimeLocal, roundToHour, getCurrentTimezoneAbbr } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
@@ -362,7 +362,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       ? new Date(releaseDate.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : ''
     const releaseTimeFormatted = releaseDate.length >= 13
-      ? new Date(releaseDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      ? `${new Date(releaseDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} ${getCurrentTimezoneAbbr()}`.trim()
       : null
     fetch('/api/slack/notify', {
       method: 'POST',

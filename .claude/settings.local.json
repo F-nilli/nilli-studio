@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "Bash(find:*)",
+      "Bash(git log:*)",
+      "Bash(grep:*)",
+      "Bash(ls -ltr /Users/francis/Sites/nilli-studio/supabase/*.sql)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(npm run *)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

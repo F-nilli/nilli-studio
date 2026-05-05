@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { startOfDay, parseISO, isAfter, isSameDay } from 'date-fns'
+import { startOfDay, isAfter, isSameDay } from 'date-fns'
 import { sendPushToUser } from '@/lib/push'
+import { parseDate } from '@/lib/utils'
 
 // Vercel cron: runs daily at 9 AM UTC
 // vercel.json: { "path": "/api/task-notifications-check", "schedule": "0 9 * * *" }
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
 
   for (const task of tasks) {
     if (!task.due_date || !task.assignee) continue
-    const dueDate = startOfDay(parseISO(task.due_date))
+    const dueDate = startOfDay(parseDate(task.due_date))
     const isDueToday = isSameDay(dueDate, today)
     const isPastDue = isAfter(today, dueDate)
 
