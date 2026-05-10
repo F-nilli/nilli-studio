@@ -10,6 +10,7 @@ import { Task, Episode, User, TaskStatus } from '@/lib/types'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS, parseDate } from '@/lib/utils'
+import { markTaskNotificationsRead } from '@/lib/notifications'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
@@ -1334,6 +1335,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       if (!data) return
 
       onUpdate(data as unknown as Task)
+      markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: originalTask.id, episode_id: originalTask.episode_id, from_status: originalTask.status, to_status: nextStatus, changed_by: currentUser.id }).then(() => {})
 
       // Trigger downstream unlock + auto-archive cascade. Pass silent through

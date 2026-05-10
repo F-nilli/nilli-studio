@@ -43,6 +43,13 @@ export function NotificationDrawer({ user, onClose }: Props) {
         event: 'INSERT', schema: 'public', table: 'notifications',
         filter: `user_id=eq.${user.id}`,
       }, () => fetchNotifications())
+      // UPDATE fires when notifications are auto-marked as read (e.g. after
+      // the user takes action on the related task). Re-fetch so the drawer
+      // reflects the cleared status without requiring a manual refresh.
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'notifications',
+        filter: `user_id=eq.${user.id}`,
+      }, () => fetchNotifications())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [user.id])

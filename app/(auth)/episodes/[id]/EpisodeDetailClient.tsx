@@ -12,7 +12,7 @@ import { CommentPanel } from '@/components/tasks/CommentPanel'
 import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, parseDate, getCurrentTimezoneAbbr } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { TRACK_COLORS } from '@/lib/constants'
-import { sendNotification } from '@/lib/notifications'
+import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
 import { usePendingActions } from '@/lib/usePendingActions'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { format, parseISO, startOfToday, differenceInDays } from 'date-fns'
@@ -1088,6 +1088,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       const { data } = await supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single()
       if (data) {
         onTaskUpdate(data as unknown as Task)
+        markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
         supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
         // Pass silent through so any auto-archive triggered by this status
         // change also stays silent.
@@ -1132,6 +1133,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       const { data } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', capturedTask.id).select('*').single()
       if (data) {
         onTaskUpdate(data as unknown as Task)
+        markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
         supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: 'approved', changed_by: currentUser.id }).then(() => {})
         checkAndUnlockDependencies(capturedTask.episode_id, silent).catch(console.error)
         if (!silent && capturedTask.assignee_id !== currentUser.id) {
@@ -1197,6 +1199,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
 
       if (data) {
         onTaskUpdate(data as unknown as Task)
+        markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
         supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: 'revision', changed_by: currentUser.id }).then(() => {})
         if (!silent) {
           const { data: assignee } = await supabase.from('users').select('*').eq('id', capturedTask.assignee_id).single()

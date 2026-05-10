@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { sendNotification } from '@/lib/notifications'
+import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
 import { Spinner } from '@/components/ui/Spinner'
 
 interface Props {
@@ -240,6 +240,8 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single()
       if (error || !data) { onUpdate(originalTask); return }
 
+      // Auto-clear my own action-required notifications for this task.
+      markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
       onUpdate(data as unknown as Task)
 
@@ -287,6 +289,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       const { data, error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id).select('*').single()
       if (error || !data) { onUpdate(originalTask); return }
 
+      markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: 'approved', changed_by: currentUser.id }).then(() => {})
 
       await checkAndUnlockDependencies(task.episode_id, silent)
@@ -335,6 +338,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       const { data, error } = await supabase.from('tasks').update({ status: 'revision' }).eq('id', task.id).select('*').single()
       if (error || !data) { onUpdate(originalTask); return }
 
+      markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: 'revision', changed_by: currentUser.id }).then(() => {})
       if (!silent) {
         const { data: assignee } = await supabase.from('users').select('*').eq('id', task.assignee_id).single()

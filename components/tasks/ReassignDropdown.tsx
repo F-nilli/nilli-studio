@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Avatar } from '@/components/ui/Avatar'
 import { Spinner } from '@/components/ui/Spinner'
 import { cn } from '@/lib/utils'
-import { sendNotification } from '@/lib/notifications'
+import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
 import type { Task, User, Episode } from '@/lib/types'
 
 interface Props {
@@ -77,6 +77,16 @@ export function ReassignDropdown({ task, currentUser, episode, onReassigned, onC
       changed_by: currentUser.id,
       note: `Reassigned from ${oldAssignee?.name ?? '—'} to ${newAssignee.name}`,
     }).then(() => {})
+
+    // Clear stale action-required notifications for the previous assignee —
+    // they handed off the task, so they don't need to act on it anymore.
+    if (oldAssignee?.id) {
+      markTaskNotificationsRead(supabase, oldAssignee.id, task.id).catch(() => {})
+    }
+    // Also clear for the user doing the reassign (if different) — same logic.
+    if (currentUser.id !== oldAssignee?.id) {
+      markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
+    }
 
     if (ACTIVE_STATUSES.includes(task.status)) {
       // Notify new assignee

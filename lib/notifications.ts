@@ -74,3 +74,44 @@ export async function sendNotifications(
     await sendNotification(supabase, payload)
   }
 }
+
+// Notification types that represent an action the user is being asked to take
+// on a task. When the user actually takes that action (status change or
+// reassign), these become stale and should auto-mark as read.
+//
+// FYI types (task_approved, task_comment_mention, release_date_changed,
+// task_deadline_changed, episode_delivered) are NOT included — those stay
+// unread until the user manually clears them.
+const ACTION_REQUIRED_NOTIFICATION_TYPES: NotificationType[] = [
+  'task_unlocked',
+  'task_submitted_review',
+  'task_revision',
+  'task_overdue',
+  'task_deadline_reminder',
+]
+
+/**
+ * Mark the current user's unread "action-required" notifications for a
+ * specific task as read. Called when the user takes a status-changing
+ * action on the task (or reassigns it), so they don't have to manually
+ * dismiss the notification afterwards.
+ *
+ * Fire-and-forget — failure here shouldn't block the user's action.
+ */
+export async function markTaskNotificationsRead(
+  supabase: ReturnType<typeof import('./supabase/client').createClient>,
+  userId: string,
+  taskId: string
+) {
+  try {
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', userId)
+      .eq('task_id', taskId)
+      .eq('read', false)
+      .in('type', ACTION_REQUIRED_NOTIFICATION_TYPES)
+  } catch (err) {
+    console.error('[markTaskNotificationsRead]', err)
+  }
+}
