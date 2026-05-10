@@ -26,13 +26,20 @@ export default async function DashboardPage() {
 
   // Run all independent queries in parallel
   const [myTasksData, reviewData, epData] = await Promise.all([
-    // My tasks (all roles)
+    // My tasks (all roles).
+    //
+    // Once a task is `in_review`, the assignee can't act on it — it's waiting
+    // on the approver. We hide it from "my tasks" UNLESS the current user is
+    // also the approver (rare self-review case), in which case they'd want to
+    // see it. When the approver sends it back to `revision`, it'll reappear
+    // here automatically because revision isn't excluded.
     supabase
       .from('tasks')
       .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
       .eq('assignee_id', user.id)
       .neq('status', 'done')
       .neq('status', 'approved')
+      .or(`status.neq.in_review,approver_id.eq.${user.id}`)
       .order('due_date', { ascending: true, nullsFirst: false }),
 
     // Review tasks (ops_manager + admin)

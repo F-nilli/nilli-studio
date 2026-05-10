@@ -62,7 +62,14 @@ export function DashboardClient({
         { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `assignee_id=eq.${currentUser.id}` },
         async (payload) => {
           const updated = payload.new as Task
-          if (updated.status === 'done' || updated.status === 'approved') {
+          // Drop the task from "my tasks" once it leaves my hands:
+          // - done/approved → finished, nothing to do
+          // - in_review with someone else as approver → waiting on them, not me
+          const handedOff =
+            updated.status === 'in_review' &&
+            updated.approver_id !== null &&
+            updated.approver_id !== currentUser.id
+          if (updated.status === 'done' || updated.status === 'approved' || handedOff) {
             setTasks(prev => prev.filter(t => t.id !== updated.id))
           } else {
             const { data } = await supabase
@@ -153,7 +160,14 @@ export function DashboardClient({
   }, [currentUser.id, currentUser.role])
 
   function handleTaskUpdate(updated: Task) {
-    if (updated.status === 'done' || updated.status === 'approved') {
+    // Same hand-off logic as the realtime subscription — drop the task from
+    // "my tasks" the instant it leaves my hands (submitted for review where
+    // someone else is the approver, or finished).
+    const handedOff =
+      updated.status === 'in_review' &&
+      updated.approver_id !== null &&
+      updated.approver_id !== currentUser.id
+    if (updated.status === 'done' || updated.status === 'approved' || handedOff) {
       setTasks(prev => prev.filter(t => t.id !== updated.id))
     } else {
       setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t))
