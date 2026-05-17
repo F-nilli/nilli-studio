@@ -339,7 +339,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
             )}
 
             <div>
-              <label className="block text-base font-medium text-[#ccc] mb-1.5">Guest Name</label>
+              <label className="block text-base font-medium text-[#ccc] mb-1.5">Project Name</label>
               <input
                 type="text" value={guestName} onChange={e => setGuestName(e.target.value)} required
                 placeholder="e.g. Elon Musk"

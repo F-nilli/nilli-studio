@@ -455,9 +455,9 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                   </div>
                 </div>
 
-                {/* Guest Name */}
+                {/* Project Name */}
                 <div>
-                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Guest Name</label>
+                  <label className="block text-[13px] font-medium text-[#ccc] mb-1.5">Project Name</label>
                   <input type="text" value={guestName} onChange={e => setGuestName(e.target.value)} required
                     placeholder="e.g. Elon Musk"
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#555]" style={inputStyle} />

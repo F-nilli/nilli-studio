@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { cn, isOverdue, formatDate } from '@/lib/utils'
 import { differenceInDays, differenceInHours, format, startOfToday } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
+import { NewEpisodeModal } from '@/components/layout/NewEpisodeModal'
 
 interface Props {
   currentUser: User
@@ -155,6 +156,7 @@ function CompletionCircle({ filling, filled }: { filling: boolean; filled: boole
 
 export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedEpisodes: initialPublished, memberFilterId }: Props) {
   const [filter, setFilter] = useState<'all' | 'active' | 'overdue' | 'archive'>('all')
+  const [showNewEpisodeModal, setShowNewEpisodeModal] = useState(false)
   const [published, setPublished] = useState<Episode[]>(initialPublished)
   const [liveEpisodes, setLiveEpisodes] = useState<Episode[]>(episodes)
   const [liveTasks, setLiveTasks] = useState<Task[]>(tasks)
@@ -426,13 +428,13 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
           <p className="text-[#888] text-[15px] mt-1">{liveEpisodes.length} episode{liveEpisodes.length !== 1 ? 's' : ''}</p>
         </div>
         {canCreateProject(currentUser) && (
-          <Link
-            href="/episodes/new"
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
+          <button
+            onClick={() => setShowNewEpisodeModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors cursor-pointer"
           >
             <Plus className="w-5 h-5" />
             New Project
-          </Link>
+          </button>
         )}
       </div>
 
@@ -771,13 +773,13 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
               : 'Hit "+ New Project" to kick off your next production'}
           </p>
           {filter === 'all' && canCreateProject(currentUser) && (
-            <Link
-              href="/episodes/new"
-              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors"
+            <button
+              onClick={() => setShowNewEpisodeModal(true)}
+              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 bg-[#ff3c00] hover:bg-[#e63600] text-white rounded-lg text-base font-semibold transition-colors cursor-pointer"
             >
               <Plus className="w-5 h-5" />
               New Project
-            </Link>
+            </button>
           )}
         </div>
       )}
@@ -797,6 +799,17 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
             Undo
           </button>
         </div>
+      )}
+
+      {showNewEpisodeModal && (
+        <NewEpisodeModal
+          currentUser={currentUser}
+          onClose={() => setShowNewEpisodeModal(false)}
+          onSuccess={(episode) => {
+            setShowNewEpisodeModal(false)
+            router.push(`/episodes/${episode.id}`)
+          }}
+        />
       )}
     </div>
   )
