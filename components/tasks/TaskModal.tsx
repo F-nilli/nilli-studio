@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Task, User, TaskStatus, Episode } from '@/lib/types'
-import { StatusBadge } from '@/components/ui/Badge'
+import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
@@ -246,8 +246,10 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       onUpdate(data as unknown as Task)
 
       if (!silent && resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
-        sendNotification(supabase, { userId: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}" for review`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
-        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }) }).catch(() => {})
+        const nextVersion = (task.submission_count ?? 0) + 1
+        const versionTag = nextVersion > 0 ? ` (v${nextVersion})` : ''
+        sendNotification(supabase, { userId: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}"${versionTag} for review`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
+        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name, version: nextVersion }) }).catch(() => {})
       }
 
       await checkAndUnlockDependencies(task.episode_id, silent)
@@ -372,6 +374,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                 <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: trackColor }} />
                 <span className="text-sm font-medium text-[#888]">{task.track}</span>
                 <StatusBadge status={task.status} />
+                <VersionBadge version={task.submission_count} />
                 {overdue && (
                   <span className="flex items-center gap-1 text-sm text-[#ff3c00]">
                     <AlertCircle className="w-3 h-3" />Overdue

@@ -27,3 +27,34 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     </span>
   )
 }
+
+interface VersionBadgeProps {
+  version: number
+  className?: string
+}
+
+/**
+ * Renders v1, v2, v3 ... for a task. v1 is muted (first submit, nothing
+ * remarkable); v2+ is more prominent because it signals the task has been
+ * through at least one revision cycle.
+ *
+ * Renders nothing when version is 0 (never submitted).
+ */
+export function VersionBadge({ version, className }: VersionBadgeProps) {
+  if (!version || version < 1) return null
+  const isRevised = version >= 2
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums',
+        isRevised
+          ? 'bg-[#f7931a]/15 text-[#f7931a] border border-[#f7931a]/30'
+          : 'bg-white/[0.04] text-[#666] border border-white/[0.06]',
+        className,
+      )}
+      title={isRevised ? `Submission #${version}` : 'First submission'}
+    >
+      v{version}
+    </span>
+  )
+}

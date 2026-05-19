@@ -123,12 +123,15 @@ export function buildReviewSubmittedBlocks({
   guestName,
   taskLabel,
   assigneeName,
+  version,
 }: {
   clientLabel: string
   guestName: string
   taskLabel: string
   assigneeName: string
+  version?: number
 }) {
+  const versionTag = version && version > 0 ? ` (v${version})` : ''
   return [
     {
       type: 'header',
@@ -136,7 +139,7 @@ export function buildReviewSubmittedBlocks({
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `*${assigneeName}* submitted *${taskLabel}* for review` },
+      text: { type: 'mrkdwn', text: `*${assigneeName}* submitted *${taskLabel}*${versionTag} for review` },
     },
   ]
 }

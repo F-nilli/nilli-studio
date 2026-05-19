@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody, fromName, toName, newDate, newTime, deliveredByName, approverName } = body
+  const { type, episodeId, completedTaskLabel, nextTasks, taskLabel, assigneeName, dueDate, authorName, commentBody, fromName, toName, newDate, newTime, deliveredByName, approverName, version } = body
 
   const admin = createAdminClient()
 
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   } else if (type === 'revision') {
     blocks = buildRevisionBlocks({ clientLabel, guestName, taskLabel, assigneeName, dueDate })
   } else if (type === 'review_submitted') {
-    blocks = buildReviewSubmittedBlocks({ clientLabel, guestName, taskLabel, assigneeName })
+    blocks = buildReviewSubmittedBlocks({ clientLabel, guestName, taskLabel, assigneeName, version })
   } else if (type === 'comment') {
     blocks = buildCommentBlocks({ clientLabel, guestName, taskLabel, authorName, body: commentBody })
   } else if (type === 'reassign') {

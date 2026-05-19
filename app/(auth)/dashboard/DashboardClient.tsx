@@ -7,7 +7,7 @@ import { usePendingActions } from '@/lib/usePendingActions'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
-import { StatusBadge } from '@/components/ui/Badge'
+import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS, parseDate } from '@/lib/utils'
 import { markTaskNotificationsRead } from '@/lib/notifications'
@@ -734,6 +734,7 @@ function WorkloadTaskRow({ task, onTaskClick }: {
         {task.episode?.guest_name}
         {task.episode?.client_label ? ` · ${task.episode.client_label}` : ''}
       </span>
+      <VersionBadge version={task.submission_count} />
       <StatusBadge status={task.status as TaskStatus} />
       <span className={cn('text-xs shrink-0 tabular-nums', late ? 'text-[#ff3c00] font-medium' : 'text-[#555]')}>
         {formatDate(task.due_date)}
@@ -892,7 +893,10 @@ function AtRiskTaskRow({ task, onClick }: { task: Task & { episode: Episode }; o
         {hoursInReview !== null && hoursInReview > 0 && daysOverdue === null && (
           <span className="text-[11px] font-bold text-purple-400">{hoursInReview}h in review</span>
         )}
-        <StatusBadge status={task.status} />
+        <div className="flex items-center gap-1.5">
+          <VersionBadge version={task.submission_count} />
+          <StatusBadge status={task.status} />
+        </div>
       </div>
     </button>
   )
@@ -1053,7 +1057,10 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
               {task.episode?.guest_name} · {task.episode?.client_label}
             </span>
           </div>
-          <p className="text-[15px] font-medium text-white">{task.label}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[15px] font-medium text-white">{task.label}</p>
+            <VersionBadge version={task.submission_count} />
+          </div>
           <p className="text-[13px] text-[#888] mt-0.5">
             {task.track}{showAssignee && task.assignee ? ` · ${(task.assignee as User).name}` : ''}
           </p>
@@ -1362,8 +1369,10 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         fetch('/api/episodes/check-triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }) }).catch(() => {})
       }
       if (!silent && nextStatus === 'in_review' && task.requires_approval && task.approver_id && task.approver_id !== currentUser.id) {
-        supabase.from('notifications').insert({ user_id: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}" for review`, task_id: task.id, episode_id: task.episode_id, read: false }).then(() => {})
-        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }) }).catch(() => {})
+        const nextVersion = (task.submission_count ?? 0) + 1
+        const versionTag = nextVersion > 0 ? ` (v${nextVersion})` : ''
+        supabase.from('notifications').insert({ user_id: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}"${versionTag} for review`, task_id: task.id, episode_id: task.episode_id, read: false }).then(() => {})
+        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name, version: nextVersion }) }).catch(() => {})
       }
     }
 
@@ -1413,7 +1422,10 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
           )}
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <StatusBadge status={task.status} />
+          <div className="flex items-center gap-1.5">
+            <VersionBadge version={task.submission_count} />
+            <StatusBadge status={task.status} />
+          </div>
           {task.due_date && (
             <div className={cn('flex items-center gap-1 text-sm', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
               {overdue && <AlertCircle className="w-3 h-3" />}

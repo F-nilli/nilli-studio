@@ -91,6 +91,7 @@ export interface Task {
   requires_approval: boolean
   approver_id: string | null
   review_started_at: string | null
+  submission_count: number
   created_at: string
   updated_at: string
   // Joined

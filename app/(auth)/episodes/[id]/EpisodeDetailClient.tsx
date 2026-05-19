@@ -6,7 +6,7 @@ import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, X, MessageSq
 import { createClient } from '@/lib/supabase/client'
 import { Episode, Task, User, Track, Comment, TaskStatus, canEditDates as canEditDatesRole, canApprove, canManageClients } from '@/lib/types'
 import { EpisodeImages } from '@/components/episodes/EpisodeImages'
-import { StatusBadge } from '@/components/ui/Badge'
+import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { CommentPanel } from '@/components/tasks/CommentPanel'
 import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, parseDate, getCurrentTimezoneAbbr } from '@/lib/utils'
@@ -1069,19 +1069,21 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       }
 
       if (!silent && resolvedStatus === 'in_review' && capturedTask.requires_approval) {
+        const nextVersion = (capturedTask.submission_count ?? 0) + 1
+        const versionTag = nextVersion > 0 ? ` (v${nextVersion})` : ''
         if (capturedTask.approver_id && capturedTask.approver_id !== currentUser.id) {
           await sendNotification(supabase, {
             userId: capturedTask.approver_id,
             type: 'task_submitted_review',
             title: 'Task submitted for review',
-            body: `${currentUser.name} submitted "${capturedTask.label}" for review`,
+            body: `${currentUser.name} submitted "${capturedTask.label}"${versionTag} for review`,
             taskId: capturedTask.id,
             episodeId: capturedTask.episode_id,
           })
         }
         fetch('/api/slack/notify', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'review_submitted', episodeId: capturedTask.episode_id, taskLabel: capturedTask.label, assigneeName: currentUser.name }),
+          body: JSON.stringify({ type: 'review_submitted', episodeId: capturedTask.episode_id, taskLabel: capturedTask.label, assigneeName: currentUser.name, version: nextVersion }),
         }).catch(err => console.error('[Slack]', err))
       }
 
@@ -1262,6 +1264,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             ? <Lock className="w-3 h-3 text-[#555] shrink-0" />
             : <StatusBadge status={task.status} />
           }
+          {!isLocked && <VersionBadge version={task.submission_count} />}
           <span className={cn(
             'text-[15px] truncate flex-1 leading-snug',
             isLocked ? 'text-white/35 font-normal' : overdue ? 'text-white font-medium' : 'text-white/90 font-medium'
