@@ -3,20 +3,11 @@
 -- submit, v2 after one revision, v3 after two, etc. Never resets.
 
 -- 1. Add the column. Default 0 means "never submitted".
+-- We intentionally do NOT backfill from task_history — version tracking
+-- starts fresh from the next submission going forward.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submission_count int NOT NULL DEFAULT 0;
 
--- 2. Backfill from task_history: each transition into 'in_review' counts
--- as one submission. Tasks resubmitted multiple times will reflect their
--- real version number after this runs.
-UPDATE tasks t
-SET submission_count = (
-  SELECT COUNT(*)
-  FROM task_history th
-  WHERE th.task_id = t.id
-    AND th.to_status = 'in_review'
-);
-
--- 3. Trigger keeps the column in sync going forward, regardless of which
+-- 2. Trigger keeps the column in sync going forward, regardless of which
 -- code path updates a task. Fires on every UPDATE of status; only does
 -- anything when status is moving TO in_review from a different status.
 CREATE OR REPLACE FUNCTION public.bump_submission_count()
