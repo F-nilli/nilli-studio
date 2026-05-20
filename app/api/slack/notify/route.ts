@@ -35,12 +35,24 @@ export async function POST(request: Request) {
     .single()
   if (!episode) return NextResponse.json({ skipped: 'no_episode' })
 
-  const { data: client } = await admin
+  // Use limit(1) instead of .single() to avoid silent failures when there are
+  // duplicate rows for the same key (e.g. an inactive legacy record alongside
+  // the active one — .single() returns null for 2+ rows with no error logged).
+  const { data: clientRows, error: clientError } = await admin
     .from('clients')
     .select('slack_channel_id')
     .eq('key', episode.client_key)
-    .single()
-  if (!client?.slack_channel_id) return NextResponse.json({ skipped: 'no_channel' })
+    .eq('active', true)
+    .limit(1)
+  if (clientError) {
+    console.error('[Slack notify] client lookup error:', JSON.stringify(clientError), { client_key: episode.client_key })
+    return NextResponse.json({ skipped: 'client_error' })
+  }
+  const client = clientRows?.[0] ?? null
+  if (!client?.slack_channel_id) {
+    console.warn('[Slack notify] no channel for client_key:', episode.client_key, '— rows found:', clientRows?.length ?? 0)
+    return NextResponse.json({ skipped: 'no_channel' })
+  }
 
   const clientLabel = episode.client_label
   const guestName = episode.guest_name
