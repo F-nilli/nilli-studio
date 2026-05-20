@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, X, MessageSquare, CornerDownLeft } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, X, MessageSquare, CornerDownLeft, Link as LinkIcon, Paperclip, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Episode, Task, User, Track, Comment, TaskStatus, canEditDates as canEditDatesRole, canApprove, canManageClients } from '@/lib/types'
 import { EpisodeImages } from '@/components/episodes/EpisodeImages'
@@ -702,6 +702,32 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
 
 // ─── Notes ────────────────────────────────────────────────────────────────────
 
+const NOTES_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf'
+const NOTES_MAX_MB = 10
+
+// Renders notes body: markdown [text](url), bare URLs, newlines
+function renderNotesBody(text: string): React.ReactNode {
+  const regex = /(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(https?:\/\/[^\s<>"]+)/g
+  const lines = text.split('\n')
+  return lines.map((line, li) => {
+    const parts: React.ReactNode[] = []
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+    regex.lastIndex = 0
+    while ((match = regex.exec(line)) !== null) {
+      if (match.index > lastIndex) parts.push(<span key={`t${li}-${lastIndex}`}>{line.slice(lastIndex, match.index)}</span>)
+      if (match[1]) {
+        parts.push(<a key={`ml${li}-${match.index}`} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-[#f7931a] underline underline-offset-2 hover:text-[#e07d10] transition-colors">{match[2]}</a>)
+      } else if (match[4]) {
+        parts.push(<a key={`u${li}-${match.index}`} href={match[4]} target="_blank" rel="noopener noreferrer" className="text-[#f7931a] underline underline-offset-2 hover:text-[#e07d10] transition-colors break-all">{match[4]}</a>)
+      }
+      lastIndex = match.index + match[0].length
+    }
+    if (lastIndex < line.length) parts.push(<span key={`t${li}-end`}>{line.slice(lastIndex)}</span>)
+    return <span key={`line-${li}`}>{parts.length > 0 ? parts : line}{li < lines.length - 1 ? '\n' : ''}</span>
+  })
+}
+
 function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId }: {
   episodeId: string
   initialNotes: string | null
@@ -716,18 +742,89 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  // Link toolbar
+  const [toolbarVisible, setToolbarVisible] = useState(false)
+  const [showLinkInput, setShowLinkInput] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [savedSel, setSavedSel] = useState<{ start: number; end: number } | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const linkInputRef = useRef<HTMLInputElement>(null)
+
+  // File attachments
+  const [attachFiles, setAttachFiles] = useState<File[]>([])
+  const [attachWarning, setAttachWarning] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const isEmpty = !notes.trim()
   const lines = notes.split('\n')
-  const isLong = lines.length > 2 || notes.length > 160
-  const preview = isLong && !expanded ? lines.slice(0, 2).join('\n') : notes
+  const isLong = lines.length > 3 || notes.length > 200
+  const preview = isLong && !expanded ? lines.slice(0, 3).join('\n') : notes
 
   async function handleSave() {
     setSaving(true)
+    // Upload any pending files to episode-references
+    if (attachFiles.length > 0) {
+      setUploading(true)
+      for (const file of attachFiles) {
+        const path = `${episodeId}/${Date.now()}-${file.name.replace(/\s+/g, '_')}`
+        const { error } = await supabase.storage.from('episode-references').upload(path, file)
+        if (error) continue
+        const { data: urlData } = supabase.storage.from('episode-references').getPublicUrl(path)
+        await supabase.from('episode_images').insert({
+          episode_id: episodeId,
+          url: urlData.publicUrl,
+          filename: file.name,
+          uploaded_by: currentUserId,
+        })
+      }
+      setUploading(false)
+      setAttachFiles([])
+    }
     await supabase.from('episodes').update({ notes: notes || null }).eq('id', episodeId)
     setSaving(false)
     setSaved(true)
     setEditing(false)
     setTimeout(() => setSaved(false), 2500)
+  }
+
+  function onLinkMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    const ta = textareaRef.current
+    if (!ta) return
+    setSavedSel({ start: ta.selectionStart, end: ta.selectionEnd })
+    setShowLinkInput(true)
+    setTimeout(() => linkInputRef.current?.focus(), 30)
+  }
+
+  function handleLinkInsert() {
+    const ta = textareaRef.current
+    if (!ta) return
+    let url = linkUrl.trim()
+    if (!url) { setShowLinkInput(false); setLinkUrl(''); return }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+    const sel = savedSel ?? { start: ta.selectionStart, end: ta.selectionEnd }
+    const selectedText = notes.slice(sel.start, sel.end)
+    const linkMd = selectedText ? `[${selectedText}](${url})` : url
+    const newNotes = notes.slice(0, sel.start) + linkMd + notes.slice(sel.end)
+    setNotes(newNotes)
+    setShowLinkInput(false)
+    setLinkUrl('')
+    setSavedSel(null)
+    setTimeout(() => {
+      ta.focus()
+      const cursor = sel.start + linkMd.length
+      ta.setSelectionRange(cursor, cursor)
+    }, 30)
+  }
+
+  function addAttachFiles(files: File[]) {
+    const typed = files.filter(f => NOTES_ACCEPT.split(',').includes(f.type))
+    const valid = typed.filter(f => f.size <= NOTES_MAX_MB * 1024 * 1024)
+    const tooBig = typed.filter(f => f.size > NOTES_MAX_MB * 1024 * 1024)
+    if (typed.length < files.length) { setAttachWarning('Only JPG, PNG, WebP and PDF supported'); setTimeout(() => setAttachWarning(''), 4000) }
+    else if (tooBig.length) { setAttachWarning(`File too large (max ${NOTES_MAX_MB}MB)`); setTimeout(() => setAttachWarning(''), 4000) }
+    if (valid.length) setAttachFiles(prev => [...prev, ...valid])
   }
 
   if (isEmpty && !editing) {
@@ -757,38 +854,143 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
       </div>
 
       {editing && canEdit ? (
-        <div className="space-y-2">
+        <div
+          className="space-y-2"
+          onFocus={() => setToolbarVisible(true)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setToolbarVisible(false)
+              setShowLinkInput(false)
+              setLinkUrl('')
+              setSavedSel(null)
+            }
+          }}
+        >
+          {/* Link toolbar */}
+          {toolbarVisible && (
+            <div className="flex items-center gap-1 h-7">
+              {showLinkInput ? (
+                <div className="flex items-center gap-1.5 w-full">
+                  <input
+                    ref={linkInputRef}
+                    type="url"
+                    value={linkUrl}
+                    onChange={e => setLinkUrl(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleLinkInsert() }
+                      if (e.key === 'Escape') { setShowLinkInput(false); setLinkUrl(''); setSavedSel(null); textareaRef.current?.focus() }
+                    }}
+                    placeholder="https://…"
+                    className="flex-1 px-2.5 py-1 rounded-md text-[13px] text-white placeholder-[#555] focus:outline-none"
+                    style={{ background: '#232323', border: '1px solid rgba(247,147,26,0.35)' }}
+                  />
+                  <button
+                    onMouseDown={e => { e.preventDefault(); handleLinkInsert() }}
+                    className="px-2.5 py-1 rounded-md text-[12px] font-semibold text-white"
+                    style={{ background: '#f7931a' }}
+                  >
+                    Add
+                  </button>
+                  <button
+                    onMouseDown={e => { e.preventDefault(); setShowLinkInput(false); setLinkUrl(''); setSavedSel(null) }}
+                    className="p-1 text-[#555] hover:text-white transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onMouseDown={onLinkMouseDown}
+                  title="Insert link — select text first to hyperlink it"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] text-[#555] hover:text-[#aaa] hover:bg-[#222] transition-colors"
+                >
+                  <LinkIcon className="w-3.5 h-3.5" />
+                  <span>Link</span>
+                </button>
+              )}
+            </div>
+          )}
+
           <textarea
+            ref={textareaRef}
             value={notes}
             onChange={e => setNotes(e.target.value)}
             autoFocus
             placeholder="Add notes for the team..."
             rows={4}
             className="w-full rounded-lg px-3 py-2 resize-none focus:outline-none placeholder-[#444]"
-            style={{ fontSize: 15, fontWeight: 400, lineHeight: 1.7, color: 'rgba(255,255,255,0.85)', background: '#2a2a2a', border: '1px solid rgba(255,255,255,0.12)', outline: 'none' }}
+            style={{ fontSize: 15, fontWeight: 400, lineHeight: 1.7, color: 'rgba(255,255,255,0.85)', background: '#2a2a2a', border: '1px solid rgba(255,255,255,0.12)' }}
             onFocus={e => { e.currentTarget.style.borderColor = 'rgba(247,147,26,0.6)' }}
             onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
           />
-          <div className="flex items-center gap-2 justify-end">
+
+          {/* Attachment warning */}
+          {attachWarning && <p className="text-[11px] text-amber-400">{attachWarning}</p>}
+
+          {/* Pending attachment chips */}
+          {attachFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {attachFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px]" style={{ background: '#222', border: '1px solid rgba(255,255,255,0.1)', color: '#888' }}>
+                  {file.type.startsWith('image/') ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={URL.createObjectURL(file)} alt={file.name} className="w-4 h-4 rounded object-cover" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: '#ff3c00' }} />
+                  )}
+                  <span className="truncate" style={{ maxWidth: 100 }}>{file.name}</span>
+                  <button
+                    onMouseDown={e => { e.preventDefault(); setAttachFiles(prev => prev.filter((_, i) => i !== idx)) }}
+                    className="ml-0.5 text-[#444] hover:text-[#ff3c00] transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 justify-between">
+            {/* Attach file button */}
             <button
-              onClick={() => { setNotes(initialNotes || ''); setEditing(false) }}
-              className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors"
+              type="button"
+              onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click() }}
+              title="Attach file (JPG, PNG, WebP, PDF)"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] text-[#555] hover:text-[#aaa] hover:bg-[#222] transition-colors"
             >
-              Cancel
+              <Paperclip className="w-3.5 h-3.5" />
+              <span>Attach</span>
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="btn-primary px-4 py-1.5 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={NOTES_ACCEPT}
+              multiple
+              className="hidden"
+              onChange={e => { const files = Array.from(e.target.files || []); if (files.length) addAttachFiles(files); e.target.value = '' }}
+            />
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setNotes(initialNotes || ''); setEditing(false); setAttachFiles([]) }}
+                className="px-3 py-1.5 text-sm text-[#888] hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || uploading}
+                className="btn-primary px-4 py-1.5 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
+              >
+                {saving || uploading ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
         <div>
           <p className="whitespace-pre-wrap" style={{ fontSize: 15, fontWeight: 400, lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}>
-            {preview}{isLong && !expanded ? ' …' : ''}
+            {renderNotesBody(preview)}{isLong && !expanded ? ' …' : ''}
           </p>
           <div className="flex items-center gap-3 mt-1">
             {isLong && (

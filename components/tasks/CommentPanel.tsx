@@ -929,7 +929,18 @@ export function CommentPanel({
             </div>
           )}
 
-          <div className="px-4 pt-3 pb-3 relative">
+          <div
+            className="px-4 pt-3 pb-3 relative"
+            onFocus={() => setIsFocused(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setIsFocused(false)
+                setShowLinkInput(false)
+                setLinkUrl('')
+                setSavedSelection(null)
+              }
+            }}
+          >
             {/* Mention dropdown */}
             {mentionQuery !== null && (
               <div className="absolute bottom-full left-3 right-3 mb-1 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg overflow-hidden shadow-xl z-20">
@@ -1037,11 +1048,6 @@ export function CommentPanel({
                   value={body}
                   onChange={handleInput}
                   onKeyDown={handleKeyDown}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => {
-                    // Delay hiding toolbar so toolbar button clicks can fire first
-                    setTimeout(() => setIsFocused(false), 200)
-                  }}
                   placeholder={inputPlaceholder}
                   rows={2}
                   className={cn(
