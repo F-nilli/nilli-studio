@@ -150,6 +150,17 @@ export function EpisodeImages({ episodeId, canManage, currentUserId }: Props) {
                   className="absolute inset-0 opacity-0 group-hover/thumb:opacity-100 transition-opacity pointer-events-none"
                   style={{ border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6 }}
                 />
+                {canManage && (
+                  <span
+                    onClick={e => { e.stopPropagation(); setDeleteTarget(item) }}
+                    className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-xs leading-none opacity-0 group-hover/thumb:opacity-100 transition-opacity cursor-pointer"
+                    style={{ background: 'rgba(0,0,0,0.7)', color: '#888' }}
+                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#ff3c00')}
+                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = '#888')}
+                  >
+                    ×
+                  </span>
+                )}
               </button>
             )
           ))}
