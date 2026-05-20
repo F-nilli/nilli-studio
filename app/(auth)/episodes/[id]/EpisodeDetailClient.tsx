@@ -755,6 +755,8 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
   const [attachWarning, setAttachWarning] = useState('')
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Increment to force EpisodeImages to re-fetch after upload
+  const [imagesRefreshKey, setImagesRefreshKey] = useState(0)
 
   const isEmpty = !notes.trim()
   const lines = notes.split('\n')
@@ -763,6 +765,7 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
 
   async function handleSave() {
     setSaving(true)
+    let uploaded = false
     // Upload any pending files to episode-references
     if (attachFiles.length > 0) {
       setUploading(true)
@@ -777,6 +780,7 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
           filename: file.name,
           uploaded_by: currentUserId,
         })
+        uploaded = true
       }
       setUploading(false)
       setAttachFiles([])
@@ -785,6 +789,7 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
     setSaving(false)
     setSaved(true)
     setEditing(false)
+    if (uploaded) setImagesRefreshKey(k => k + 1)
     setTimeout(() => setSaved(false), 2500)
   }
 
@@ -828,14 +833,24 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
   }
 
   if (isEmpty && !editing) {
-    if (!canEdit) return null
+    // Always render EpisodeImages so uploaded files remain visible even with no text
     return (
-      <button
-        onClick={() => setEditing(true)}
-        className="w-full text-left text-sm text-[#3a3a3a] hover:text-[#555] italic py-3 px-4 rounded-xl border border-dashed border-[#2e2e2e] hover:border-[#444] transition-colors"
-      >
-        Add notes for the team...
-      </button>
+      <div className="space-y-2">
+        {canEdit && (
+          <button
+            onClick={() => setEditing(true)}
+            className="w-full text-left text-sm text-[#3a3a3a] hover:text-[#555] italic py-3 px-4 rounded-xl border border-dashed border-[#2e2e2e] hover:border-[#444] transition-colors"
+          >
+            Add notes for the team...
+          </button>
+        )}
+        <EpisodeImages
+          key={imagesRefreshKey}
+          episodeId={episodeId}
+          canManage={canManage}
+          currentUserId={currentUserId}
+        />
+      </div>
     )
   }
 
@@ -1005,6 +1020,7 @@ function BriefNotes({ episodeId, initialNotes, canEdit, canManage, currentUserId
             )}
           </div>
           <EpisodeImages
+            key={imagesRefreshKey}
             episodeId={episodeId}
             canManage={canManage}
             currentUserId={currentUserId}
