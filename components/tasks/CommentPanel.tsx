@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, ArrowUpDown, Lock, CornerDownLeft, Pencil, Trash2 } from 'lucide-react'
+import { X, Send, ArrowUpDown, Lock, CornerDownLeft, Pencil, Trash2, Link, Paperclip, FileText } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
-import { Comment, User, Task, Track, canAccessSettings } from '@/lib/types'
+import { Comment, CommentAttachment, User, Task, Track, canAccessSettings } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { TRACK_COLORS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,9 @@ const REACTION_EMOJIS = ['👍', '✅', '🔥']
 
 type Tab = 'all' | 'tasks' | 'internal'
 type Reaction = { emoji: string; user_id: string }
+
+const ACCEPTED_ATTACH_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+const ATTACH_MAX_MB = 10
 
 function relativeTime(iso: string): string {
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -27,13 +30,56 @@ function relativeTime(iso: string): string {
   return format(d, 'MMM d')
 }
 
-function renderBody(body: string) {
-  const parts = body.split(/(@\w+)/g)
-  return parts.map((part, i) =>
-    part.startsWith('@')
-      ? <span key={i} className="text-[#f7931a] font-medium">{part}</span>
-      : <span key={i}>{part}</span>
-  )
+// Renders comment body: markdown links [text](url), @mentions, bare URLs
+function renderBody(body: string): React.ReactNode[] {
+  const regex = /(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(@\w+)|(https?:\/\/[^\s<>"]+)/g
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(body)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<span key={`t-${lastIndex}`}>{body.slice(lastIndex, match.index)}</span>)
+    }
+    if (match[1]) {
+      // Markdown link [text](url)
+      parts.push(
+        <a
+          key={`ml-${match.index}`}
+          href={match[3]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#f7931a] underline underline-offset-2 hover:text-[#e07d10] transition-colors"
+          onClick={e => e.stopPropagation()}
+        >
+          {match[2]}
+        </a>
+      )
+    } else if (match[4]) {
+      // @mention
+      parts.push(<span key={`m-${match.index}`} className="text-[#f7931a] font-medium">{match[4]}</span>)
+    } else if (match[5]) {
+      // Bare URL
+      const url = match[5]
+      parts.push(
+        <a
+          key={`u-${match.index}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#f7931a] underline underline-offset-2 hover:text-[#e07d10] transition-colors break-all"
+          onClick={e => e.stopPropagation()}
+        >
+          {url}
+        </a>
+      )
+    }
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < body.length) {
+    parts.push(<span key={`t-end`}>{body.slice(lastIndex)}</span>)
+  }
+  return parts.length > 0 ? parts : [<span key="empty">{body}</span>]
 }
 
 interface Props {
@@ -102,6 +148,19 @@ export function CommentPanel({
   // Reactions state: commentId → list of { emoji, user_id }
   const [reactionsMap, setReactionsMap] = useState<Record<string, Reaction[]>>({})
 
+  // ─── Link toolbar state ───────────────────────────────────────────────────────
+  const [isFocused, setIsFocused] = useState(false)
+  const [showLinkInput, setShowLinkInput] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [savedSelection, setSavedSelection] = useState<{ start: number; end: number } | null>(null)
+  const linkInputRef = useRef<HTMLInputElement>(null)
+
+  // ─── File attachment state ────────────────────────────────────────────────────
+  const [attachFiles, setAttachFiles] = useState<File[]>([])
+  const [attachWarning, setAttachWarning] = useState('')
+  const [uploadingFiles, setUploadingFiles] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const canInternal = canAccessSettings(currentUser)
 
   // Derived
@@ -142,7 +201,6 @@ export function CommentPanel({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ emoji }),
     }).catch(() => {
-      // revert on failure
       setReactionsMap(prev => ({ ...prev, [commentId]: reactions }))
     })
   }
@@ -177,7 +235,81 @@ export function CommentPanel({
     await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }).catch(console.error)
   }
 
-  // Build replies map: parent ID → sorted children
+  // ─── Link toolbar helpers ─────────────────────────────────────────────────────
+
+  function onLinkButtonMouseDown(e: React.MouseEvent) {
+    e.preventDefault() // prevent textarea blur
+    const textarea = inputRef.current
+    if (!textarea) return
+    setSavedSelection({ start: textarea.selectionStart, end: textarea.selectionEnd })
+    setShowLinkInput(true)
+    setTimeout(() => linkInputRef.current?.focus(), 30)
+  }
+
+  function handleLinkInsert() {
+    const textarea = inputRef.current
+    if (!textarea) return
+    let url = linkUrl.trim()
+    if (!url) { setShowLinkInput(false); setLinkUrl(''); return }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+
+    const sel = savedSelection ?? { start: textarea.selectionStart, end: textarea.selectionEnd }
+    const selectedText = body.slice(sel.start, sel.end)
+    const linkMd = selectedText ? `[${selectedText}](${url})` : url
+    const newBody = body.slice(0, sel.start) + linkMd + body.slice(sel.end)
+
+    setBody(newBody)
+    setShowLinkInput(false)
+    setLinkUrl('')
+    setSavedSelection(null)
+    setTimeout(() => {
+      textarea.focus()
+      const cursor = sel.start + linkMd.length
+      textarea.setSelectionRange(cursor, cursor)
+    }, 30)
+  }
+
+  function handleLinkKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') { e.preventDefault(); handleLinkInsert() }
+    if (e.key === 'Escape') { setShowLinkInput(false); setLinkUrl(''); setSavedSelection(null); inputRef.current?.focus() }
+  }
+
+  // ─── Attachment helpers ───────────────────────────────────────────────────────
+
+  function addAttachFiles(files: File[]) {
+    const typed = files.filter(f => ACCEPTED_ATTACH_TYPES.includes(f.type))
+    const tooBig = typed.filter(f => f.size > ATTACH_MAX_MB * 1024 * 1024)
+    const valid = typed.filter(f => f.size <= ATTACH_MAX_MB * 1024 * 1024)
+
+    if (typed.length < files.length) {
+      setAttachWarning('Only JPG, PNG, WebP and PDF files are supported')
+      setTimeout(() => setAttachWarning(''), 4000)
+    } else if (tooBig.length > 0) {
+      setAttachWarning(`${tooBig.length === 1 ? `"${tooBig[0].name}" is` : `${tooBig.length} files are`} too large (max ${ATTACH_MAX_MB}MB)`)
+      setTimeout(() => setAttachWarning(''), 4000)
+    }
+
+    if (valid.length > 0) setAttachFiles(prev => [...prev, ...valid])
+  }
+
+  function removeAttachFile(idx: number) {
+    setAttachFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function uploadAttachments(): Promise<CommentAttachment[]> {
+    const results: CommentAttachment[] = []
+    for (const file of attachFiles) {
+      const path = `${episodeId}/comments/${Date.now()}-${file.name.replace(/\s+/g, '_')}`
+      const { error } = await supabase.storage.from('episode-references').upload(path, file)
+      if (error) continue
+      const { data: urlData } = supabase.storage.from('episode-references').getPublicUrl(path)
+      results.push({ url: urlData.publicUrl, filename: file.name, type: file.type, size: file.size })
+    }
+    return results
+  }
+
+  // ─── Build replies map ────────────────────────────────────────────────────────
+
   const repliesMap = useMemo(() => {
     const map: Record<string, Comment[]> = {}
     for (const c of allComments) {
@@ -324,7 +456,7 @@ export function CommentPanel({
   async function handleSubmit() {
     const isInternal = replyingTo ? replyingTo.internal : activeTab === 'internal'
     const trimmedBody = body.trim()
-    if (!trimmedBody) return
+    if (!trimmedBody && attachFiles.length === 0) return
     if (!replyingTo && !isInternal && !activeTask) return
 
     const replyParent = replyingTo
@@ -336,6 +468,15 @@ export function CommentPanel({
 
     const taskId = replyParent ? replyParent.task_id : (activeTask?.id ?? null)
     const depth = replyParent ? Math.min((replyParent.depth ?? 0) + 1, 2) : 0
+
+    // Upload attachments first
+    let attachments: CommentAttachment[] = []
+    if (attachFiles.length > 0) {
+      setUploadingFiles(true)
+      attachments = await uploadAttachments()
+      setUploadingFiles(false)
+      setAttachFiles([])
+    }
 
     const tempId = `optimistic-${Date.now()}`
     const optimisticComment: Comment = {
@@ -349,6 +490,7 @@ export function CommentPanel({
       author: currentUser,
       parent_comment_id: replyParent?.id ?? null,
       depth,
+      attachments: attachments.length > 0 ? attachments : undefined,
     }
     onNewComment(optimisticComment)
 
@@ -362,6 +504,9 @@ export function CommentPanel({
     if (replyParent) {
       insertData.parent_comment_id = replyParent.id
       insertData.depth = depth
+    }
+    if (attachments.length > 0) {
+      insertData.attachments = attachments
     }
 
     const { data, error } = await supabase
@@ -441,6 +586,9 @@ export function CommentPanel({
     const isEditing = editingCommentId === comment.id
     const canDepthReply = (comment.depth ?? 0) < 2
     const reactions = reactionsMap[comment.id] ?? []
+    const attachments = comment.attachments ?? []
+    const imageAttachments = attachments.filter(a => a.type.startsWith('image/'))
+    const fileAttachments = attachments.filter(a => !a.type.startsWith('image/'))
 
     return (
       <div
@@ -487,7 +635,7 @@ export function CommentPanel({
               <span className="w-1.5 h-1.5 rounded-full bg-[#f7931a] shrink-0" />
             )}
             <span className="text-[11px] text-white/30">
-              {isOptimistic ? 'sending…' : relativeTime(comment.created_at)}
+              {isOptimistic ? (uploadingFiles ? 'uploading…' : 'sending…') : relativeTime(comment.created_at)}
             </span>
             {isOwn && !isOptimistic && !isHandoff && isHovered && (
               <div className={cn('flex items-center gap-1', isOwn ? 'mr-1' : 'ml-1')}>
@@ -547,7 +695,54 @@ export function CommentPanel({
               : { background: '#252525', border: '1px solid rgba(255,255,255,0.09)', ...(isHandoff ? { borderLeft: `3px solid ${trackColor}` } : {}) }
             ) : {}}
             >
-              {renderBody(comment.body)}
+              {comment.body ? renderBody(comment.body) : null}
+
+              {/* Image attachments */}
+              {imageAttachments.length > 0 && (
+                <div className={cn('flex flex-wrap gap-1.5', comment.body ? 'mt-2' : '')}>
+                  {imageAttachments.map((att, i) => (
+                    <a
+                      key={i}
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="block shrink-0 rounded-lg overflow-hidden"
+                      style={{ maxWidth: 180 }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={att.url}
+                        alt={att.filename}
+                        className="rounded-lg object-cover hover:brightness-110 transition-all"
+                        style={{ maxWidth: 180, maxHeight: 140, display: 'block' }}
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {/* File (PDF) attachments */}
+              {fileAttachments.length > 0 && (
+                <div className={cn('flex flex-wrap gap-1.5', comment.body || imageAttachments.length > 0 ? 'mt-2' : '')}>
+                  {fileAttachments.map((att, i) => (
+                    <a
+                      key={i}
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] transition-colors"
+                      style={{ background: 'rgba(255,60,0,0.08)', border: '1px solid rgba(255,60,0,0.2)', color: '#aaa' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#fff'; (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(255,60,0,0.4)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#aaa'; (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(255,60,0,0.2)' }}
+                    >
+                      <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: '#ff3c00' }} />
+                      <span className="truncate" style={{ maxWidth: 140 }}>{att.filename}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -734,7 +929,8 @@ export function CommentPanel({
             </div>
           )}
 
-          <div className="p-4 relative">
+          <div className="px-4 pt-3 pb-3 relative">
+            {/* Mention dropdown */}
             {mentionQuery !== null && (
               <div className="absolute bottom-full left-3 right-3 mb-1 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg overflow-hidden shadow-xl z-20">
                 {mentionOptions.length > 0
@@ -755,6 +951,85 @@ export function CommentPanel({
               </div>
             )}
 
+            {/* ─── Link toolbar ─── */}
+            {isFocused && (
+              <div className="flex items-center gap-1 mb-2 h-6">
+                {showLinkInput ? (
+                  <div className="flex items-center gap-1.5 w-full">
+                    <input
+                      ref={linkInputRef}
+                      type="url"
+                      value={linkUrl}
+                      onChange={e => setLinkUrl(e.target.value)}
+                      onKeyDown={handleLinkKeyDown}
+                      placeholder="https://…"
+                      className="flex-1 px-2.5 py-1 rounded-md text-[13px] text-white placeholder-[#555] focus:outline-none"
+                      style={{ background: '#232323', border: '1px solid rgba(247,147,26,0.35)' }}
+                    />
+                    <button
+                      onMouseDown={e => { e.preventDefault(); handleLinkInsert() }}
+                      className="px-2.5 py-1 rounded-md text-[12px] font-semibold text-white transition-colors"
+                      style={{ background: '#f7931a' }}
+                    >
+                      Add
+                    </button>
+                    <button
+                      onMouseDown={e => { e.preventDefault(); setShowLinkInput(false); setLinkUrl(''); setSavedSelection(null) }}
+                      className="p-1 text-[#555] hover:text-white transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onMouseDown={onLinkButtonMouseDown}
+                    title="Insert link (select text first to hyperlink it)"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] text-[#555] hover:text-[#aaa] hover:bg-[#222] transition-colors"
+                  >
+                    <Link className="w-3.5 h-3.5" />
+                    <span>Link</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Attachment warning */}
+            {attachWarning && (
+              <p className="text-[11px] text-amber-400 mb-1.5">{attachWarning}</p>
+            )}
+
+            {/* Pending attachment chips */}
+            {attachFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {attachFiles.map((file, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px]"
+                    style={{ background: '#222', border: '1px solid rgba(255,255,255,0.1)', color: '#888' }}
+                  >
+                    {file.type.startsWith('image/') ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        className="w-4 h-4 rounded object-cover"
+                      />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: '#ff3c00' }} />
+                    )}
+                    <span className="truncate" style={{ maxWidth: 100 }}>{file.name}</span>
+                    <button
+                      onMouseDown={e => { e.preventDefault(); removeAttachFile(idx) }}
+                      className="ml-0.5 text-[#444] hover:text-[#ff3c00] transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Textarea + buttons row */}
             <div className="flex gap-2 items-end">
               <div className="flex-1 relative">
                 <textarea
@@ -762,6 +1037,11 @@ export function CommentPanel({
                   value={body}
                   onChange={handleInput}
                   onKeyDown={handleKeyDown}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => {
+                    // Delay hiding toolbar so toolbar button clicks can fire first
+                    setTimeout(() => setIsFocused(false), 200)
+                  }}
                   placeholder={inputPlaceholder}
                   rows={2}
                   className={cn(
@@ -781,9 +1061,26 @@ export function CommentPanel({
                   </span>
                 )}
               </div>
+
+              {/* Attach file button */}
+              <button
+                type="button"
+                onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click() }}
+                title="Attach file (JPG, PNG, WebP, PDF)"
+                className={cn(
+                  'p-2 rounded-lg transition-colors shrink-0',
+                  effectiveInternal
+                    ? 'text-purple-400/60 hover:text-purple-300 hover:bg-purple-900/20'
+                    : 'text-[#555] hover:text-[#aaa] hover:bg-[#222]'
+                )}
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+
+              {/* Send button */}
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !body.trim()}
+                disabled={submitting || uploadingFiles || (!body.trim() && attachFiles.length === 0)}
                 className={cn(
                   'p-2 disabled:opacity-40 text-white rounded-lg transition-colors shrink-0',
                   effectiveInternal
@@ -794,6 +1091,20 @@ export function CommentPanel({
                 <Send className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              multiple
+              className="hidden"
+              onChange={e => {
+                const files = Array.from(e.target.files || [])
+                if (files.length) addAttachFiles(files)
+                e.target.value = ''
+              }}
+            />
           </div>
         </div>
       )}

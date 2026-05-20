@@ -105,6 +105,13 @@ export interface CommentReaction {
   user_id: string
 }
 
+export interface CommentAttachment {
+  url: string
+  filename: string
+  type: string
+  size: number
+}
+
 export interface Comment {
   id: string
   task_id: string | null
@@ -118,6 +125,7 @@ export interface Comment {
   // Joined
   author?: User
   reactions?: CommentReaction[]
+  attachments?: CommentAttachment[]
 }
 
 export type NotificationType =
