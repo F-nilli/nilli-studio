@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     const { data: newEpisode } = await supabase.from('episodes').insert({
       client_key: episode.client_key,
       client_label: episode.client_label,
-      guest_name: episode.guest_name,
+      guest_name: `${episode.guest_name} (${trigger.template_name})`,
       release_date: newReleaseDate,
       footage_url: episode.footage_url,
       notes: episode.notes,
