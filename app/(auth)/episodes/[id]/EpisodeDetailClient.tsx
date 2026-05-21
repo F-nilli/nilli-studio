@@ -1384,7 +1384,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
           }
           fetch('/api/slack/notify', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'approval', episodeId: capturedTask.episode_id, completedTaskLabel: capturedTask.label, nextTasks: nextTasksForSlack, approverName: currentUser.name }),
+            body: JSON.stringify({ type: 'approval', episodeId: capturedTask.episode_id, completedTaskLabel: capturedTask.label, nextTasks: nextTasksForSlack, approverName: capturedTask.approver_id ? currentUser.name : undefined }),
           }).catch(err => console.error('[Slack]', err))
         }
         fetch('/api/episodes/check-triggers', {
