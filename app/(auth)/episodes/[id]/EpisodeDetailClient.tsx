@@ -1465,16 +1465,16 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         : isRecentlyUnlocked
           ? 'border-l-[3px] task-unlock bg-[#272727]'
           : 'bg-[#272727] border-l-[3px] border-transparent hover:bg-[#2a2a2a]',
-      isLocked && 'opacity-35'
+      isLocked && !canReassign && 'opacity-35'
     )}>
       {/* Main row — div not button: nested <button> elements inside a <button> are invalid HTML
            and trigger browser DOM repair that ejects content outside the track panel card */}
       <div
         role="button"
-        tabIndex={isLocked ? -1 : 0}
-        onClick={isLocked ? undefined : onClick}
-        onKeyDown={e => { if (!isLocked && (e.key === 'Enter' || e.key === ' ')) onClick() }}
-        className={cn('w-full text-left px-4 py-[14px]', isLocked ? 'cursor-default' : 'cursor-pointer')}
+        tabIndex={(isLocked && !canReassign) ? -1 : 0}
+        onClick={(isLocked && !canReassign) ? undefined : onClick}
+        onKeyDown={e => { if (!(isLocked && !canReassign) && (e.key === 'Enter' || e.key === ' ')) onClick() }}
+        className={cn('w-full text-left px-4 py-[14px]', (isLocked && !canReassign) ? 'cursor-default' : 'cursor-pointer')}
       >
         {/* Row 1: status + label + avatar */}
         <div className="flex items-center gap-2 mb-1.5">
@@ -1662,7 +1662,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       )}
 
       {/* Expandable detail panel */}
-      {isExpanded && !isLocked && (
+      {isExpanded && (!isLocked || canReassign) && (
         <div
           className="mx-3 mb-3 p-3 bg-[#111111] border border-[#1e1e1e] rounded-lg space-y-2.5"
           onClick={e => e.stopPropagation()}
