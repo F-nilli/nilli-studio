@@ -382,6 +382,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                 )}
               </div>
               <h2 className="text-lg font-bold text-white leading-snug">{task.label}</h2>
+              {episode && (
+                <p className="text-sm text-[#555] mt-1">{episode.client_label} — {episode.guest_name}</p>
+              )}
             </div>
             <button onClick={onClose} className="ml-4 p-1 rounded-md hover:bg-[#1e1e1e] text-[#888]">
               <X className="w-5 h-5" />
