@@ -675,21 +675,6 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                 </div>
               )}
 
-              {/* Three-dot menu button */}
-              {canAct && !circleActive && (
-                <div
-                  className="absolute"
-                  style={{ top: 12, right: 12, zIndex: 20 }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  <button
-                    className="w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[#555] hover:text-white hover:bg-white/10"
-                    onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
 
               <div
                 className="p-5"
@@ -795,6 +780,18 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                     )}
                   </div>
                 </div>
+
+                {/* Three-dot menu row — admin/ops_manager only */}
+                {canAct && !circleActive && (
+                  <div className="mt-3 pt-2.5 flex justify-center" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
+                      className="flex items-center gap-1 px-3 py-1 rounded-md text-[#444] hover:text-[#888] hover:bg-white/5 transition-colors"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
               </div>
             </div>
