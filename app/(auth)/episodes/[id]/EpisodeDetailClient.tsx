@@ -9,7 +9,7 @@ import { EpisodeImages } from '@/components/episodes/EpisodeImages'
 import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { CommentPanel } from '@/components/tasks/CommentPanel'
-import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, parseDate, getCurrentTimezoneAbbr } from '@/lib/utils'
+import { cn, formatDate, isOverdue, toDatetimeLocal, fromDatetimeLocal, parseDate, getCurrentTimezoneAbbr, STATUS_LABELS } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
@@ -1139,6 +1139,55 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     (task.status === 'in_progress' || task.status === 'revision')
   const showApproverActions = !isLocked && isApprover && task.status === 'in_review'
 
+  const [lastHistory, setLastHistory] = useState<{ from_status: string; to_status: string } | null>(null)
+  const [reverting, setReverting] = useState(false)
+
+  useEffect(() => {
+    if (!isExpanded) return
+    supabase
+      .from('task_history')
+      .select('from_status, to_status')
+      .eq('task_id', task.id)
+      .neq('from_status', 'locked')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setLastHistory(data))
+  }, [isExpanded, task.id, task.status])
+
+  const canRevert = !reverting &&
+    lastHistory &&
+    lastHistory.to_status === task.status &&
+    lastHistory.from_status !== task.status &&
+    lastHistory.from_status !== 'locked' &&
+    (isAssignee || canReassign)
+
+  async function handleRevert() {
+    if (!lastHistory || reverting) return
+    setReverting(true)
+    const fromStatus = lastHistory.from_status
+    const { data } = await supabase
+      .from('tasks')
+      .update({ status: fromStatus })
+      .eq('id', task.id)
+      .select('*')
+      .single()
+    if (data) {
+      supabase.from('task_history').insert({
+        task_id: task.id,
+        episode_id: task.episode_id,
+        from_status: task.status,
+        to_status: fromStatus,
+        changed_by: currentUser.id,
+        note: 'Reverted',
+      }).then(() => {})
+      onTaskUpdate(data as unknown as Task)
+      onReassignToast(`Reverted to ${STATUS_LABELS[fromStatus]}`)
+      setLastHistory(null)
+    }
+    setReverting(false)
+  }
+
   const actionLabel =
     task.status === 'in_progress' ? (task.approver_id ? 'Submit for Review' : 'Mark Done') :
     task.status === 'revision' ? 'Resubmit' :
@@ -1658,6 +1707,19 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
               {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm Send Back'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Revert link */}
+      {canRevert && (
+        <div className="px-4 pb-3" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={handleRevert}
+            disabled={reverting}
+            className="text-[11px] text-[#555] hover:text-[#888] transition-colors disabled:opacity-40 cursor-pointer"
+          >
+            {reverting ? 'Reverting…' : `↩ Undo — revert to ${STATUS_LABELS[lastHistory!.from_status]}`}
+          </button>
         </div>
       )}
 

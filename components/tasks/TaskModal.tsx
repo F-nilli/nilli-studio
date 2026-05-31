@@ -52,6 +52,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
   // dependencies for locked tasks
   const [depTasks, setDepTasks] = useState<DepTaskInfo[] | null>(null)
 
+  const [lastHistory, setLastHistory] = useState<{ from_status: string; to_status: string } | null>(null)
+  const [reverting, setReverting] = useState(false)
+
   const isAssignee = task.assignee_id === currentUser.id
   const isReviewer = task.requires_approval
     ? (currentUser.id === task.approver_id || currentUser.role === 'admin')
@@ -165,6 +168,52 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.status, task.dep_task_ids.join(',')])
+
+  useEffect(() => {
+    supabase
+      .from('task_history')
+      .select('from_status, to_status')
+      .eq('task_id', task.id)
+      .neq('from_status', 'locked')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setLastHistory(data))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.status])
+
+  const canManage = ['admin', 'ops_manager'].includes(currentUser.role)
+  const canRevert = !reverting &&
+    lastHistory &&
+    lastHistory.to_status === task.status &&
+    lastHistory.from_status !== task.status &&
+    lastHistory.from_status !== 'locked' &&
+    (isAssignee || canManage)
+
+  async function handleRevert() {
+    if (!lastHistory || reverting) return
+    setReverting(true)
+    const fromStatus = lastHistory.from_status
+    const { data } = await supabase
+      .from('tasks')
+      .update({ status: fromStatus })
+      .eq('id', task.id)
+      .select('*')
+      .single()
+    if (data) {
+      supabase.from('task_history').insert({
+        task_id: task.id,
+        episode_id: task.episode_id,
+        from_status: task.status,
+        to_status: fromStatus,
+        changed_by: currentUser.id,
+        note: 'Reverted',
+      }).then(() => {})
+      onUpdate(data as unknown as Task)
+      setLastHistory(null)
+    }
+    setReverting(false)
+  }
 
   async function maybePostSendBackNote() {
     if (!sendBackNote.trim() || !task.assignee || task.assignee_id === currentUser.id) return
@@ -541,6 +590,18 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                   className="btn-green flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-base cursor-pointer"
                 >
                   Approve
+                </button>
+              </div>
+            )}
+
+            {canRevert && (
+              <div className="flex justify-center pt-1">
+                <button
+                  onClick={handleRevert}
+                  disabled={reverting}
+                  className="text-xs text-[#555] hover:text-[#888] transition-colors disabled:opacity-40 cursor-pointer"
+                >
+                  {reverting ? 'Reverting…' : `↩ Undo — revert to ${STATUS_LABELS[lastHistory!.from_status]}`}
                 </button>
               </div>
             )}
