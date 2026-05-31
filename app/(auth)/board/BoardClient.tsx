@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, AlertCircle, ChevronRight, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check } from 'lucide-react'
+import { Plus, AlertCircle, ChevronRight, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check, Pencil } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { Episode, Task, User, TaskStatus, canCreateProject, canManageClients, canSeeAllEpisodes } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
@@ -263,6 +263,69 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const canAct = canManageClients(currentUser)
 
   const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+  // ── Three-dot menu state ────────────────────────────────────────────────────
+  const [openBoardMenuId, setOpenBoardMenuId] = useState<string | null>(null)
+  const [boardMenuPos, setBoardMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [boardDeleteTarget, setBoardDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [boardDeleting, setBoardDeleting] = useState(false)
+  const [boardToast, setBoardToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!openBoardMenuId) return
+    const close = () => { setOpenBoardMenuId(null); setBoardMenuPos(null) }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [openBoardMenuId])
+
+  useEffect(() => {
+    if (!boardToast) return
+    const t = setTimeout(() => setBoardToast(null), 4000)
+    return () => clearTimeout(t)
+  }, [boardToast])
+
+  function handleBoardMenuOpen(epId: string, btn: HTMLElement) {
+    if (openBoardMenuId === epId) { setOpenBoardMenuId(null); setBoardMenuPos(null); return }
+    const rect = btn.getBoundingClientRect()
+    const wouldFlip = rect.bottom + 140 > window.innerHeight - 8
+    setBoardMenuPos({
+      top: wouldFlip ? rect.top - 140 : rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    })
+    setOpenBoardMenuId(epId)
+  }
+
+  async function handleRename() {
+    if (!renameTarget || !renameValue.trim()) return
+    const { id } = renameTarget
+    const trimmed = renameValue.trim()
+    if (trimmed === renameTarget.name) { setRenameTarget(null); return }
+    setRenaming(true)
+    await supabase.from('episodes').update({ guest_name: trimmed }).eq('id', id)
+    setLiveEpisodes(prev => prev.map(e => e.id === id ? { ...e, guest_name: trimmed } : e))
+    setRenameTarget(null)
+    setRenameValue('')
+    setRenaming(false)
+  }
+
+  async function handleBoardDelete() {
+    if (!boardDeleteTarget) return
+    setBoardDeleting(true)
+    const res = await fetch('/api/episodes/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [boardDeleteTarget.id] }),
+    })
+    if (res.ok) {
+      setLiveEpisodes(prev => prev.filter(e => e.id !== boardDeleteTarget!.id))
+      setBoardToast(`"${boardDeleteTarget.name}" deleted`)
+    }
+    setBoardDeleting(false)
+    setBoardDeleteTarget(null)
+  }
 
   // Returns the completed_at timestamp on success, null on failure
   async function persistArchive(episodeId: string): Promise<string | null> {
@@ -612,46 +675,25 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                 </div>
               )}
 
-              {/* Circle completion button */}
-              {canAct && (
+              {/* Three-dot menu button */}
+              {canAct && !circleActive && (
                 <div
                   className="absolute"
                   style={{ top: 12, right: 12, zIndex: 20 }}
                   onClick={e => e.stopPropagation()}
                 >
-                  {/* Incomplete tasks warning badge */}
-                  {isWarning && incompleteCount > 0 && (
-                    <div
-                      className="absolute right-8 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-semibold text-amber-400 px-2 py-0.5 rounded"
-                      style={{
-                        background: 'rgba(245,158,11,0.15)',
-                        border: '1px solid rgba(245,158,11,0.3)',
-                        animation: 'fadeIn 150ms ease',
-                      }}
-                    >
-                      {incompleteCount} incomplete
-                    </div>
-                  )}
                   <button
-                    className={cn(
-                      'w-7 h-7 rounded-full flex items-center justify-center transition-opacity duration-150 hover:[&:not(:disabled)]:scale-110',
-                      circleActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                    )}
-                    style={{ transition: 'opacity 150ms, transform 100ms' }}
-                    onClick={() => handleCircleComplete(ep)}
-                    disabled={isCompleted || isCompleting || isFadingOut}
+                    className="w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[#555] hover:text-white hover:bg-white/10"
+                    onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
                   >
-                    <CompletionCircle filling={isCompleting} filled={isCompleted || isFadingOut} />
+                    <MoreHorizontal className="w-4 h-4" />
                   </button>
                 </div>
               )}
 
               <div
-                className={cn(
-                  'p-5 transition-[transform,opacity]',
-                  !circleActive && canAct && 'group-hover:[transform:translateX(-10px)]'
-                )}
-                style={{ opacity: isCompleted ? 0.4 : 1, transitionDuration: '200ms, 300ms' }}
+                className="p-5"
+                style={{ opacity: isCompleted ? 0.4 : 1 }}
               >
                 {/* Card header */}
                 <div className="flex items-start justify-between mb-3">
@@ -798,6 +840,129 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
           >
             Undo
           </button>
+        </div>
+      )}
+
+      {/* ── Board card three-dot dropdown ──────────────────────────────────── */}
+      {openBoardMenuId && boardMenuPos && (() => {
+        const ep = episodesWithTasks.find(e => e.id === openBoardMenuId)
+        if (!ep) return null
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: boardMenuPos.top,
+              right: boardMenuPos.right,
+              zIndex: 9999,
+              width: 200,
+              background: '#222222',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+              overflow: 'hidden',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => { setRenameTarget({ id: ep.id, name: ep.guest_name }); setRenameValue(ep.guest_name); setOpenBoardMenuId(null); setBoardMenuPos(null) }}
+              className="w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-sm text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5 shrink-0" />
+              Rename
+            </button>
+            <button
+              onClick={() => { setOpenBoardMenuId(null); setBoardMenuPos(null); handleCircleComplete(ep) }}
+              className="w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-sm text-[#888] hover:text-white hover:bg-[#2a2a2a] transition-colors"
+            >
+              <Archive className="w-3.5 h-3.5 shrink-0" />
+              Mark as Delivered
+            </button>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+            <button
+              onClick={() => { setBoardDeleteTarget({ id: ep.id, name: ep.guest_name }); setOpenBoardMenuId(null); setBoardMenuPos(null) }}
+              className="w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-sm text-[#ff3c00] hover:bg-[#2a2a2a] transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              Delete project
+            </button>
+          </div>
+        )
+      })()}
+
+      {/* ── Rename modal ────────────────────────────────────────────────────── */}
+      {renameTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setRenameTarget(null)}>
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+            style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-base font-bold text-white">Rename project</h2>
+            <input
+              autoFocus
+              type="text"
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameTarget(null) }}
+              className="w-full px-3 py-2.5 bg-[#111] border border-[#2e2e2e] focus:border-[#f7931a]/50 rounded-lg text-sm text-white placeholder-[#444] outline-none"
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setRenameTarget(null)}
+                className="px-4 py-2 rounded-lg text-sm text-[#888] border border-[#2e2e2e] hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRename}
+                disabled={renaming || !renameValue.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-black disabled:opacity-40 transition-colors"
+                style={{ background: '#f7931a' }}
+              >
+                {renaming ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirmation modal ────────────────────────────────────────── */}
+      {boardDeleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setBoardDeleteTarget(null)}>
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+            style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-base font-bold text-white">Delete "{boardDeleteTarget.name}"?</h2>
+            <p className="text-sm text-[#666]">This permanently deletes the project and all its tasks. It cannot be undone.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setBoardDeleteTarget(null)}
+                className="px-4 py-2 rounded-lg text-sm text-[#888] border border-[#2e2e2e] hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBoardDelete}
+                disabled={boardDeleting}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#dc2626] hover:bg-[#b91c1c] disabled:opacity-40 text-white transition-colors"
+              >
+                {boardDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Board action toast ───────────────────────────────────────────────── */}
+      {boardToast && (
+        <div
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl"
+          style={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)' }}
+        >
+          <Trash2 className="w-4 h-4 text-[#ff3c00] shrink-0" />
+          <p className="text-sm font-semibold text-white">{boardToast}</p>
         </div>
       )}
 
