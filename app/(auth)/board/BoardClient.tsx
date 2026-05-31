@@ -786,7 +786,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                     </div>
                   </div>
                   {/* Line 2: deadline chip */}
-                  <div className="flex justify-end">
+                  <div className="flex justify-center">
                     <DeadlineChip daysLeft={daysUntilRelease} releaseDate={ep.release_date} releaseTime={ep.release_time ?? null} />
                   </div>
                 </div>
