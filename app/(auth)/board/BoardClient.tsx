@@ -743,10 +743,10 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   </button>
                 )}
 
-                {/* Notes preview */}
-                {ep.notes && (
-                  <p className="text-xs text-[#666] leading-relaxed mb-3 line-clamp-2">{ep.notes}</p>
-                )}
+                {/* Notes preview — always reserves space for 2 lines */}
+                <p className="text-xs text-[#666] leading-relaxed mb-3 line-clamp-2" style={{ minHeight: '2.5rem' }}>
+                  {ep.notes ?? ''}
+                </p>
 
                 {/* Assignees */}
                 <div className="flex items-center justify-between">
