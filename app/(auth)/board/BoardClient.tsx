@@ -689,8 +689,15 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                     </div>
                     <h3 className="font-bold text-white text-[22px] truncate">{ep.guest_name}</h3>
                   </div>
-                  <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
-                    <DeadlineChip daysLeft={daysUntilRelease} releaseDate={ep.release_date} releaseTime={ep.release_time ?? null} />
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    {canAct && !circleActive && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg text-[#555] hover:text-[#aaa] hover:bg-white/5 transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+                    )}
                     <ChevronRight className="w-5 h-5 text-[#555] group-hover:text-white transition-colors" />
                   </div>
                 </div>
@@ -748,7 +755,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   {ep.notes ?? ''}
                 </p>
 
-                {/* Assignees */}
+                {/* Assignees + deadline */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {stats.overdue > 0 && (
@@ -769,29 +776,20 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                       </a>
                     )}
                   </div>
-                  <div className="flex -space-x-2 ml-auto">
-                    {activeAssignees.slice(0, 5).map(u => (
-                      <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" avatarUrl={u.avatar_url} />
-                    ))}
-                    {activeAssignees.length > 5 && (
-                      <div className="w-8 h-8 rounded-full bg-[#1e1e1e] flex items-center justify-center text-sm font-medium text-[#888] border-2 border-[#141414]">
-                        +{activeAssignees.length - 5}
-                      </div>
-                    )}
+                  <div className="flex items-center gap-3 ml-auto">
+                    <DeadlineChip daysLeft={daysUntilRelease} releaseDate={ep.release_date} releaseTime={ep.release_time ?? null} />
+                    <div className="flex -space-x-2">
+                      {activeAssignees.slice(0, 5).map(u => (
+                        <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" avatarUrl={u.avatar_url} />
+                      ))}
+                      {activeAssignees.length > 5 && (
+                        <div className="w-8 h-8 rounded-full bg-[#1e1e1e] flex items-center justify-center text-sm font-medium text-[#888] border-2 border-[#141414]">
+                          +{activeAssignees.length - 5}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                {/* Three-dot menu row — admin/ops_manager only */}
-                {canAct && !circleActive && (
-                  <div className="mt-3 pt-2 pb-0 flex justify-center" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <button
-                      onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
-                      className="flex items-center gap-1 px-4 py-1 rounded-md text-[#666] hover:text-[#aaa] hover:bg-white/5 transition-colors"
-                    >
-                      <MoreHorizontal className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
 
               </div>
             </div>
