@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, AlertCircle, ChevronRight, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check, Pencil } from 'lucide-react'
+import { Plus, AlertCircle, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check, Pencil } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { Episode, Task, User, TaskStatus, canCreateProject, canManageClients, canSeeAllEpisodes } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
@@ -91,11 +91,10 @@ function DeadlineChip({ daysLeft, releaseDate, releaseTime }: {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <span className="text-[13px] font-semibold text-white/80">
-        {dateStr}
+    <div className="flex items-center gap-2">
+      <span className="text-[12px] text-[#888]">
+        {dateStr}{timeStr ? ` · ${timeStr}` : ''}
       </span>
-      {timeStr && <span className="text-[11px] text-[#666]">{timeStr}</span>}
       <span className={cn('px-2 py-0.5 rounded-md text-xs font-bold', badgeClass)}>
         {badgeText}
       </span>
@@ -689,17 +688,14 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                     </div>
                     <h3 className="font-bold text-white text-[22px] truncate">{ep.guest_name}</h3>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {canAct && !circleActive && (
-                      <button
-                        onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
-                        className="flex items-center justify-center w-8 h-8 rounded-lg text-[#555] hover:text-[#aaa] hover:bg-white/5 transition-colors"
-                      >
-                        <MoreHorizontal className="w-5 h-5" />
-                      </button>
-                    )}
-                    <ChevronRight className="w-5 h-5 text-[#555] group-hover:text-white transition-colors" />
-                  </div>
+                  {canAct && !circleActive && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
+                      className="flex items-center justify-center w-8 h-8 rounded-lg text-[#555] hover:text-[#aaa] hover:bg-white/5 transition-colors shrink-0 ml-2"
+                    >
+                      <MoreHorizontal className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Progress */}
