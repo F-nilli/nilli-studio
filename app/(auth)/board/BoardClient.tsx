@@ -751,30 +751,30 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                   {ep.notes ?? ''}
                 </p>
 
-                {/* Assignees + deadline */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {stats.overdue > 0 && (
-                      <div className="flex items-center gap-1.5 text-sm text-[#ff3c00]">
-                        <AlertCircle className="w-4 h-4" />
-                        <span>{stats.overdue} overdue</span>
-                      </div>
-                    )}
-                    {ep.footage_url && (
-                      <a
-                        href={ep.footage_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="text-xs font-semibold text-[#f7931a]/80 hover:text-[#f7931a] transition-colors"
-                      >
-                        Footage →
-                      </a>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 ml-auto">
-                    <DeadlineChip daysLeft={daysUntilRelease} releaseDate={ep.release_date} releaseTime={ep.release_time ?? null} />
-                    <div className="flex -space-x-2">
+                {/* Footer — two lines */}
+                <div className="flex flex-col gap-2">
+                  {/* Line 1: footage + overdue + avatars */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {stats.overdue > 0 && (
+                        <div className="flex items-center gap-1.5 text-sm text-[#ff3c00]">
+                          <AlertCircle className="w-4 h-4" />
+                          <span>{stats.overdue} overdue</span>
+                        </div>
+                      )}
+                      {ep.footage_url && (
+                        <a
+                          href={ep.footage_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="text-xs font-semibold text-[#f7931a]/80 hover:text-[#f7931a] transition-colors"
+                        >
+                          Footage →
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex -space-x-2 ml-auto">
                       {activeAssignees.slice(0, 5).map(u => (
                         <Avatar key={u.id} name={u.name} color={u.avatar_color} size="md" avatarUrl={u.avatar_url} />
                       ))}
@@ -784,6 +784,10 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
                         </div>
                       )}
                     </div>
+                  </div>
+                  {/* Line 2: deadline chip */}
+                  <div className="flex justify-end">
+                    <DeadlineChip daysLeft={daysUntilRelease} releaseDate={ep.release_date} releaseTime={ep.release_time ?? null} />
                   </div>
                 </div>
 
