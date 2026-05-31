@@ -677,7 +677,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
 
 
               <div
-                className="p-5"
+                className="pt-5 px-5 pb-3"
                 style={{ opacity: isCompleted ? 0.4 : 1 }}
               >
                 {/* Card header */}
@@ -783,12 +783,12 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
 
                 {/* Three-dot menu row — admin/ops_manager only */}
                 {canAct && !circleActive && (
-                  <div className="mt-3 pt-2.5 flex justify-center" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="mt-3 pt-2 pb-0 flex justify-center" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <button
                       onClick={e => { e.stopPropagation(); handleBoardMenuOpen(ep.id, e.currentTarget) }}
-                      className="flex items-center gap-1 px-3 py-1 rounded-md text-[#444] hover:text-[#888] hover:bg-white/5 transition-colors"
+                      className="flex items-center gap-1 px-4 py-1 rounded-md text-[#666] hover:text-[#aaa] hover:bg-white/5 transition-colors"
                     >
-                      <MoreHorizontal className="w-4 h-4" />
+                      <MoreHorizontal className="w-5 h-5" />
                     </button>
                   </div>
                 )}
