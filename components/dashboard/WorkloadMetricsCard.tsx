@@ -6,26 +6,27 @@ import { createClient } from '@/lib/supabase/client'
 import { Avatar } from '@/components/ui/Avatar'
 import { User } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns'
+import { format, startOfMonth, subMonths } from 'date-fns'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 const TRACKS = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing'] as const
 
 const TRACK_COLORS: Record<string, string> = {
-  'Long-form':    '#f7931a',
-  'Trailer':      '#60a5fa',
-  'Thumbnails':   '#a78bfa',
+  'Long-form':      '#f7931a',
+  'Trailer':        '#60a5fa',
+  'Thumbnails':     '#a78bfa',
   'Clips & Shorts': '#34d399',
-  'Review':       '#f87171',
-  'Publishing':   '#fbbf24',
+  'Review':         '#f87171',
+  'Publishing':     '#fbbf24',
 }
 
 interface MonthMetrics {
-  month: string        // 'YYYY-MM'
-  label: string        // 'Jan 2026'
-  completed: number    // tasks completed as assignee
-  reviewed: number     // tasks reviewed as approver
+  month: string
+  label: string
+  completed: number
+  reviewed: number
   byTrack: Record<string, { completed: number; reviewed: number }>
+  trend: { label: string; month: string; completed: number; reviewed: number }[]
 }
 
 export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[] }) {
@@ -36,7 +37,6 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
   const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
   const [metrics, setMetrics] = useState<MonthMetrics | null>(null)
-  const [trend, setTrend] = useState<{ label: string; completed: number; reviewed: number }[]>([])
   const [loading, setLoading] = useState(false)
 
   // Fetch users if not passed in
@@ -52,99 +52,33 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Default selection to first user once list is loaded
+  // Default to first user once list is loaded
   useEffect(() => {
     if (!selectedUserId && allUsers.length > 0) {
       setSelectedUserId(allUsers[0].id)
     }
   }, [allUsers, selectedUserId])
 
-  // Helper: compute completed + reviewed counts from raw history rows + task map
-  const computeCounts = useCallback((
-    rows: { task_id: string; to_status: string; changed_by: string }[],
-    taskMap: Record<string, { assignee_id: string | null; track: string }>,
-    userId: string
-  ) => {
-    const completedTaskIds = new Set<string>()
-    const reviewedTaskIds = new Set<string>()
-    const byTrack: Record<string, { completed: number; reviewed: number }> = {}
-
-    for (const row of rows) {
-      const task = taskMap[row.task_id]
-      if (!task) continue
-      const track = task.track ?? 'Other'
-      if (!byTrack[track]) byTrack[track] = { completed: 0, reviewed: 0 }
-
-      if (task.assignee_id === userId && (row.to_status === 'done' || row.to_status === 'approved') && !completedTaskIds.has(row.task_id)) {
-        completedTaskIds.add(row.task_id)
-        byTrack[track].completed++
-      }
-      if (row.changed_by === userId && (row.to_status === 'approved' || row.to_status === 'revision') && task.assignee_id !== userId && !reviewedTaskIds.has(row.task_id)) {
-        reviewedTaskIds.add(row.task_id)
-        byTrack[track].reviewed++
-      }
-    }
-    return { completed: completedTaskIds.size, reviewed: reviewedTaskIds.size, byTrack }
-  }, [])
-
   const fetchMetrics = useCallback(async (userId: string, month: Date) => {
     setLoading(true)
-    const monthStart = startOfMonth(month).toISOString()
-    const monthEnd = endOfMonth(month).toISOString()
-
-    // Step 1: fetch history rows for this month (no join)
-    const { data: history } = await supabase
-      .from('task_history')
-      .select('task_id, to_status, changed_by')
-      .gte('created_at', monthStart)
-      .lte('created_at', monthEnd)
-      .in('to_status', ['done', 'approved', 'revision'])
-
-    if (!history || history.length === 0) {
-      setMetrics({ month: format(month, 'yyyy-MM'), label: format(month, 'MMMM yyyy'), completed: 0, reviewed: 0, byTrack: {} })
-      setLoading(false)
-      // Still build trend
-    } else {
-      // Step 2: fetch task metadata for unique task_ids
-      const taskIds = [...new Set(history.map(r => r.task_id))]
-      const { data: tasks } = await supabase
-        .from('tasks')
-        .select('id, assignee_id, track')
-        .in('id', taskIds)
-
-      const taskMap: Record<string, { assignee_id: string | null; track: string }> = {}
-      for (const t of tasks ?? []) taskMap[t.id] = { assignee_id: t.assignee_id, track: t.track }
-
-      const { completed, reviewed, byTrack } = computeCounts(history, taskMap, userId)
-      setMetrics({ month: format(month, 'yyyy-MM'), label: format(month, 'MMMM yyyy'), completed, reviewed, byTrack })
+    const monthParam = format(month, 'yyyy-MM')
+    try {
+      const res = await fetch(`/api/workload?userId=${userId}&month=${monthParam}`)
+      if (!res.ok) throw new Error('Failed to fetch workload')
+      const data = await res.json()
+      setMetrics({
+        month: monthParam,
+        label: format(month, 'MMMM yyyy'),
+        completed: data.completed,
+        reviewed: data.reviewed,
+        byTrack: data.byTrack ?? {},
+        trend: data.trend ?? [],
+      })
+    } catch {
+      setMetrics(null)
     }
-
-    // Build 6-month trend (same two-step approach)
-    const trendMonths = Array.from({ length: 6 }, (_, i) => subMonths(month, 5 - i))
-    const trendData = await Promise.all(trendMonths.map(async m => {
-      const mStart = startOfMonth(m).toISOString()
-      const mEnd = endOfMonth(m).toISOString()
-      const { data: h } = await supabase
-        .from('task_history')
-        .select('task_id, to_status, changed_by')
-        .gte('created_at', mStart)
-        .lte('created_at', mEnd)
-        .in('to_status', ['done', 'approved', 'revision'])
-
-      if (!h || h.length === 0) return { label: format(m, 'MMM'), completed: 0, reviewed: 0 }
-
-      const tIds = [...new Set(h.map(r => r.task_id))]
-      const { data: tTasks } = await supabase.from('tasks').select('id, assignee_id, track').in('id', tIds)
-      const tMap: Record<string, { assignee_id: string | null; track: string }> = {}
-      for (const t of tTasks ?? []) tMap[t.id] = { assignee_id: t.assignee_id, track: t.track }
-
-      const { completed: c, reviewed: r } = computeCounts(h, tMap, userId)
-      return { label: format(m, 'MMM'), completed: c, reviewed: r }
-    }))
-
-    setTrend(trendData)
     setLoading(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     if (!open || !selectedUserId) return
@@ -155,22 +89,23 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
 
   const prevMonth = () => setCurrentMonth(m => subMonths(m, 1))
   const nextMonth = () => {
-    const next = subMonths(new Date(), -1)
     setCurrentMonth(m => {
       const proposed = new Date(m.getFullYear(), m.getMonth() + 1, 1)
-      return proposed > startOfMonth(next) ? m : proposed
+      return proposed > startOfMonth(new Date()) ? m : proposed
     })
   }
   const isCurrentMonth = format(currentMonth, 'yyyy-MM') === format(new Date(), 'yyyy-MM')
 
-  const activeTrackKeys = TRACKS.filter(t => (metrics?.byTrack[t]?.completed ?? 0) + (metrics?.byTrack[t]?.reviewed ?? 0) > 0)
+  const activeTrackKeys = TRACKS.filter(t =>
+    (metrics?.byTrack[t]?.completed ?? 0) + (metrics?.byTrack[t]?.reviewed ?? 0) > 0
+  )
 
   return (
     <div
       className="rounded-2xl overflow-hidden"
       style={{ border: '1px solid rgba(255,255,255,0.07)', background: '#161616' }}
     >
-      {/* Header — always visible */}
+      {/* Header */}
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
@@ -192,9 +127,8 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
       {/* Expanded content */}
       {open && (
         <div className="px-5 pb-6 space-y-6">
-          {/* Controls row */}
+          {/* Controls */}
           <div className="flex flex-wrap items-center gap-4">
-            {/* User picker */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-[#555]">Member</span>
               <select
@@ -207,8 +141,6 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
                 ))}
               </select>
             </div>
-
-            {/* Month nav */}
             <div className="flex items-center gap-1 ml-auto">
               <button onClick={prevMonth} className="p-1 rounded hover:bg-white/5 text-[#555] hover:text-[#aaa] transition-colors">
                 <ChevronLeft className="w-4 h-4" />
@@ -242,13 +174,12 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
               {activeTrackKeys.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[11px] text-[#555] uppercase tracking-wider">By Track</p>
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {activeTrackKeys.map(track => {
                       const c = metrics.byTrack[track]?.completed ?? 0
                       const r = metrics.byTrack[track]?.reviewed ?? 0
-                      const total = metrics.completed + metrics.reviewed || 1
-                      const trackTotal = c + r
-                      const pct = Math.round((trackTotal / total) * 100)
+                      const total = (metrics.completed + metrics.reviewed) || 1
+                      const pct = Math.round(((c + r) / total) * 100)
                       return (
                         <div key={track}>
                           <div className="flex items-center justify-between mb-1">
@@ -277,18 +208,13 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
               )}
 
               {/* 6-month trend */}
-              {trend.length > 0 && (
+              {metrics.trend.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[11px] text-[#555] uppercase tracking-wider">6-Month Trend</p>
                   <div style={{ height: 120 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={trend} barSize={14} barGap={2}>
-                        <XAxis
-                          dataKey="label"
-                          tick={{ fontSize: 10, fill: '#555' }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
+                      <BarChart data={metrics.trend} barSize={14} barGap={2}>
+                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#555' }} axisLine={false} tickLine={false} />
                         <YAxis hide allowDecimals={false} />
                         <Tooltip
                           contentStyle={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
@@ -296,33 +222,35 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
                           itemStyle={{ color: '#ccc' }}
                           cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                         />
-                        <Bar dataKey="completed" name="Completed" stackId="a" fill="#f7931a" radius={[0, 0, 0, 0]}>
-                          {trend.map((entry, i) => (
-                            <Cell
-                              key={i}
-                              fill={format(currentMonth, 'MMM') === entry.label ? '#f7931a' : '#f7931a66'}
-                            />
+                        <Bar dataKey="completed" name="Completed" stackId="a" fill="#f7931a">
+                          {metrics.trend.map((entry, i) => (
+                            <Cell key={i} fill={entry.month === metrics.month ? '#f7931a' : '#f7931a55'} />
                           ))}
                         </Bar>
                         <Bar dataKey="reviewed" name="Reviewed" stackId="a" fill="#60a5fa" radius={[3, 3, 0, 0]}>
-                          {trend.map((entry, i) => (
-                            <Cell
-                              key={i}
-                              fill={format(currentMonth, 'MMM') === entry.label ? '#60a5fa' : '#60a5fa55'}
-                            />
+                          {metrics.trend.map((entry, i) => (
+                            <Cell key={i} fill={entry.month === metrics.month ? '#60a5fa' : '#60a5fa44'} />
                           ))}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                   <div className="flex items-center gap-4 justify-center">
-                    <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f7931a' }} /><span className="text-[10px] text-[#666]">Completed</span></div>
-                    <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#60a5fa' }} /><span className="text-[10px] text-[#666]">Reviewed</span></div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f7931a' }} />
+                      <span className="text-[10px] text-[#666]">Completed</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#60a5fa' }} />
+                      <span className="text-[10px] text-[#666]">Reviewed</span>
+                    </div>
                   </div>
                 </div>
               )}
             </>
-          ) : null}
+          ) : (
+            <p className="text-sm text-[#555] text-center py-4">Could not load workload data.</p>
+          )}
         </div>
       )}
     </div>
