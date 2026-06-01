@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2, ArrowRight } from 'lucide-react'
 import { usePendingActions } from '@/lib/usePendingActions'
+import { WorkloadMetricsCard } from '@/components/dashboard/WorkloadMetricsCard'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
 import { Task, Episode, User, TaskStatus } from '@/lib/types'
@@ -424,6 +425,9 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
           <MiniProductionOverview episodes={episodesProgress} />
         </div>
       )}
+
+      {/* Monthly Workload Metrics */}
+      <WorkloadMetricsCard />
     </div>
   )
 }
@@ -608,6 +612,9 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
         <ZoneHeader title="Team Workload" count={teamTasks.length} />
         <WorkloadSection teamTasks={teamTasks} allUsers={allUsers} onTaskClick={onTaskClick} />
       </div>
+
+      {/* Zone 5: Monthly Workload Metrics */}
+      <WorkloadMetricsCard allUsers={allUsers} />
     </div>
   )
 }
