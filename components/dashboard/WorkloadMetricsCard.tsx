@@ -59,103 +59,87 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
     }
   }, [allUsers, selectedUserId])
 
-  const fetchMetrics = useCallback(async (userId: string, month: Date) => {
-    setLoading(true)
-    const monthStart = startOfMonth(month).toISOString()
-    const monthEnd = endOfMonth(month).toISOString()
-
-    // Fetch task_history entries for this month
-    const { data: history } = await supabase
-      .from('task_history')
-      .select('task_id, from_status, to_status, changed_by, created_at, tasks!inner(assignee_id, track)')
-      .gte('created_at', monthStart)
-      .lte('created_at', monthEnd)
-      .in('to_status', ['done', 'approved', 'revision'])
-
-    if (!history) { setLoading(false); return }
-
-    // Completed as assignee: entry where task.assignee_id = userId AND to_status in done/approved
-    // Reviewed as approver: entry where changed_by = userId AND to_status in approved/revision AND task.assignee_id != userId
-    type HistoryRow = {
-      task_id: string
-      from_status: string
-      to_status: string
-      changed_by: string
-      created_at: string
-      tasks: { assignee_id: string | null; track: string } | { assignee_id: string | null; track: string }[]
-    }
-
-    const rows = history as unknown as HistoryRow[]
-
-    const getTask = (row: HistoryRow) => Array.isArray(row.tasks) ? row.tasks[0] : row.tasks
-
-    // Deduplicate: one completion per task_id for assignee, one review action per task_id for approver
+  // Helper: compute completed + reviewed counts from raw history rows + task map
+  const computeCounts = useCallback((
+    rows: { task_id: string; to_status: string; changed_by: string }[],
+    taskMap: Record<string, { assignee_id: string | null; track: string }>,
+    userId: string
+  ) => {
     const completedTaskIds = new Set<string>()
     const reviewedTaskIds = new Set<string>()
     const byTrack: Record<string, { completed: number; reviewed: number }> = {}
 
     for (const row of rows) {
-      const task = getTask(row)
+      const task = taskMap[row.task_id]
       if (!task) continue
       const track = task.track ?? 'Other'
-
       if (!byTrack[track]) byTrack[track] = { completed: 0, reviewed: 0 }
 
-      // Completed as assignee
-      if (
-        task.assignee_id === userId &&
-        (row.to_status === 'done' || row.to_status === 'approved') &&
-        !completedTaskIds.has(row.task_id)
-      ) {
+      if (task.assignee_id === userId && (row.to_status === 'done' || row.to_status === 'approved') && !completedTaskIds.has(row.task_id)) {
         completedTaskIds.add(row.task_id)
         byTrack[track].completed++
       }
-
-      // Reviewed as approver (they acted, and they're not the assignee)
-      if (
-        row.changed_by === userId &&
-        (row.to_status === 'approved' || row.to_status === 'revision') &&
-        task.assignee_id !== userId &&
-        !reviewedTaskIds.has(row.task_id)
-      ) {
+      if (row.changed_by === userId && (row.to_status === 'approved' || row.to_status === 'revision') && task.assignee_id !== userId && !reviewedTaskIds.has(row.task_id)) {
         reviewedTaskIds.add(row.task_id)
         byTrack[track].reviewed++
       }
     }
+    return { completed: completedTaskIds.size, reviewed: reviewedTaskIds.size, byTrack }
+  }, [])
 
-    setMetrics({
-      month: format(month, 'yyyy-MM'),
-      label: format(month, 'MMMM yyyy'),
-      completed: completedTaskIds.size,
-      reviewed: reviewedTaskIds.size,
-      byTrack,
-    })
+  const fetchMetrics = useCallback(async (userId: string, month: Date) => {
+    setLoading(true)
+    const monthStart = startOfMonth(month).toISOString()
+    const monthEnd = endOfMonth(month).toISOString()
 
-    // Build 6-month trend
+    // Step 1: fetch history rows for this month (no join)
+    const { data: history } = await supabase
+      .from('task_history')
+      .select('task_id, to_status, changed_by')
+      .gte('created_at', monthStart)
+      .lte('created_at', monthEnd)
+      .in('to_status', ['done', 'approved', 'revision'])
+
+    if (!history || history.length === 0) {
+      setMetrics({ month: format(month, 'yyyy-MM'), label: format(month, 'MMMM yyyy'), completed: 0, reviewed: 0, byTrack: {} })
+      setLoading(false)
+      // Still build trend
+    } else {
+      // Step 2: fetch task metadata for unique task_ids
+      const taskIds = [...new Set(history.map(r => r.task_id))]
+      const { data: tasks } = await supabase
+        .from('tasks')
+        .select('id, assignee_id, track')
+        .in('id', taskIds)
+
+      const taskMap: Record<string, { assignee_id: string | null; track: string }> = {}
+      for (const t of tasks ?? []) taskMap[t.id] = { assignee_id: t.assignee_id, track: t.track }
+
+      const { completed, reviewed, byTrack } = computeCounts(history, taskMap, userId)
+      setMetrics({ month: format(month, 'yyyy-MM'), label: format(month, 'MMMM yyyy'), completed, reviewed, byTrack })
+    }
+
+    // Build 6-month trend (same two-step approach)
     const trendMonths = Array.from({ length: 6 }, (_, i) => subMonths(month, 5 - i))
     const trendData = await Promise.all(trendMonths.map(async m => {
       const mStart = startOfMonth(m).toISOString()
       const mEnd = endOfMonth(m).toISOString()
       const { data: h } = await supabase
         .from('task_history')
-        .select('task_id, to_status, changed_by, tasks!inner(assignee_id)')
+        .select('task_id, to_status, changed_by')
         .gte('created_at', mStart)
         .lte('created_at', mEnd)
         .in('to_status', ['done', 'approved', 'revision'])
 
-      type TrendRow = { task_id: string; to_status: string; changed_by: string; tasks: { assignee_id: string | null } | { assignee_id: string | null }[] }
-      const trows = (h ?? []) as unknown as TrendRow[]
-      const getT = (r: TrendRow) => Array.isArray(r.tasks) ? r.tasks[0] : r.tasks
+      if (!h || h.length === 0) return { label: format(m, 'MMM'), completed: 0, reviewed: 0 }
 
-      const cIds = new Set<string>()
-      const rIds = new Set<string>()
-      for (const row of trows) {
-        const t = getT(row)
-        if (!t) continue
-        if (t.assignee_id === userId && (row.to_status === 'done' || row.to_status === 'approved') && !cIds.has(row.task_id)) cIds.add(row.task_id)
-        if (row.changed_by === userId && (row.to_status === 'approved' || row.to_status === 'revision') && t.assignee_id !== userId && !rIds.has(row.task_id)) rIds.add(row.task_id)
-      }
-      return { label: format(m, 'MMM'), completed: cIds.size, reviewed: rIds.size }
+      const tIds = [...new Set(h.map(r => r.task_id))]
+      const { data: tTasks } = await supabase.from('tasks').select('id, assignee_id, track').in('id', tIds)
+      const tMap: Record<string, { assignee_id: string | null; track: string }> = {}
+      for (const t of tTasks ?? []) tMap[t.id] = { assignee_id: t.assignee_id, track: t.track }
+
+      const { completed: c, reviewed: r } = computeCounts(h, tMap, userId)
+      return { label: format(m, 'MMM'), completed: c, reviewed: r }
     }))
 
     setTrend(trendData)
