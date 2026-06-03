@@ -18,6 +18,7 @@ export const TRACK_COLORS: Record<Track, string> = {
   'Clips & Shorts': '#a78bfa',
   'Review': '#fb923c',
   'Publishing': '#38bdf8',
+  'Client Action': '#e879f9',
 }
 
 export const CLIENT_LABELS: Record<string, string> = {

@@ -24,6 +24,7 @@ export type Track =
   | 'Clips & Shorts'
   | 'Review'
   | 'Publishing'
+  | 'Client Action'
 
 export type ClientKey = string
 

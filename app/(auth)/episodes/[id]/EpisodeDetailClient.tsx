@@ -31,7 +31,7 @@ interface Props {
   initialCommentId?: string
 }
 
-const TRACK_ORDER: Track[] = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing']
+const TRACK_ORDER: Track[] = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing', 'Client Action']
 const FOOTAGE_TRACKS = ['Trailer', 'Clips & Shorts', 'Long-form']
 
 function getDomain(url: string) {

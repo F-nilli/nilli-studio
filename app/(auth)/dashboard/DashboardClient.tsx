@@ -365,7 +365,8 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
   onReassignToast?: (msg: string) => void
   onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
-  const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
+  const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus) && t.track !== 'Client Action')
+  const clientActionTasks = tasks.filter(t => t.track === 'Client Action' && ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
 
   return (
@@ -418,6 +419,18 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
         </div>
       </div>
 
+      {/* Waiting for Client */}
+      {clientActionTasks.length > 0 && (
+        <div className="space-y-4">
+          <ZoneHeader title="Waiting for Client" count={clientActionTasks.length} color="pink" />
+          <div className="space-y-2">
+            {clientActionTasks.map(task => (
+              <ReviewTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} showAssignee={false} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Mini Production Overview */}
       {episodesProgress.length > 0 && (
         <div className="space-y-4">
@@ -448,7 +461,8 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
   onReassignToast?: (msg: string) => void
   onPendingAction: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
-  const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
+  const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus) && t.track !== 'Client Action')
+  const clientActionTasks = tasks.filter(t => t.track === 'Client Action' && ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -505,6 +519,18 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
           )}
         </div>
       </div>
+
+      {/* Zone 2b: Waiting for Client */}
+      {clientActionTasks.length > 0 && (
+        <div className="space-y-4">
+          <ZoneHeader title="Waiting for Client" count={clientActionTasks.length} color="pink" />
+          <div className="space-y-2">
+            {clientActionTasks.map(task => (
+              <ReviewTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} showAssignee={false} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Zone 3: Studio Overview */}
       <div className="space-y-6">
@@ -752,9 +778,11 @@ function WorkloadTaskRow({ task, onTaskClick }: {
 
 // ─── Shared sub-components ──────────────────────────────────────────────────
 
-function ZoneHeader({ title, count, color = 'default' }: { title: string; count?: number; color?: 'default' | 'purple' }) {
+function ZoneHeader({ title, count, color = 'default' }: { title: string; count?: number; color?: 'default' | 'purple' | 'pink' }) {
   const countCls = color === 'purple'
     ? 'bg-purple-500/20 text-purple-400'
+    : color === 'pink'
+    ? 'bg-fuchsia-500/20 text-fuchsia-400'
     : 'bg-[#222] text-[#888] border border-[#2a2a2a]'
   return (
     <div className="flex items-center gap-2.5">
@@ -811,8 +839,10 @@ function MyTasksList({ tasks, currentUser, onTaskClick, onTaskUpdate, onReassign
   onReassignToast?: (msg: string) => void
   onPendingAction?: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
-  const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
-  const lockedTasks = tasks.filter(t => t.status === 'locked')
+  // Exclude Client Action tasks — they have their own section
+  const nonClientTasks = tasks.filter(t => t.track !== 'Client Action')
+  const activeTasks = nonClientTasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
+  const lockedTasks = nonClientTasks.filter(t => t.status === 'locked')
   const grouped = ACTIVE_STATUSES.reduce<Record<TaskStatus, (Task & { episode: Episode })[]>>(
     (acc, s) => { acc[s] = activeTasks.filter(t => t.status === s); return acc },
     {} as Record<TaskStatus, (Task & { episode: Episode })[]>
