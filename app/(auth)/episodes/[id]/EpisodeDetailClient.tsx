@@ -1135,6 +1135,11 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
   const isApprover = task.requires_approval &&
     (currentUser.id === task.approver_id || currentUser.role === 'admin')
 
+  const isClientAction = task.track === 'Client Action'
+  const [clientChangesOpen, setClientChangesOpen] = useState(false)
+  const [clientChangesTaskId, setClientChangesTaskId] = useState<string>('')
+  const depTasks = allTasks.filter(t => task.dep_task_ids.includes(t.id) && ['done', 'approved'].includes(t.status))
+
   const showAssigneeAction = !isLocked && isAssignee &&
     (task.status === 'in_progress' || task.status === 'revision')
   const showApproverActions = !isLocked && isApprover && task.status === 'in_review'
@@ -1503,6 +1508,71 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     onPendingAction(`Sent back "${capturedTask.label}"`, () => onTaskUpdate(capturedTask), commit)
   }
 
+  async function handleClientChanges() {
+    if (!clientChangesTaskId || actionLoading) return
+    setActionLoading(true)
+
+    const depTask = allTasks.find(t => t.id === clientChangesTaskId)
+    if (!depTask) { setActionLoading(false); return }
+
+    const capturedClientTask = task
+
+    // 1. Send the chosen dep task back to revision
+    await supabase.from('tasks').update({ status: 'revision' }).eq('id', depTask.id)
+    supabase.from('task_history').insert({
+      task_id: depTask.id,
+      episode_id: task.episode_id,
+      from_status: depTask.status,
+      to_status: 'revision',
+      changed_by: currentUser.id,
+      note: 'Client requested changes',
+    }).then(() => {})
+
+    // 2. Re-lock this Client Action task
+    const { data: updatedClientTask } = await supabase
+      .from('tasks')
+      .update({ status: 'locked' })
+      .eq('id', task.id)
+      .select('*')
+      .single()
+
+    supabase.from('task_history').insert({
+      task_id: task.id,
+      episode_id: task.episode_id,
+      from_status: task.status,
+      to_status: 'locked',
+      changed_by: currentUser.id,
+      note: 'Re-locked: client requested changes on dependency',
+    }).then(() => {})
+
+    // 3. Notify dep task assignee
+    if (depTask.assignee_id) {
+      await sendNotification(supabase, {
+        userId: depTask.assignee_id,
+        type: 'task_revision',
+        title: 'Client requested changes',
+        body: `"${depTask.label}" was sent back — client requested revisions on "${capturedClientTask.label}"`,
+        taskId: depTask.id,
+        episodeId: task.episode_id,
+      })
+      fetch('/api/slack/notify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'revision',
+          episodeId: task.episode_id,
+          taskLabel: depTask.label,
+          assigneeName: (depTask.assignee as User | undefined)?.name ?? '',
+        }),
+      }).catch(() => {})
+    }
+
+    if (updatedClientTask) onTaskUpdate(updatedClientTask as unknown as Task)
+    setClientChangesOpen(false)
+    setClientChangesTaskId('')
+    setActionLoading(false)
+    onReassignToast('Sent back for client revisions')
+  }
+
   const commentCount = taskComment?.count ?? 0
   const showFootageLink = episode.footage_url && FOOTAGE_TRACKS.includes(task.track)
 
@@ -1622,7 +1692,30 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             </div>
           )}
           <div className="flex items-center gap-2">
-            {showAssigneeAction && (
+            {showAssigneeAction && isClientAction && (
+              <>
+                <button
+                  onClick={() => { setClientChangesOpen(o => !o); }}
+                  disabled={actionLoading}
+                  className={cn(
+                    'flex-1 py-1.5 px-3 border text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 cursor-pointer',
+                    clientChangesOpen
+                      ? 'border-[#ff3c00]/70 bg-[#ff3c00]/10 text-[#ff6644]'
+                      : 'border-[#ff3c00]/30 hover:border-[#ff3c00]/60 hover:bg-[#ff3c00]/5 text-[#ff6644]'
+                  )}
+                >
+                  Client Requested Changes
+                </button>
+                <button
+                  onClick={handleStatusAction}
+                  disabled={actionLoading}
+                  className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
+                >
+                  {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Saving…</span> : 'Client Approved'}
+                </button>
+              </>
+            )}
+            {showAssigneeAction && !isClientAction && (
               <button
                 onClick={handleStatusAction}
                 disabled={actionLoading}
@@ -1705,6 +1798,52 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
               className="ml-auto py-1 px-3 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded transition-colors"
             >
               {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm Send Back'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Client Requested Changes form */}
+      {clientChangesOpen && isClientAction && (
+        <div
+          className="mx-4 mb-4 p-4 bg-[#2a2a2a] rounded-lg space-y-3"
+          style={{ border: '1px solid rgba(255,255,255,0.09)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <p className="text-xs font-semibold text-[#888]">Which task needs to go back?</p>
+          {depTasks.length === 0 ? (
+            <p className="text-xs text-[#555]">No completed dependency tasks found.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {depTasks.map(dt => (
+                <label key={dt.id} className="flex items-center gap-2.5 cursor-pointer group">
+                  <input
+                    type="radio"
+                    name="clientChangesDep"
+                    value={dt.id}
+                    checked={clientChangesTaskId === dt.id}
+                    onChange={() => setClientChangesTaskId(dt.id)}
+                    className="accent-[#ff3c00]"
+                  />
+                  <span className="text-xs text-[#ccc] group-hover:text-white transition-colors">{dt.label}</span>
+                  {dt.assignee && <span className="text-[11px] text-[#555]">— {(dt.assignee as User).name}</span>}
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-3 pt-0.5">
+            <button
+              onClick={() => { setClientChangesOpen(false); setClientChangesTaskId('') }}
+              className="text-xs text-[#555] hover:text-[#888] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleClientChanges}
+              disabled={actionLoading || !clientChangesTaskId}
+              className="ml-auto py-1 px-3 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded transition-colors"
+            >
+              {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm'}
             </button>
           </div>
         </div>
