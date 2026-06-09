@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { format, startOfMonth, subMonths } from 'date-fns'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
-const TRACKS = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing'] as const
+const TRACKS = ['Long-form', 'Trailer', 'Thumbnails', 'Clips & Shorts', 'Review', 'Publishing', 'Client Action'] as const
 
 const TRACK_COLORS: Record<string, string> = {
   'Long-form':      '#f7931a',
@@ -18,6 +18,7 @@ const TRACK_COLORS: Record<string, string> = {
   'Clips & Shorts': '#34d399',
   'Review':         '#f87171',
   'Publishing':     '#fbbf24',
+  'Client Action':  '#e879f9',
 }
 
 interface MonthMetrics {
@@ -52,12 +53,22 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Default to first user once list is loaded
+  // Filter to non-admin users only, Ali first
+  const visibleUsers = allUsers
+    .filter(u => u.role !== 'admin')
+    .sort((a, b) => {
+      if (a.name.toLowerCase() === 'ali') return -1
+      if (b.name.toLowerCase() === 'ali') return 1
+      return a.name.localeCompare(b.name)
+    })
+
+  // Default to Ali (or first non-admin) once list is loaded
   useEffect(() => {
-    if (!selectedUserId && allUsers.length > 0) {
-      setSelectedUserId(allUsers[0].id)
+    if (!selectedUserId && visibleUsers.length > 0) {
+      setSelectedUserId(visibleUsers[0].id)
     }
-  }, [allUsers, selectedUserId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allUsers])
 
   const fetchMetrics = useCallback(async (userId: string, month: Date) => {
     setLoading(true)
@@ -85,7 +96,7 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
     fetchMetrics(selectedUserId, currentMonth)
   }, [open, selectedUserId, currentMonth, fetchMetrics])
 
-  const selectedUser = allUsers.find(u => u.id === selectedUserId)
+  const selectedUser = visibleUsers.find(u => u.id === selectedUserId)
 
   const prevMonth = () => setCurrentMonth(m => subMonths(m, 1))
   const nextMonth = () => {
@@ -127,21 +138,40 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
       {/* Expanded content */}
       {open && (
         <div className="px-5 pb-6 space-y-6">
-          {/* Controls */}
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#555]">Member</span>
-              <select
-                value={selectedUserId}
-                onChange={e => setSelectedUserId(e.target.value)}
-                className="bg-[#1e1e1e] border border-[#2e2e2e] text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#ff3c00] cursor-pointer"
-              >
-                {allUsers.map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+          {/* Controls: pills + month nav */}
+          <div className="space-y-3">
+            {/* Member pills */}
+            <div className="flex flex-wrap gap-2">
+              {visibleUsers.map(u => {
+                const isSelected = u.id === selectedUserId
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setSelectedUserId(u.id)}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer',
+                      isSelected
+                        ? 'text-white'
+                        : 'text-[#555] hover:text-[#888] hover:bg-white/5'
+                    )}
+                    style={isSelected ? {
+                      background: `${u.avatar_color}22`,
+                      border: `1px solid ${u.avatar_color}66`,
+                      color: u.avatar_color,
+                    } : {
+                      background: 'transparent',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                    }}
+                  >
+                    <Avatar name={u.name} color={u.avatar_color} size="sm" avatarUrl={u.avatar_url} />
+                    {u.name.split(' ')[0]}
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex items-center gap-1 ml-auto">
+
+            {/* Month nav */}
+            <div className="flex items-center gap-1">
               <button onClick={prevMonth} className="p-1 rounded hover:bg-white/5 text-[#555] hover:text-[#aaa] transition-colors">
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -209,25 +239,31 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
 
               {/* 6-month trend */}
               {metrics.trend.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="text-[11px] text-[#555] uppercase tracking-wider">6-Month Trend</p>
-                  <div style={{ height: 120 }}>
+                  <div style={{ height: 160 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={metrics.trend} barSize={14} barGap={2}>
-                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#555' }} axisLine={false} tickLine={false} />
+                      <BarChart data={metrics.trend} barSize={28} barCategoryGap="20%">
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 11, fill: '#555' }}
+                          axisLine={false}
+                          tickLine={false}
+                          dy={6}
+                        />
                         <YAxis hide allowDecimals={false} />
                         <Tooltip
                           contentStyle={{ background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
-                          labelStyle={{ color: '#888' }}
+                          labelStyle={{ color: '#aaa', fontWeight: 600 }}
                           itemStyle={{ color: '#ccc' }}
-                          cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                          cursor={{ fill: 'rgba(255,255,255,0.04)', radius: 4 }}
                         />
                         <Bar dataKey="completed" name="Completed" stackId="a" fill="#f7931a">
                           {metrics.trend.map((entry, i) => (
-                            <Cell key={i} fill={entry.month === metrics.month ? '#f7931a' : '#f7931a55'} />
+                            <Cell key={i} fill={entry.month === metrics.month ? '#f7931a' : '#f7931a44'} />
                           ))}
                         </Bar>
-                        <Bar dataKey="reviewed" name="Reviewed" stackId="a" fill="#60a5fa" radius={[3, 3, 0, 0]}>
+                        <Bar dataKey="reviewed" name="Reviewed" stackId="a" fill="#60a5fa" radius={[4, 4, 0, 0]}>
                           {metrics.trend.map((entry, i) => (
                             <Cell key={i} fill={entry.month === metrics.month ? '#60a5fa' : '#60a5fa44'} />
                           ))}
@@ -235,14 +271,14 @@ export function WorkloadMetricsCard({ allUsers: propUsers }: { allUsers?: User[]
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="flex items-center gap-4 justify-center">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f7931a' }} />
-                      <span className="text-[10px] text-[#666]">Completed</span>
+                  <div className="flex items-center gap-5 justify-center">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-sm" style={{ background: '#f7931a' }} />
+                      <span className="text-[11px] text-[#666]">Completed</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#60a5fa' }} />
-                      <span className="text-[10px] text-[#666]">Reviewed</span>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-sm" style={{ background: '#60a5fa' }} />
+                      <span className="text-[11px] text-[#666]">Reviewed</span>
                     </div>
                   </div>
                 </div>
