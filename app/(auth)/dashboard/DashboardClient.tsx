@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2, ArrowRight } from 'lucide-react'
 import { usePendingActions } from '@/lib/usePendingActions'
@@ -43,17 +44,48 @@ export function DashboardClient({
   allUsers,
 }: Props) {
   const supabase = createClient()
+  const router = useRouter()
   const [tasks, setTasks] = useState(initialTasks)
   const [reviewTasks, setReviewTasks] = useState(initialReviewTasks)
   const [selectedTask, setSelectedTask] = useState<(Task & { episode?: Episode }) | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const { pendingActions, addPending, undoPending, silentPending } = usePendingActions()
+  const lastRefreshRef = useRef<number>(Date.now())
+
+  // Refresh on tab focus + every 3 minutes as Realtime fallback
+  useEffect(() => {
+    const POLL_INTERVAL = 3 * 60 * 1000 // 3 minutes
+    const MIN_REFRESH_GAP = 30 * 1000   // don't refresh more than once per 30s
+
+    function refresh() {
+      const now = Date.now()
+      if (now - lastRefreshRef.current < MIN_REFRESH_GAP) return
+      lastRefreshRef.current = now
+      router.refresh()
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') refresh()
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    const interval = setInterval(refresh, POLL_INTERVAL)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      clearInterval(interval)
+    }
+  }, [router])
 
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(t)
   }, [toast])
+
+  // Sync state when server-side props refresh (router.refresh())
+  useEffect(() => { setTasks(initialTasks) }, [initialTasks])
+  useEffect(() => { setReviewTasks(initialReviewTasks) }, [initialReviewTasks])
 
   // Realtime: my tasks
   useEffect(() => {
