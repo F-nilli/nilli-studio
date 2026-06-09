@@ -35,8 +35,8 @@ export async function GET(req: NextRequest) {
     const { data: history } = await admin
       .from('task_history')
       .select('task_id, to_status, changed_by')
-      .gte('created_at', monthStart)
-      .lte('created_at', monthEnd)
+      .gte('changed_at', monthStart)
+      .lte('changed_at', monthEnd)
       .in('to_status', ['done', 'approved', 'revision'])
 
     if (!history || history.length === 0) {

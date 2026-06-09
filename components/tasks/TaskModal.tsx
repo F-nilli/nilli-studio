@@ -175,7 +175,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       .select('from_status, to_status')
       .eq('task_id', task.id)
       .neq('from_status', 'locked')
-      .order('created_at', { ascending: false })
+      .order('changed_at', { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }) => setLastHistory(data))
