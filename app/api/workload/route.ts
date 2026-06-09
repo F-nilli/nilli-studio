@@ -39,15 +39,18 @@ export async function GET(req: NextRequest) {
       .lte('changed_at', monthEnd)
       .in('to_status', ['done', 'approved', 'revision'])
 
+    console.log('[workload] history rows:', history?.length ?? 'null', 'for', monthStart, '-', monthEnd)
     if (!history || history.length === 0) {
       return { completed: 0, reviewed: 0, byTrack: {} }
     }
 
-    const taskIds = [...new Set(history.map((r: { task_id: string }) => r.task_id))]
-    const { data: tasks } = await admin
+    const taskIds = [...new Set(history.map((r: { task_id: string }) => r.task_id).filter(Boolean))]
+    console.log('[workload] unique taskIds:', taskIds.length)
+    const { data: tasks, error: tasksError } = await admin
       .from('tasks')
       .select('id, assignee_id, track')
       .in('id', taskIds)
+    console.log('[workload] tasks fetched:', tasks?.length ?? 'null', 'error:', tasksError?.message ?? 'none')
 
     const taskMap: Record<string, { assignee_id: string | null; track: string }> = {}
     for (const t of tasks ?? []) taskMap[t.id] = { assignee_id: t.assignee_id, track: t.track }
@@ -72,6 +75,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    console.log('[workload] result:', { completed: completedTaskIds.size, reviewed: reviewedTaskIds.size, userId })
     return { completed: completedTaskIds.size, reviewed: reviewedTaskIds.size, byTrack }
   }
 
