@@ -51,25 +51,45 @@ export function DashboardClient({
   const [toast, setToast] = useState<string | null>(null)
   const { pendingActions, addPending, undoPending, silentPending } = usePendingActions()
   const lastRefreshRef = useRef<number>(Date.now())
+  const lastCountsRef = useRef<{ myTasksCount: number; reviewCount: number } | null>(null)
 
-  // Refresh on tab focus + every 3 minutes as Realtime fallback
+  // Refresh on tab focus + smart poll every 3 minutes as Realtime fallback
   useEffect(() => {
     const POLL_INTERVAL = 3 * 60 * 1000 // 3 minutes
-    const MIN_REFRESH_GAP = 30 * 1000   // don't refresh more than once per 30s
+    const MIN_REFRESH_GAP = 30 * 1000   // don't full-refresh more than once per 30s
 
-    function refresh() {
+    function fullRefresh() {
       const now = Date.now()
       if (now - lastRefreshRef.current < MIN_REFRESH_GAP) return
       lastRefreshRef.current = now
       router.refresh()
     }
 
+    // Lightweight poll: only triggers full refresh if counts changed
+    async function smartPoll() {
+      try {
+        const res = await fetch('/api/dashboard-counts')
+        if (!res.ok) return
+        const counts = await res.json() as { myTasksCount: number; reviewCount: number }
+        const prev = lastCountsRef.current
+        lastCountsRef.current = counts
+        if (!prev) return // first poll — just store baseline
+        if (counts.myTasksCount !== prev.myTasksCount || counts.reviewCount !== prev.reviewCount) {
+          fullRefresh()
+        }
+      } catch {
+        // ignore network errors silently
+      }
+    }
+
     function onVisibilityChange() {
-      if (document.visibilityState === 'visible') refresh()
+      if (document.visibilityState === 'visible') fullRefresh()
     }
 
     document.addEventListener('visibilitychange', onVisibilityChange)
-    const interval = setInterval(refresh, POLL_INTERVAL)
+    const interval = setInterval(smartPoll, POLL_INTERVAL)
+    // Seed the baseline immediately
+    smartPoll()
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange)
