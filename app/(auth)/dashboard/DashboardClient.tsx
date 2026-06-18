@@ -1237,7 +1237,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         task.status === 'in_progress' ? 'in_review' :
         task.status === 'revision' ? 'in_review' : task.status
       const nextStatus: TaskStatus =
-        rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
+        rawNext === 'in_review' && !task.requires_approval ? 'done' : rawNext
 
       if (nextStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
         const approver = (task as Task & { approver?: User }).approver
@@ -1247,7 +1247,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
           const { data } = await supabase.from('users').select('*').eq('id', task.approver_id).single()
           if (data) setNextUserForNote({ user: data as User, taskId: task.id })
         }
-      } else if (nextStatus === 'approved') {
+      } else if (nextStatus === 'done') {
         // Find downstream locked task that will be unlocked
         const { data: allTasks } = await supabase
           .from('tasks').select('id, status, dep_task_ids, assignee_id').eq('episode_id', task.episode_id)
@@ -1405,14 +1405,13 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       task.status === 'in_progress' ? 'in_review' :
       task.status === 'revision' ? 'in_review' : task.status
     const nextStatus: TaskStatus =
-      rawNext === 'in_review' && !task.requires_approval ? 'approved' : rawNext
+      rawNext === 'in_review' && !task.requires_approval ? 'done' : rawNext
 
     const originalTask = task
     const capturedNote = noteText
     const capturedNextUser = nextUserForNote
     const actionLabel =
       nextStatus === 'in_review' ? `Submitted "${task.label}" for review`
-      : nextStatus === 'approved' ? `Approved "${task.label}"`
       : `Marked "${task.label}" as done`
 
     onUpdate({ ...task, status: nextStatus } as unknown as Task)
@@ -1441,20 +1440,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         body: JSON.stringify({ episodeId: task.episode_id, silent }),
       }).catch(() => {})
 
-      if (nextStatus === 'approved') {
-        if (!silent) {
-          const { data: allTasksForSlack } = await supabase.from('tasks').select('id, label, status, dep_task_ids, assignee_id, assignee:users!assignee_id(name)').eq('episode_id', task.episode_id)
-          const nextTasksForSlack: Array<{ label: string; assigneeName: string }> = []
-          if (allTasksForSlack) {
-            const approvedIds = new Set(allTasksForSlack.filter(t => t.status === 'approved' || t.status === 'done' || t.id === task.id).map(t => t.id))
-            for (const t of allTasksForSlack) {
-              if (t.status === 'locked' && t.dep_task_ids.length > 0 && t.dep_task_ids.every((d: string) => approvedIds.has(d))) {
-                nextTasksForSlack.push({ label: t.label, assigneeName: (t.assignee as unknown as { name: string } | null)?.name ?? '—' })
-              }
-            }
-          }
-          fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'approval', episodeId: task.episode_id, completedTaskLabel: task.label, nextTasks: nextTasksForSlack, approverName: task.approver_id ? currentUser.name : undefined }) }).catch(() => {})
-        }
+      if (nextStatus === 'done') {
         fetch('/api/episodes/check-triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, episodeId: task.episode_id }) }).catch(() => {})
       }
       if (!silent && nextStatus === 'in_review' && task.requires_approval && task.approver_id && task.approver_id !== currentUser.id) {
