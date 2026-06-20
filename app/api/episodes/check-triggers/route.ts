@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { addDays, parseISO, format, subDays } from 'date-fns'
 
 export async function POST(req: NextRequest) {
+  const sessionClient = await createClient()
+  const { data: { user } } = await sessionClient.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { taskId, episodeId } = await req.json()
   if (!taskId || !episodeId) return NextResponse.json({ triggered: false })
 

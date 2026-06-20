@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deliverEpisode } from '@/lib/deliver'
 import { headers } from 'next/headers'
 
 export async function POST(req: NextRequest) {
+  const sessionClient = await createClient()
+  const { data: { user } } = await sessionClient.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { episodeId, silent } = await req.json()
   if (!episodeId) return NextResponse.json({ unlocked: 0 })
 
