@@ -8,7 +8,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { cn, formatDate, parseDate } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
-import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical, UserMinus, UserCheck, AlertTriangle, Link2 } from 'lucide-react'
+import { Users, Building2, Activity, Plus, Trash2, RefreshCw, ChevronDown, Check, X, Zap, Pencil, Copy, MoreHorizontal, GripVertical, UserMinus, UserCheck, AlertTriangle, Link2, Key } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -1665,6 +1665,187 @@ function NotifToggle({ enabled, onClick }: { enabled: boolean; onClick: () => vo
   )
 }
 
+interface ApiKeyItem {
+  id: string
+  name: string
+  key_prefix: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+function ApiKeysCard() {
+  const [keys, setKeys] = useState<ApiKeyItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newName, setNewName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [newSecret, setNewSecret] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+
+  function loadKeys() {
+    return fetch('/api/admin/api-keys', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => setKeys(data.keys || []))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { loadKeys() }, [])
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (!newName.trim()) return
+    setCreating(true)
+    const res = await fetch('/api/admin/api-keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() }),
+    })
+    const data = await res.json()
+    setCreating(false)
+    if (!res.ok) { setError(data.error || 'Failed to create key'); return }
+    setNewSecret(data.key.secret)
+    setNewName('')
+    setCopied(false)
+    loadKeys()
+  }
+
+  async function handleRevoke(id: string) {
+    if (!confirm('Revoke this key? Anything using it will stop working immediately.')) return
+    setRevokingId(id)
+    await fetch(`/api/admin/api-keys/${id}`, { method: 'DELETE' })
+    await loadKeys()
+    setRevokingId(null)
+  }
+
+  function handleCopy() {
+    if (!newSecret) return
+    navigator.clipboard.writeText(newSecret)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const activeKeys = keys.filter(k => !k.revoked_at)
+  const revokedKeys = keys.filter(k => k.revoked_at)
+
+  return (
+    <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
+          <Key className="w-5 h-5 text-[#ff3c00]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-white">API Keys</h3>
+          <p className="text-xs text-[#666]">Read-only access for external developers — episodes &amp; tasks data</p>
+        </div>
+      </div>
+
+      {newSecret && (
+        <div className="bg-[#1e1e1e] border border-[#ff3c00]/40 rounded-lg p-4 space-y-2">
+          <p className="text-sm font-medium text-white flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 text-[#ff3c00]" />
+            Copy this key now — you won&apos;t be able to see it again
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs text-[#ccc] bg-black/40 px-3 py-2 rounded-lg overflow-x-auto whitespace-nowrap">{newSecret}</code>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="shrink-0 px-3 py-2 bg-[#2e2e2e] hover:bg-[#3a3a3a] text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNewSecret(null)}
+            className="text-xs text-[#888] hover:text-white transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-[#ff3c00]">{error}</p>}
+
+      <form onSubmit={handleCreate} className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-[#ccc] mb-1.5">New key name</label>
+          <input
+            type="text"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            placeholder="e.g. Zapier integration"
+            className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555]"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={creating || !newName.trim()}
+          className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          {creating ? 'Generating...' : 'Generate key'}
+        </button>
+      </form>
+
+      <div className="border-t border-[#2e2e2e] pt-4">
+        <p className="text-xs font-semibold text-[#888] uppercase tracking-wider mb-3">Active Keys</p>
+        {loading ? (
+          <p className="text-sm text-[#555]">Loading…</p>
+        ) : activeKeys.length === 0 ? (
+          <p className="text-sm text-[#555]">No active keys yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {activeKeys.map(k => (
+              <div key={k.id} className="flex items-center justify-between gap-4 bg-[#1e1e1e] rounded-lg px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{k.name}</p>
+                  <p className="text-xs text-[#555] font-mono">{k.key_prefix}…</p>
+                  <p className="text-xs text-[#555]">
+                    Created {format(parseISO(k.created_at), 'MMM d, yyyy')}
+                    {k.last_used_at ? ` · Last used ${format(parseISO(k.last_used_at), 'MMM d, yyyy')}` : ' · Never used'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRevoke(k.id)}
+                  disabled={revokingId === k.id}
+                  className="shrink-0 px-3 py-1.5 bg-[#2e2e2e] hover:bg-red-500/20 hover:text-red-400 text-[#aaa] rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {revokingId === k.id ? 'Revoking...' : 'Revoke'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {revokedKeys.length > 0 && (
+        <div className="border-t border-[#2e2e2e] pt-4">
+          <p className="text-xs font-semibold text-[#888] uppercase tracking-wider mb-3">Revoked</p>
+          <div className="space-y-2">
+            {revokedKeys.map(k => (
+              <div key={k.id} className="flex items-center justify-between gap-4 px-3 py-2 opacity-50">
+                <p className="text-sm text-[#888] truncate">{k.name}</p>
+                <span className="text-xs text-[#555] font-mono shrink-0">{k.key_prefix}…</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-[#555]">
+        Read-only. Use <code className="text-[#888]">Authorization: Bearer &lt;key&gt;</code> against <code className="text-[#888]">/api/v1/episodes</code>.
+      </p>
+    </div>
+  )
+}
+
 function IntegrationsTab() {
   const [token, setToken] = useState('')
   const [status, setStatus] = useState<{
@@ -1839,6 +2020,9 @@ function IntegrationsTab() {
         </div>
 
       </div>
+
+      {/* API Keys — full width, external read-only API access */}
+      <ApiKeysCard />
     </div>
   )
 }

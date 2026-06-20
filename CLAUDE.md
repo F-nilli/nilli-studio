@@ -23,7 +23,8 @@ Production management app for Nilli Studio video agency. Manages podcast episode
 ## Routing & Auth
 
 - `app/(auth)/` — all protected routes (dashboard, calendar, board, episodes, profile, settings, analytics)
-- `app/api/` — API routes (admin, episodes, tasks, notifications, push, slack, cron endpoints)
+- `app/api/` — API routes (admin, episodes, tasks, notifications, push, slack, cron endpoints). All routes other than the cron endpoints and `app/api/v1/*` require a logged-in session (`supabase.auth.getUser()` check).
+- `app/api/v1/` — external read-only API, see **External API** below
 - Auth pages (`/login`, `/signup`, etc.) live outside the `(auth)` group
 - `middleware.ts` wraps all routes via `lib/supabase/middleware.ts` to refresh sessions
 
@@ -36,11 +37,12 @@ Three clients in `lib/supabase/` — use the right one:
 
 ## Data Model
 
-Tables: `users`, `episodes`, `tasks`, `comments`, `notifications`
+Tables: `users`, `episodes`, `tasks`, `comments`, `notifications`, `api_keys`
 
 - Episodes have a `client_key` string (not a FK) mapping to `CLIENT_LABELS` in `lib/constants.ts`
 - Tasks have `dep_task_ids: text[]` — these are `template_task_id` strings (e.g. `"long_form_edit"`), not UUIDs
 - When a task is approved, siblings whose deps are all `done` unlock: `locked → ready`, due dates computed then
+- `api_keys` stores only a SHA-256 hash (`key_hash`) + non-secret `key_prefix`; the plaintext key is shown once at creation and never persisted. RLS is enabled with no policies — only reachable via the service-role client.
 
 **Task status flow:** `locked → ready → in_progress → in_review → approved | revision → done`
 
@@ -70,6 +72,17 @@ Tasks are generated from the template when an episode is created.
 
 Cron jobs (Vercel, `vercel.json`): `/api/overdue-check` and `/api/task-notifications-check` — both protected by `CRON_SECRET` header.
 
+## External API
+
+Read-only API for external developers, versioned under `app/api/v1/`:
+- `GET /api/v1` — health check + endpoint list
+- `GET /api/v1/episodes` — list episodes (`client_key`, `archived`, `limit`, `offset` query params)
+- `GET /api/v1/episodes/[id]` — one episode + its tasks
+
+Auth is via API key: `Authorization: Bearer nilli_live_...`, validated by `lib/apiKeys.ts` against `api_keys.key_hash`. No write endpoints exist. Internal-only fields (notes, footage URLs, approver IDs, dep IDs, etc.) are deliberately excluded from responses — only update the field allowlist in `app/api/v1/episodes/route.ts` and `[id]/route.ts` if a field is genuinely safe for external consumption.
+
+Admins manage keys from Settings → Notifications → API Keys, backed by `app/api/admin/api-keys/` (`GET`/`POST`) and `app/api/admin/api-keys/[id]/` (`DELETE`, soft-revoke via `revoked_at`).
+
 ## Key Files
 
 | File | Purpose |
@@ -78,6 +91,7 @@ Cron jobs (Vercel, `vercel.json`): `/api/overdue-check` and `/api/task-notificat
 | `lib/templates.ts` | Client task pipeline templates |
 | `lib/constants.ts` | `TEAM_MEMBERS`, colors, client labels |
 | `lib/utils.ts` | Date formatting, status helpers, `cn()` |
+| `lib/apiKeys.ts` | API key generation, hashing, validation |
 | `supabase/schema.sql` | Full DB schema + RLS policies |
 
 ## Environment Variables
