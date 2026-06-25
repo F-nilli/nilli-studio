@@ -54,21 +54,20 @@ body {
   font-size: 15px;
 }
 
-/* Wavy grid background — fixed under all content. The SVG filter
-   #wavyGrid (defined in layout.tsx) animates the displacement seed
-   so the grid lines slowly oscillate. The slight negative inset
-   prevents edge artifacts from the displacement filter. */
-.wavy-grid-bg {
+/* Grid background — fixed under all content. Flat, undistorted grid
+   lines with a radial vignette layered on top so the pattern fades
+   out toward the edges instead of cutting off sharply. */
+.grid-bg {
   position: fixed;
-  inset: -32px;
+  inset: 0;
   z-index: -1;
   pointer-events: none;
   background-color: #0d0d0d;
   background-image:
+    radial-gradient(ellipse at center, transparent 35%, #0d0d0d 90%),
     linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-  background-size: 60px 60px;
-  filter: url(#wavyGrid);
+  background-size: 100% 100%, 24px 24px, 24px 24px;
 }
 
 /* Dashboard task columns: capped height + thin styled scrollbar so the
