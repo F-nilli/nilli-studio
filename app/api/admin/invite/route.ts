@@ -30,15 +30,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 400 })
   }
 
-  const { error: profileError } = await admin.from('users').insert({
-    id: authUser.user.id,
-    email,
-    name,
-    username,
-    role,
-    avatar_color: avatarColor,
-    password_changed: false,
-  })
+  // A database trigger (on_auth_user_created) already inserted a default
+  // profile row the instant createUser() above wrote to auth.users — so we
+  // update that row with the admin-chosen values instead of inserting a
+  // second row, which would always collide on the primary key.
+  const { error: profileError } = await admin
+    .from('users')
+    .update({
+      email,
+      name,
+      username,
+      role,
+      avatar_color: avatarColor,
+      password_changed: false,
+    })
+    .eq('id', authUser.user.id)
   if (profileError) {
     // Roll back the auth user so we don't leave orphans
     await admin.auth.admin.deleteUser(authUser.user.id)
