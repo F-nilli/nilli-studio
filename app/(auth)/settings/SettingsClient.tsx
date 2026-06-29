@@ -874,6 +874,36 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
     setNewTemplateName('')
   }
 
+  async function handleDeletePipeline(name: string) {
+    if (!selectedClientId || templateNames.length <= 1) return
+    const taskCount = templates.filter(t => t.client_id === selectedClientId && (t.template_name || 'Default') === name).length
+    if (!confirm(`Delete the "${name}" pipeline and its ${taskCount} task${taskCount === 1 ? '' : 's'}? This cannot be undone.`)) return
+
+    // Legacy rows created before multi-template support may have a NULL
+    // template_name that displays as "Default" via the (|| 'Default')
+    // fallback used throughout this file — match both when deleting it.
+    const deleteQuery = supabase.from('task_templates').delete().eq('client_id', selectedClientId)
+    const { error } = name === 'Default'
+      ? await deleteQuery.or('template_name.eq.Default,template_name.is.null')
+      : await deleteQuery.eq('template_name', name)
+
+    if (error) {
+      showToast(`Delete failed: ${error.message}`, true)
+      return
+    }
+
+    await supabase.from('pipeline_triggers').delete().eq('client_id', selectedClientId).eq('template_name', name)
+
+    setTemplates(prev => prev.filter(t => !(t.client_id === selectedClientId && (t.template_name || 'Default') === name)))
+    setTriggers(prev => prev.filter(t => !(t.client_id === selectedClientId && t.template_name === name)))
+
+    if (selectedTemplateName === name) {
+      const remaining = templateNames.filter(n => n !== name)
+      selectTemplateName(remaining.includes('Default') ? 'Default' : (remaining[0] || 'Default'))
+    }
+    showToast('Pipeline deleted')
+  }
+
   const currentTasks = editingTasks ?? clientTemplates
 
   function updateTaskFields(idx: number, fields: Partial<DbTaskTemplate>) {
@@ -1205,16 +1235,32 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
             {/* Pipeline selector */}
             <div className="flex items-center gap-2 flex-wrap">
               {templateNames.map(name => (
-                <button
+                <div
                   key={name}
-                  onClick={() => selectTemplateName(name)}
                   className={cn(
-                    'px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                    selectedTemplateName === name ? 'bg-[#ff3c00] text-white' : 'bg-[#1e1e1e] text-[#888] hover:text-white border border-[#2e2e2e]'
+                    'flex items-center rounded-md text-xs font-medium transition-colors',
+                    selectedTemplateName === name ? 'bg-[#ff3c00] text-white' : 'bg-[#1e1e1e] text-[#888] border border-[#2e2e2e]'
                   )}
                 >
-                  {name}
-                </button>
+                  <button
+                    onClick={() => selectTemplateName(name)}
+                    className={cn('px-3 py-1 cursor-pointer', selectedTemplateName !== name && 'hover:text-white')}
+                  >
+                    {name}
+                  </button>
+                  {templateNames.length > 1 && (
+                    <button
+                      onClick={() => handleDeletePipeline(name)}
+                      title={`Delete ${name} pipeline`}
+                      className={cn(
+                        'pr-2 pl-0.5 py-1 cursor-pointer transition-colors',
+                        selectedTemplateName === name ? 'text-white/70 hover:text-white' : 'text-[#555] hover:text-[#ff3c00]'
+                      )}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               ))}
               {!addingTemplate ? (
                 <button onClick={() => setAddingTemplate(true)} className="px-2 py-1 text-xs text-[#555] hover:text-white transition-colors">
