@@ -837,6 +837,10 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   const [addingTemplate, setAddingTemplate] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
 
+  // Always show clients alphabetically, regardless of the order they were
+  // created/fetched in (new/duplicated clients are appended to state, which
+  // would otherwise leave them out of order until the next full page load).
+  const sortedClients = [...clients].sort((a, b) => a.label.localeCompare(b.label))
   const selectedClient = clients.find(c => c.id === selectedClientId)
   const templateNames = [...new Set(templates.filter(t => t.client_id === selectedClientId).map(t => t.template_name || 'Default'))]
   const clientTemplates = templates
@@ -1133,7 +1137,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
           {clientMenuOpen && (
             <div className="fixed inset-0 z-10" onClick={() => setClientMenuOpen(null)} />
           )}
-          {clients.map(c => (
+          {sortedClients.map(c => (
             <div key={c.id} className="relative">
               <div
                 onClick={() => selectClient(c.id)}
