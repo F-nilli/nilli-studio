@@ -128,6 +128,7 @@ export default async function DashboardPage() {
       supabase
         .from('episodes')
         .select('*')
+        .eq('archived', false)
         .gte('release_date', todayStr)
         .lte('release_date', twoWeeksStr)
         .order('release_date', { ascending: true }),
