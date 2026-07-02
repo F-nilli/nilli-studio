@@ -15,6 +15,7 @@ import { cn, formatDate, isOverdue, STATUS_LABELS, parseDate } from '@/lib/utils
 import { markTaskNotificationsRead } from '@/lib/notifications'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
+import { renderBriefBody } from '@/components/tasks/TaskBriefEditor'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { createClient } from '@/lib/supabase/client'
@@ -1516,6 +1517,19 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
           {acting ? '...' : getActionLabel(task)}
         </button>
       </div>
+      {/* Task brief — auto-expanded so the assignee can't miss it */}
+      {task.brief && (
+        <div
+          className="mt-3 px-3 py-2.5 rounded-lg"
+          style={{ background: 'rgba(247,147,26,0.06)', border: '1px solid rgba(247,147,26,0.15)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <p className="text-[10px] font-semibold text-[#f7931a]/60 uppercase tracking-wider mb-1.5">Brief</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.82)' }}>
+            {renderBriefBody(task.brief)}
+          </p>
+        </div>
+      )}
       {nextUserForNote && task.status !== 'in_review' && (
         <div className="mt-3 space-y-1" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1.5">

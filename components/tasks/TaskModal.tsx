@@ -10,6 +10,7 @@ import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
 import { Spinner } from '@/components/ui/Spinner'
+import { TaskBriefEditor } from '@/components/tasks/TaskBriefEditor'
 
 interface Props {
   task: Task
@@ -477,6 +478,24 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
             {task.note && (
               <div className="border border-[#ff3c00]/15 rounded-lg p-3" style={{ background: 'linear-gradient(135deg, rgba(255,60,0,0.1), rgba(255,60,0,0.04))' }}>
                 <p className="text-base text-[#ff9980]">{task.note}</p>
+              </div>
+            )}
+
+            {/* Task brief — rich text instructions for the assignee */}
+            {(task.brief || canManage) && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-[#888] uppercase tracking-wider">Brief</p>
+                </div>
+                <TaskBriefEditor
+                  taskId={task.id}
+                  episodeId={task.episode_id}
+                  initialBrief={task.brief ?? null}
+                  canEdit={canManage}
+                  currentUser={currentUser}
+                  assigneeId={task.assignee_id}
+                  onSaved={(newBrief) => onUpdate({ ...task, brief: newBrief } as unknown as Task)}
+                />
               </div>
             )}
 

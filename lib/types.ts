@@ -88,6 +88,7 @@ export interface Task {
   status: TaskStatus
   due_date: string | null
   note: string | null
+  brief: string | null
   dep_task_ids: string[]
   requires_approval: boolean
   approver_id: string | null
@@ -140,6 +141,7 @@ export type NotificationType =
   | 'release_date_changed'
   | 'task_deadline_changed'
   | 'episode_delivered'
+  | 'task_brief_added'
 
 export interface Client {
   id: string

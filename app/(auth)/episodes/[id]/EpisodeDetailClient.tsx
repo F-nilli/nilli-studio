@@ -18,6 +18,7 @@ import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { format, parseISO, startOfToday, differenceInDays } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
+import { TaskBriefEditor } from '@/components/tasks/TaskBriefEditor'
 
 interface TaskComment { count: number; latest: string }
 
@@ -1943,6 +1944,22 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             <div>
               <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1">Note</p>
               <p className="text-xs text-[#ff9980] leading-relaxed">{task.note}</p>
+            </div>
+          )}
+          {/* Per-task brief — rich text instructions (e.g. thumbnail direction) */}
+          {(task.brief || canManageClients(currentUser)) && (
+            <div>
+              <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1">Brief</p>
+              <TaskBriefEditor
+                taskId={task.id}
+                episodeId={task.episode_id}
+                initialBrief={task.brief ?? null}
+                canEdit={canManageClients(currentUser)}
+                currentUser={currentUser}
+                assigneeId={task.assignee_id}
+                onSaved={(newBrief) => onTaskUpdate({ ...task, brief: newBrief } as Task)}
+                compact
+              />
             </div>
           )}
         </div>
