@@ -8,7 +8,7 @@ import { usePendingActions } from '@/lib/usePendingActions'
 import { WorkloadMetricsCard } from '@/components/dashboard/WorkloadMetricsCard'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
 import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
-import { Task, Episode, User, TaskStatus } from '@/lib/types'
+import { Task, Episode, User, TaskStatus, UserQuota } from '@/lib/types'
 import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS, parseDate } from '@/lib/utils'
@@ -23,6 +23,8 @@ import type { EpisodeProgress } from './page'
 
 const ACTIVE_STATUSES: TaskStatus[] = ['in_progress', 'in_review', 'revision']
 
+type MonthlyOutputMap = Record<string, Record<string, number>> // userId → track → quantity sum
+
 interface Props {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
@@ -32,6 +34,8 @@ interface Props {
   upcomingReleases: Episode[]
   teamTasks: (Task & { episode: Episode })[]
   allUsers: User[]
+  userQuotas: UserQuota[]
+  monthlyOutput: MonthlyOutputMap
 }
 
 export function DashboardClient({
@@ -43,6 +47,8 @@ export function DashboardClient({
   upcomingReleases,
   teamTasks,
   allUsers,
+  userQuotas,
+  monthlyOutput,
 }: Props) {
   const supabase = createClient()
   const router = useRouter()
@@ -239,6 +245,8 @@ export function DashboardClient({
         <MemberDashboard
           currentUser={currentUser}
           tasks={tasks}
+          userQuotas={userQuotas}
+          monthlyOutput={monthlyOutput}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
           onReassignToast={setToast}
@@ -252,6 +260,8 @@ export function DashboardClient({
           tasks={tasks}
           reviewTasks={reviewTasks}
           episodesProgress={episodesProgress}
+          userQuotas={userQuotas}
+          monthlyOutput={monthlyOutput}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
           onReassignToast={setToast}
@@ -269,6 +279,8 @@ export function DashboardClient({
           upcomingReleases={upcomingReleases}
           teamTasks={teamTasks}
           allUsers={allUsers}
+          userQuotas={userQuotas}
+          monthlyOutput={monthlyOutput}
           onTaskClick={setSelectedTask}
           onTaskUpdate={handleTaskUpdate}
           onReassignToast={setToast}
@@ -300,9 +312,11 @@ export function DashboardClient({
 
 // ─── Member Dashboard ───────────────────────────────────────────────────────
 
-function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
+function MemberDashboard({ currentUser, tasks, userQuotas, monthlyOutput, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
+  userQuotas: UserQuota[]
+  monthlyOutput: MonthlyOutputMap
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
@@ -310,6 +324,7 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReas
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
+  const myQuotas = userQuotas.filter(q => q.user_id === currentUser.id)
   const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
   const grouped = ACTIVE_STATUSES.reduce<Record<TaskStatus, (Task & { episode: Episode })[]>>(
     (acc, s) => { acc[s] = activeTasks.filter(t => t.status === s); return acc },
@@ -330,6 +345,14 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReas
           {overdueCount > 0 && <span className="ml-2 text-[#ff3c00] font-medium">· {overdueCount} overdue</span>}
         </p>
       </div>
+
+      {/* Personal output quota card */}
+      {myQuotas.length > 0 && (
+        <OutputQuotaCard
+          quotas={myQuotas}
+          output={monthlyOutput[currentUser.id] ?? {}}
+        />
+      )}
 
       {isEmpty ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -408,11 +431,13 @@ function MemberDashboard({ currentUser, tasks, onTaskClick, onTaskUpdate, onReas
 
 // ─── Ops Manager Dashboard ──────────────────────────────────────────────────
 
-function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
+function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress, userQuotas, monthlyOutput, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   reviewTasks: (Task & { episode: Episode })[]
   episodesProgress: EpisodeProgress[]
+  userQuotas: UserQuota[]
+  monthlyOutput: MonthlyOutputMap
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
@@ -421,6 +446,7 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus) && t.track !== 'Client Action')
   const clientActionTasks = tasks.filter(t => t.track === 'Client Action' && ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
+  const myQuotas = userQuotas.filter(q => q.user_id === currentUser.id)
 
   return (
     <div className="space-y-8">
@@ -432,6 +458,13 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
           {reviewTasks.length > 0 && <span className="ml-2 text-purple-400">· {reviewTasks.length} awaiting review</span>}
         </p>
       </div>
+
+      {myQuotas.length > 0 && (
+        <OutputQuotaCard
+          quotas={myQuotas}
+          output={monthlyOutput[currentUser.id] ?? {}}
+        />
+      )}
 
       <div className="grid grid-cols-1 min-[900px]:grid-cols-2 items-start" style={{ gap: 0 }}>
         {/* Zone 1: My Tasks */}
@@ -500,7 +533,7 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
 
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
 
-function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, teamTasks, allUsers, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
+function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, teamTasks, allUsers, userQuotas, monthlyOutput, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   reviewTasks: (Task & { episode: Episode })[]
@@ -509,6 +542,8 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
   upcomingReleases: Episode[]
   teamTasks: (Task & { episode: Episode })[]
   allUsers: User[]
+  userQuotas: UserQuota[]
+  monthlyOutput: MonthlyOutputMap
   onTaskClick: (task: Task & { episode?: Episode }) => void
   onTaskUpdate: (task: Task) => void
   onReassignToast?: (msg: string) => void
@@ -694,6 +729,15 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
 
       {/* Zone 5: Monthly Workload Metrics */}
       <WorkloadMetricsCard allUsers={allUsers} />
+
+      {/* Zone 6: Monthly Output (quota tracking) */}
+      {userQuotas.length > 0 && (
+        <MonthlyOutputSection
+          quotas={userQuotas}
+          monthlyOutput={monthlyOutput}
+          allUsers={allUsers}
+        />
+      )}
     </div>
   )
 }
@@ -826,6 +870,123 @@ function WorkloadTaskRow({ task, onTaskClick }: {
         {formatDate(task.due_date)}
       </span>
     </button>
+  )
+}
+
+// ─── Output Quota Card (personal — member / ops_manager) ────────────────────
+
+function OutputQuotaCard({ quotas, output }: {
+  quotas: UserQuota[]
+  output: Record<string, number>  // track → quantity done this month
+}) {
+  const now = new Date()
+  const monthName = now.toLocaleString('default', { month: 'long' })
+
+  return (
+    <div
+      className="rounded-xl px-5 py-4 space-y-3"
+      style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.08)' }}
+    >
+      <p className="text-[11px] font-semibold text-[#555] uppercase tracking-wider">{monthName} Output</p>
+      <div className="space-y-3">
+        {quotas.map(q => {
+          const done = output[q.track] ?? 0
+          const pct = Math.min(100, Math.round((done / q.monthly_cap) * 100))
+          const isOver = done >= q.monthly_cap
+          const isNearing = !isOver && pct >= 80
+          const barColor = isOver ? '#ff3c00' : isNearing ? '#f59e0b' : '#f7931a'
+          return (
+            <div key={q.id}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-white">{q.track}</span>
+                <span className={cn('text-sm font-semibold tabular-nums', isOver ? 'text-[#ff3c00]' : isNearing ? 'text-amber-400' : 'text-white')}>
+                  {done} <span className="text-[#555] font-normal">/ {q.monthly_cap}</span>
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#242424' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, background: barColor }}
+                />
+              </div>
+              {isOver && (
+                <p className="text-[11px] text-[#ff3c00] mt-1">Cap reached — {done - q.monthly_cap} over limit</p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Monthly Output Section (admin view — all team members) ─────────────────
+
+function MonthlyOutputSection({ quotas, monthlyOutput, allUsers }: {
+  quotas: UserQuota[]
+  monthlyOutput: MonthlyOutputMap
+  allUsers: User[]
+}) {
+  const now = new Date()
+  const monthName = now.toLocaleString('default', { month: 'long' })
+
+  return (
+    <div className="space-y-4">
+      <ZoneHeader title={`${monthName} Output`} />
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+      >
+        {/* Header */}
+        <div
+          className="grid grid-cols-[1fr_140px_180px] gap-4 px-5 py-3"
+          style={{ background: '#1a1a1a', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          {['Member', 'Track', 'Progress'].map(h => (
+            <span key={h} className="text-[11px] font-semibold text-[#555] uppercase tracking-wider">{h}</span>
+          ))}
+        </div>
+
+        {quotas.map(q => {
+          const member = allUsers.find(u => u.id === q.user_id)
+          const done = (monthlyOutput[q.user_id] ?? {})[q.track] ?? 0
+          const pct = Math.min(100, Math.round((done / q.monthly_cap) * 100))
+          const isOver = done >= q.monthly_cap
+          const isNearing = !isOver && pct >= 80
+          const barColor = isOver ? '#ff3c00' : isNearing ? '#f59e0b' : '#f7931a'
+
+          return (
+            <div
+              key={q.id}
+              className="grid grid-cols-[1fr_140px_180px] gap-4 items-center px-5 py-3 border-b last:border-0"
+              style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+            >
+              {/* Member */}
+              <div className="flex items-center gap-2 min-w-0">
+                {member && <Avatar name={member.name} color={member.avatar_color} size="sm" avatarUrl={member.avatar_url} />}
+                <span className="text-sm text-white truncate">{member?.name ?? '—'}</span>
+              </div>
+
+              {/* Track */}
+              <span className="text-xs px-2 py-1 rounded-md w-fit" style={{ background: 'rgba(255,255,255,0.06)', color: '#aaa' }}>{q.track}</span>
+
+              {/* Progress */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#242424' }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${pct}%`, background: barColor }}
+                  />
+                </div>
+                <span className={cn('text-sm font-semibold tabular-nums shrink-0', isOver ? 'text-[#ff3c00]' : isNearing ? 'text-amber-400' : 'text-[#888]')}>
+                  {done}/{q.monthly_cap}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

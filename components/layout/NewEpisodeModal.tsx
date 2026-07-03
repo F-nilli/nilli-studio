@@ -311,6 +311,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
           status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
           due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
           note: template.note || null,
+          quantity: template.quantity ?? 1,
           dep_task_ids: [],
           requires_approval: template.requires_approval || false,
           approver_id: resolvedApproverId,

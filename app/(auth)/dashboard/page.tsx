@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { DashboardClient } from './DashboardClient'
 import { parseDate } from '@/lib/utils'
-import type { User, Task, Episode } from '@/lib/types'
+import type { User, Task, Episode, UserQuota } from '@/lib/types'
 
 export interface EpisodeProgress {
   id: string
@@ -158,6 +159,46 @@ export default async function DashboardPage() {
     allUsers = ((allUsersRes.data || []) as unknown as User[])
   }
 
+  // ── Quota + monthly output ─────────────────────────────────────────────────
+  // Fetch user_quotas (user sees own; admin sees all via service role).
+  // Count approved tasks in the current calendar month, summing `quantity`.
+  const admin = createAdminClient()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString()
+
+  const [quotasRes, historyRes] = await Promise.all([
+    // Quotas: user only sees their own; admin client for admin dashboard
+    currentUser.role === 'admin'
+      ? admin.from('user_quotas').select('*').order('user_id')
+      : supabase.from('user_quotas').select('*').eq('user_id', user.id),
+    // Approved task_history entries this month (need admin to join cross-user)
+    admin
+      .from('task_history')
+      .select('task_id')
+      .eq('to_status', 'approved')
+      .gte('changed_at', monthStart)
+      .lte('changed_at', monthEnd),
+  ])
+
+  const userQuotas = (quotasRes.data ?? []) as UserQuota[]
+
+  // Map task_id → approved count (deduplicate: count each task at most once)
+  const approvedTaskIds = [...new Set((historyRes.data ?? []).map(h => h.task_id as string))]
+  type MonthlyOutputMap = Record<string, Record<string, number>> // userId → track → quantity sum
+
+  const monthlyOutput: MonthlyOutputMap = {}
+  if (approvedTaskIds.length > 0) {
+    const { data: approvedTasks } = await admin
+      .from('tasks')
+      .select('assignee_id, track, quantity')
+      .in('id', approvedTaskIds)
+    for (const t of approvedTasks ?? []) {
+      if (!monthlyOutput[t.assignee_id]) monthlyOutput[t.assignee_id] = {}
+      monthlyOutput[t.assignee_id][t.track] =
+        (monthlyOutput[t.assignee_id][t.track] ?? 0) + (t.quantity ?? 1)
+    }
+  }
+
   return (
     <DashboardClient
       currentUser={currentUser}
@@ -168,6 +209,8 @@ export default async function DashboardPage() {
       upcomingReleases={upcomingReleases}
       teamTasks={teamTasks}
       allUsers={allUsers}
+      userQuotas={userQuotas}
+      monthlyOutput={monthlyOutput}
     />
   )
 }

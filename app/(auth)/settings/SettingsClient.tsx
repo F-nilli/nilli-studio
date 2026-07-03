@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, canManageTeam } from '@/lib/types'
+import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, UserQuota, canManageTeam } from '@/lib/types'
 import { invalidateInappPrefsCache } from '@/lib/notifications'
 import { Avatar } from '@/components/ui/Avatar'
 import { InfoIcon } from '@/components/ui/InfoIcon'
@@ -517,6 +517,11 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
         )}
       </div>
 
+      {/* Output quota management — admin only */}
+      {isAdmin && (
+        <QuotaSection allUsers={activeUsers} />
+      )}
+
       {/* Action confirmation modal */}
       {actionTarget && (
         <UserActionModal
@@ -929,6 +934,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       assignee_id: null,
       track: 'Long-form',
       due_days: null,
+      quantity: 1,
       note: null,
       dep_seq_ids: [],
       requires_approval: false,
@@ -989,6 +995,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
       assignee_id: t.assignee_id || null,
       track: t.track,
       due_days: t.due_days,
+      quantity: t.quantity ?? 1,
       note: t.note,
       dep_seq_ids: t.dep_seq_ids || [],
       requires_approval: t.requires_approval || false,
@@ -1137,6 +1144,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
         assignee_id: t.assignee_id || null,
         track: t.track,
         due_days: t.due_days,
+        quantity: t.quantity ?? 1,
         note: t.note,
         dep_seq_ids: t.dep_seq_ids || [],
         requires_approval: t.requires_approval || false,
@@ -1405,13 +1413,17 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
 
             {/* Task rows */}
             <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
+              <div className="grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_60px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
                 {['', '#', 'Task', 'Checklist', 'Assignee'].map((h, i) => (
                   <span key={i} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
                 <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
                   Days
                   <InfoIcon text="Number of days before the release date this task should be completed. D-5 = 5 days before release, D-1 = 1 day before. Leave blank for tasks with no fixed deadline. Use negative numbers for post-release tasks (e.g. -1 = 1 day after release)." />
+                </span>
+                <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
+                  Qty
+                  <InfoIcon text="Number of units this task produces (e.g. 2 for 'Create 2x thumbnails'). Used for monthly output quota tracking." />
                 </span>
                 <span className="text-xs font-semibold text-[#555] uppercase tracking-wide flex items-center gap-1">
                   Deps
@@ -1495,6 +1507,171 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
   )
 }
 
+// ─── Quota Section ────────────────────────────────────────────────────────────
+
+function QuotaSection({ allUsers }: { allUsers: User[] }) {
+  const supabase = createClient()
+  const [quotas, setQuotas] = useState<UserQuota[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newUserId, setNewUserId] = useState('')
+  const [newTrack, setNewTrack] = useState('Thumbnails')
+  const [newCap, setNewCap] = useState(40)
+  const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editCap, setEditCap] = useState(40)
+
+  useEffect(() => {
+    supabase.from('user_quotas').select('*').order('user_id').then(({ data }) => {
+      setQuotas((data || []) as UserQuota[])
+      setLoading(false)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleAdd() {
+    if (!newUserId || !newTrack || newCap < 1) return
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('user_quotas')
+      .upsert({ user_id: newUserId, track: newTrack, monthly_cap: newCap }, { onConflict: 'user_id,track' })
+      .select()
+      .single()
+    setSaving(false)
+    if (!error && data) {
+      setQuotas(prev => {
+        const existing = prev.findIndex(q => q.user_id === newUserId && q.track === newTrack)
+        if (existing >= 0) return prev.map((q, i) => i === existing ? data as UserQuota : q)
+        return [...prev, data as UserQuota]
+      })
+      setAdding(false)
+      setNewUserId('')
+      setNewTrack('Thumbnails')
+      setNewCap(40)
+    }
+  }
+
+  async function handleUpdateCap(id: string) {
+    await supabase.from('user_quotas').update({ monthly_cap: editCap }).eq('id', id)
+    setQuotas(prev => prev.map(q => q.id === id ? { ...q, monthly_cap: editCap } : q))
+    setEditingId(null)
+  }
+
+  async function handleDelete(id: string) {
+    await supabase.from('user_quotas').delete().eq('id', id)
+    setQuotas(prev => prev.filter(q => q.id !== id))
+  }
+
+  const inputCls = 'px-3 py-1.5 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#ff3c00]'
+
+  return (
+    <div className="rounded-xl overflow-hidden bg-[#141414]" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div>
+          <p className="text-sm font-bold text-white">Output Quotas</p>
+          <p className="text-xs text-[#555] mt-0.5">Monthly unit caps per team member. Output is counted when tasks are approved.</p>
+        </div>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+            style={{ background: '#ff3c00', color: 'white' }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Add quota
+          </button>
+        )}
+      </div>
+
+      {/* Add form */}
+      {adding && (
+        <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)', background: '#1a1a1a' }}>
+          <select value={newUserId} onChange={e => setNewUserId(e.target.value)} className={inputCls}>
+            <option value="">Select member…</option>
+            {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select value={newTrack} onChange={e => setNewTrack(e.target.value)} className={inputCls}>
+            {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number" min={1} value={newCap}
+              onChange={e => setNewCap(Math.max(1, parseInt(e.target.value) || 1))}
+              className={cn(inputCls, 'w-20 text-center')}
+            />
+            <span className="text-xs text-[#555] shrink-0">/mo</span>
+          </div>
+          <button
+            onClick={handleAdd} disabled={saving || !newUserId}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shrink-0"
+            style={{ background: '#ff3c00' }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={() => setAdding(false)}
+            className="px-3 py-1.5 rounded-lg text-sm text-[#666] hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Quota rows */}
+      {loading ? (
+        <div className="px-5 py-6 text-xs text-[#555]">Loading…</div>
+      ) : quotas.length === 0 ? (
+        <div className="px-5 py-6 text-xs text-[#555]">No quotas set. Add one above to start tracking monthly output.</div>
+      ) : (
+        quotas.map(q => {
+          const member = allUsers.find(u => u.id === q.user_id)
+          return (
+            <div
+              key={q.id}
+              className="flex items-center gap-4 px-5 py-3 border-b last:border-0"
+              style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {member && <Avatar name={member.name} color={member.avatar_color} size="sm" avatarUrl={member.avatar_url} />}
+                <span className="text-sm text-white truncate">{member?.name ?? q.user_id}</span>
+              </div>
+              <span className="text-xs px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.06)', color: '#aaa' }}>{q.track}</span>
+              {editingId === q.id ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number" min={1} value={editCap}
+                    onChange={e => setEditCap(Math.max(1, parseInt(e.target.value) || 1))}
+                    className={cn(inputCls, 'w-20 text-center')}
+                    autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') handleUpdateCap(q.id); if (e.key === 'Escape') setEditingId(null) }}
+                  />
+                  <span className="text-xs text-[#555]">/mo</span>
+                  <button onClick={() => handleUpdateCap(q.id)} className="text-xs text-[#ff3c00] font-semibold hover:underline">Save</button>
+                  <button onClick={() => setEditingId(null)} className="text-xs text-[#555] hover:text-white">Cancel</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingId(q.id); setEditCap(q.monthly_cap) }}
+                  className="text-sm text-white font-medium hover:text-[#ff3c00] transition-colors tabular-nums"
+                  title="Click to edit cap"
+                >
+                  {q.monthly_cap} / mo
+                </button>
+              )}
+              <button
+                onClick={() => { if (confirm(`Remove ${member?.name ?? 'this'}'s ${q.track} quota?`)) handleDelete(q.id) }}
+                className="p-1 text-[#444] hover:text-[#ff3c00] transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
 // ─── Sortable Task Row ─────────────────────────────────────────────────────────
 
 function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: {
@@ -1513,7 +1690,7 @@ function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: 
       ref={setNodeRef}
       style={style}
       className={cn(
-        'grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_160px_160px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center',
+        'grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_60px_160px_160px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center',
         isDragging ? 'bg-[#1a1a1a] opacity-90' : 'bg-transparent'
       )}
     >
@@ -1562,6 +1739,15 @@ function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: 
           className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
         />
       </div>
+
+      {/* Qty */}
+      <input
+        type="number"
+        min={1}
+        value={task.quantity ?? 1}
+        onChange={e => onUpdate(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+        className="px-2 py-2 bg-[#1e1e1e] border border-[#333] text-white rounded-lg text-sm w-full focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+      />
 
       {/* Deps */}
       <div className="flex flex-wrap gap-1">

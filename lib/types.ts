@@ -89,6 +89,7 @@ export interface Task {
   due_date: string | null
   note: string | null
   brief: string | null
+  quantity: number
   dep_task_ids: string[]
   requires_approval: boolean
   approver_id: string | null
@@ -163,6 +164,7 @@ export interface DbTaskTemplate {
   assignee_id: string | null
   track: Track
   due_days: number | null
+  quantity: number
   note: string | null
   dep_seq_ids: number[]
   requires_approval: boolean
@@ -195,6 +197,14 @@ export interface Notification {
   task_id: string | null
   episode_id: string | null
   read: boolean
+  created_at: string
+}
+
+export interface UserQuota {
+  id: string
+  user_id: string
+  track: string
+  monthly_cap: number
   created_at: string
 }
 
