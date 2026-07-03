@@ -1412,8 +1412,9 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
             </div>
 
             {/* Task rows */}
-            <div className="border border-[#2e2e2e] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_60px_160px_160px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
+            <div className="border border-[#2e2e2e] rounded-xl overflow-x-auto">
+              <div className="min-w-[1080px]">
+              <div className="grid grid-cols-[20px_28px_minmax(200px,3fr)_130px_160px_80px_60px_160px_200px_28px] gap-3 px-4 py-3 bg-[#101010] border-b border-[#2e2e2e]">
                 {['', '#', 'Task', 'Checklist', 'Assignee'].map((h, i) => (
                   <span key={i} className="text-xs font-semibold text-[#555] uppercase tracking-wide">{h}</span>
                 ))}
@@ -1456,6 +1457,7 @@ function ClientsTab({ currentUser, clients: initialClients, templates: initialTe
               >
                 <Plus className="w-3.5 h-3.5" />Add task
               </button>
+              </div>
             </div>
           </div>
         )}
@@ -1690,7 +1692,7 @@ function SortableTaskRow({ task, idx, allTasks, allUsers, onUpdate, onRemove }: 
       ref={setNodeRef}
       style={style}
       className={cn(
-        'grid grid-cols-[20px_28px_minmax(240px,3fr)_130px_160px_80px_60px_160px_160px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center',
+        'grid grid-cols-[20px_28px_minmax(200px,3fr)_130px_160px_80px_60px_160px_200px_28px] gap-3 px-4 py-3 border-b border-[#242424] last:border-0 items-center',
         isDragging ? 'bg-[#1a1a1a] opacity-90' : 'bg-transparent'
       )}
     >
