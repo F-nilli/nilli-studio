@@ -1157,7 +1157,11 @@ function UpcomingReleaseRow({ episode }: { episode: Episode }) {
   const daysUntil = episode.release_date
     ? differenceInDays(new Date(episode.release_date + 'T00:00:00'), startOfToday())
     : null
-  const urgent = daysUntil !== null && daysUntil <= 3
+  const releaseDateColor =
+    daysUntil === null ? '#60a5fa'
+    : daysUntil < 1  ? '#ff3c00'   // red — today or past
+    : daysUntil <= 3 ? '#facc15'   // yellow — 1–3 days
+    : '#60a5fa'                    // blue — 4+ days
 
   return (
     <Link
@@ -1172,7 +1176,7 @@ function UpcomingReleaseRow({ episode }: { episode: Episode }) {
         <p className="text-[12px] text-[#666] truncate">{episode.client_label}</p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-[12px] font-bold" style={{ color: urgent ? '#ff3c00' : '#60a5fa' }}>
+        <p className="text-[12px] font-bold" style={{ color: releaseDateColor }}>
           {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`}
         </p>
         <p className="text-[11px] text-[#555]">
@@ -1192,6 +1196,12 @@ function MiniProductionOverview({ episodes }: { episodes: EpisodeProgress[] }) {
           ? differenceInDays(new Date(ep.release_date + 'T00:00:00'), startOfToday())
           : null
         const releaseSoon = daysUntil !== null && daysUntil >= 0 && daysUntil <= 7
+        const miniDateColor =
+          daysUntil === null   ? '#444'
+          : daysUntil < 1     ? '#ff3c00'
+          : daysUntil <= 3    ? '#facc15'
+          : daysUntil <= 7    ? '#60a5fa'
+          : '#444'
         const borderColor = ep.overdueTasks > 0
           ? 'rgba(255,60,0,0.4)'
           : releaseSoon
@@ -1219,7 +1229,7 @@ function MiniProductionOverview({ episodes }: { episodes: EpisodeProgress[] }) {
             <div className="flex items-center justify-between mt-1.5">
               <span className="text-[11px] text-[#555]">{ep.doneTasks}/{ep.totalTasks} done</span>
               {daysUntil !== null && (
-                <span className={cn('text-[11px]', releaseSoon ? 'text-amber-400 font-bold' : 'text-[#444]')}>
+                <span className="text-[11px] font-bold" style={{ color: miniDateColor }}>
                   {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : daysUntil > 0 ? `${daysUntil}d` : format(new Date(ep.release_date + 'T00:00:00'), 'MMM d')}
                 </span>
               )}
