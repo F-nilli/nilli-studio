@@ -1128,6 +1128,8 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     : []
   const [editingDate, setEditingDate] = useState(false)
   const [dateValue, setDateValue] = useState(toDatetimeLocal(task.due_date))
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [labelValue, setLabelValue] = useState(task.label)
   const [actionLoading, setActionLoading] = useState(false)
   const [sendBackOpen, setSendBackOpen] = useState(false)
   const [sendBackDate, setSendBackDate] = useState('')
@@ -1220,6 +1222,10 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     if (!editingDate) setDateValue(toDatetimeLocal(task.due_date))
   }, [task.due_date, editingDate])
 
+  useEffect(() => {
+    if (!editingLabel) setLabelValue(task.label)
+  }, [task.label, editingLabel])
+
   // Eagerly determine next person for inline note
   useEffect(() => {
     setNoteText('')
@@ -1281,6 +1287,27 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       onDateChange(task.due_date, dateValue)
     }
     setEditingDate(false)
+  }
+
+  async function commitLabel() {
+    const trimmed = labelValue.trim()
+    setEditingLabel(false)
+    if (!trimmed || trimmed === task.label) {
+      setLabelValue(task.label)
+      return
+    }
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ label: trimmed })
+      .eq('id', task.id)
+      .select('*')
+      .single()
+    if (data && !error) {
+      onTaskUpdate(data as unknown as Task)
+      onReassignToast(`Renamed to "${trimmed}"`)
+    } else {
+      setLabelValue(task.label)
+    }
   }
 
   async function maybePostNote() {
@@ -1603,12 +1630,44 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             : <StatusBadge status={task.status} />
           }
           {!isLocked && <VersionBadge version={task.submission_count} />}
-          <span className={cn(
-            'text-[15px] truncate flex-1 leading-snug',
-            isLocked ? 'text-white/35 font-normal' : overdue ? 'text-white font-medium' : 'text-white/90 font-medium'
-          )}>
-            {task.label}
-          </span>
+          {editingLabel ? (
+            <div className="flex items-center gap-1 flex-1 min-w-0" onClick={e => e.stopPropagation()}>
+              <input
+                value={labelValue}
+                onChange={e => setLabelValue(e.target.value)}
+                onKeyDown={e => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') commitLabel()
+                  if (e.key === 'Escape') { setLabelValue(task.label); setEditingLabel(false) }
+                }}
+                autoFocus
+                maxLength={120}
+                className="flex-1 min-w-0 bg-[#1a1a1a] border border-[#333] rounded px-1.5 py-0.5 text-[15px] text-white leading-snug focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
+              />
+              <button
+                onMouseDown={e => e.preventDefault()}
+                onClick={commitLabel}
+                className="p-0.5 rounded bg-[#ff3c00] text-white shrink-0"
+              >
+                <Check className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <span className={cn(
+              'group/label flex items-center gap-1 flex-1 min-w-0 text-[15px] leading-snug',
+              isLocked ? 'text-white/35 font-normal' : overdue ? 'text-white font-medium' : 'text-white/90 font-medium'
+            )}>
+              <span className="truncate">{task.label}</span>
+              {canEditDates && !isLocked && (
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingLabel(true) }}
+                  className="opacity-0 group-hover/label:opacity-60 hover:!opacity-100 transition-opacity shrink-0"
+                >
+                  <Pencil className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </span>
+          )}
           {task.assignee && !isLocked && (
             <Avatar
               name={task.assignee.name}

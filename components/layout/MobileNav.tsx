@@ -4,16 +4,19 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutGrid, Layers2, Calendar, BarChart2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { canAccessAnalytics } from '@/lib/types'
+import type { User } from '@/lib/types'
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { href: '/board', label: 'Board', icon: Layers2 },
-  { href: '/calendar', label: 'Calendar', icon: Calendar },
-  { href: '/analytics', label: 'Analytics', icon: BarChart2 },
-]
-
-export function MobileNav() {
+export function MobileNav({ user }: { user: User }) {
   const pathname = usePathname()
+
+  const NAV_ITEMS = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
+    { href: '/board', label: 'Board', icon: Layers2 },
+    { href: '/calendar', label: 'Calendar', icon: Calendar },
+    ...(canAccessAnalytics(user) ? [{ href: '/analytics', label: 'Analytics', icon: BarChart2 }] : []),
+  ]
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 md:hidden flex items-stretch h-16 border-t"

@@ -77,7 +77,7 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
           </main>
         </div>
       </div>
-      <MobileNav />
+      <MobileNav user={currentUser} />
     </UserContext.Provider>
   )
 }

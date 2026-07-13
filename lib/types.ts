@@ -8,6 +8,7 @@ export function canApprove(user: { role: UserRole }) { return user.role === 'adm
 export function canSeeAllEpisodes(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
 export function canAccessSettings(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
 export function canCreateProject(user: { role: UserRole }) { return user.role === 'admin' || user.role === 'ops_manager' }
+export function canAccessAnalytics(user: { role: UserRole }) { return user.role === 'admin' }
 
 export type TaskStatus =
   | 'locked'

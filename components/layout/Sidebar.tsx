@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 import type { User as UserType } from '@/lib/types'
-import { canAccessSettings } from '@/lib/types'
+import { canAccessSettings, canAccessAnalytics } from '@/lib/types'
 
 interface SidebarProps {
   user: UserType
@@ -39,7 +39,7 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { href: '/board', label: 'Project Board', icon: Layers2 },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
-    { href: '/analytics', label: 'Analytics', icon: BarChart2 },
+    ...(canAccessAnalytics(user) ? [{ href: '/analytics', label: 'Analytics', icon: BarChart2 }] : []),
   ]
 
   function navClass(isActive: boolean, extraHover = '') {
