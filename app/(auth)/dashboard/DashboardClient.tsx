@@ -274,7 +274,6 @@ export function DashboardClient({
           currentUser={currentUser}
           tasks={tasks}
           reviewTasks={reviewTasks}
-          episodesProgress={episodesProgress}
           atRiskTasks={atRiskTasks}
           upcomingReleases={upcomingReleases}
           teamTasks={teamTasks}
@@ -533,11 +532,10 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
 
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
 
-function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atRiskTasks, upcomingReleases, teamTasks, allUsers, userQuotas, monthlyOutput, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
+function AdminDashboard({ currentUser, tasks, reviewTasks, atRiskTasks, upcomingReleases, teamTasks, allUsers, userQuotas, monthlyOutput, onTaskClick, onTaskUpdate, onReassignToast, onPendingAction }: {
   currentUser: User
   tasks: (Task & { episode: Episode })[]
   reviewTasks: (Task & { episode: Episode })[]
-  episodesProgress: EpisodeProgress[]
   atRiskTasks: (Task & { episode: Episode })[]
   upcomingReleases: Episode[]
   teamTasks: (Task & { episode: Episode })[]
@@ -712,13 +710,6 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, episodesProgress, atR
           </div>
         )}
 
-        {/* Mini Production Overview */}
-        {episodesProgress.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-[12px] font-semibold text-[#888] uppercase tracking-[0.08em]">Active Episodes</h3>
-            <MiniProductionOverview episodes={episodesProgress} />
-          </div>
-        )}
       </div>
 
       {/* Zone 4: Team Workload */}
