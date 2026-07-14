@@ -21,10 +21,9 @@ const TRACK_COLORS: Record<string, string> = {
   'Client Action':  '#e879f9',
 }
 
-// Distinct from TRACK_COLORS above so the trend chart doesn't read as track data
 const TREND_COLORS = {
-  completed: '#2dd4bf', // teal
-  reviewed:  '#818cf8', // indigo
+  completed: '#ef4444', // red
+  reviewed:  '#fbbf24', // yellow
 }
 
 interface MonthMetrics {
