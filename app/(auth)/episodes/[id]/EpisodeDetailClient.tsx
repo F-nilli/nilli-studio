@@ -475,7 +475,8 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       {/* Main content */}
       <div className="flex-1 min-w-0 space-y-4">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col md:flex-row md:items-start gap-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
           <Link
             href={currentUser.role === 'admin' ? '/board' : '/dashboard'}
             className="p-1.5 rounded-md hover:bg-[#1e1e1e] text-[#888] shrink-0"
@@ -516,8 +517,8 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group/guestname shrink-0">
-                  <h1 className="text-[30px] font-bold text-white leading-tight">{currentGuestName}</h1>
+                <div className="flex items-center gap-2 group/guestname min-w-0">
+                  <h1 className="text-2xl md:text-[30px] font-bold text-white leading-tight truncate">{currentGuestName}</h1>
                   {canEditDates && (
                     <button
                       onClick={() => { setGuestNameDraft(currentGuestName); setEditingGuestName(true) }}
@@ -572,7 +573,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 </div>
               ) : (
                 <div className="flex items-center gap-2 group/date">
-                  <p className={cn('text-[26px] font-bold leading-tight',
+                  <p className={cn('text-lg md:text-[26px] font-bold leading-tight',
                     daysUntil < 0 ? 'text-[#ff3c00]/80' : daysUntil < 3 ? 'text-yellow-500/80' : 'text-[#555]'
                   )}>
                     {format(releaseLocal, 'MMM d, yyyy')}{releaseTimeStr && ` · ${releaseTimeStr}`}
@@ -598,7 +599,8 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
               </Link>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          </div>
+          <div className="flex items-center gap-2 shrink-0 pl-10 md:pl-0">
             {canDeliver && !delivered && (
               <button
                 onClick={handleDeliver}

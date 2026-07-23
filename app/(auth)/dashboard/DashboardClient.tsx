@@ -1272,12 +1272,12 @@ function LockedTaskCard({ task, onClick }: { task: Task & { episode: Episode }; 
             </Link>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <div className="flex items-center gap-1.5 text-xs text-[#555] bg-[#222] px-2 py-0.5 rounded-full border border-[#2e2e2e]">
-            <Lock className="w-3 h-3" /> Locked
+        <div className="flex flex-col items-end gap-2 shrink-0 max-w-[45%]">
+          <div className="flex items-center gap-1.5 text-xs text-[#555] bg-[#222] px-2 py-0.5 rounded-full border border-[#2e2e2e] whitespace-nowrap">
+            <Lock className="w-3 h-3 shrink-0" /> Locked
           </div>
           {task.due_date && (
-            <span className="text-sm text-[#555]">{formatDate(task.due_date)}</span>
+            <span className="text-[13px] sm:text-sm text-[#555] text-right leading-tight">{formatDate(task.due_date)}</span>
           )}
         </div>
       </div>
@@ -1328,11 +1328,11 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
             </Link>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
+        <div className="flex flex-col items-end gap-2 shrink-0 max-w-[45%]">
           {task.due_date && (
-            <div className={cn('flex items-center gap-1 text-sm', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
-              {overdue && <AlertCircle className="w-3 h-3" />}
-              <span>{formatDate(task.due_date)}</span>
+            <div className={cn('flex items-start justify-end gap-1 text-[13px] sm:text-sm text-right leading-tight', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
+              {overdue && <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />}
+              <span className="min-w-0">{formatDate(task.due_date)}</span>
             </div>
           )}
           {task.review_started_at && (() => {
@@ -1659,15 +1659,15 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
             </a>
           )}
         </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
+        <div className="flex flex-col items-end gap-2 shrink-0 max-w-[42%]">
           <div className="flex items-center gap-1.5">
             <VersionBadge version={task.submission_count} />
             <StatusBadge status={task.status} />
           </div>
           {task.due_date && (
-            <div className={cn('flex items-center gap-1 text-sm', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
-              {overdue && <AlertCircle className="w-3 h-3" />}
-              <span>{formatDate(task.due_date)}</span>
+            <div className={cn('flex items-start justify-end gap-1 text-[13px] sm:text-sm text-right leading-tight', overdue ? 'text-[#ff3c00]' : 'text-[#666]')}>
+              {overdue && <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />}
+              <span className="min-w-0">{formatDate(task.due_date)}</span>
             </div>
           )}
         </div>

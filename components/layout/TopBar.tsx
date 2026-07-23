@@ -411,7 +411,7 @@ export function TopBar({ user, collapsed = false, onToggle, isMobile = false }: 
         </div>
 
         {/* ── RIGHT ZONE: presence + new episode + icons + search ── */}
-        <div className="ml-auto flex items-center gap-4 shrink-0" style={{ paddingRight: 20 }}>
+        <div className="ml-auto flex items-center gap-2.5 md:gap-4 shrink-0 pr-3 md:pr-5">
 
           {/* Presence pill */}
           {user && (
@@ -462,13 +462,11 @@ export function TopBar({ user, collapsed = false, onToggle, isMobile = false }: 
           {/* Icons pill */}
           {user && (
             <div
-              className="flex items-center"
+              className="flex items-center gap-3 md:gap-4 px-2.5 py-1.5 md:px-3"
               style={{
-                gap: 16,
                 background: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 100,
-                padding: '6px 12px',
               }}
             >
               <IconButton

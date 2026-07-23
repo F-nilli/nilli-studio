@@ -19,8 +19,13 @@ export function MobileNav({ user }: { user: User }) {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 md:hidden flex items-stretch h-16 border-t"
-      style={{ background: '#0a0a0a', borderColor: '#141414' }}
+      className="fixed bottom-0 left-0 right-0 z-40 md:hidden flex items-stretch border-t"
+      style={{
+        background: '#0a0a0a',
+        borderColor: '#141414',
+        height: 'calc(4rem + env(safe-area-inset-bottom))',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
     >
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
@@ -29,12 +34,12 @@ export function MobileNav({ user }: { user: User }) {
             key={href}
             href={href}
             className={cn(
-              'flex-1 flex flex-col items-center justify-center gap-1 transition-colors',
+              'flex-1 min-w-0 flex flex-col items-center justify-center gap-1 transition-colors',
               isActive ? 'text-white' : 'text-[#555]'
             )}
           >
-            <Icon className={cn('w-5 h-5', isActive && 'text-[#f7931a]')} />
-            <span className="text-[10px] font-medium">{label}</span>
+            <Icon className={cn('w-5 h-5 shrink-0', isActive && 'text-[#f7931a]')} />
+            <span className="text-[10px] font-medium truncate max-w-full px-1">{label}</span>
           </Link>
         )
       })}
