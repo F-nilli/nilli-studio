@@ -12,7 +12,7 @@ import { Task, Episode, User, TaskStatus, UserQuota } from '@/lib/types'
 import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, formatDate, isOverdue, STATUS_LABELS, parseDate } from '@/lib/utils'
-import { markTaskNotificationsRead } from '@/lib/notifications'
+import { markTaskNotificationsRead, sendNotification } from '@/lib/notifications'
 import { TRACK_COLORS } from '@/lib/constants'
 import { TaskModal } from '@/components/tasks/TaskModal'
 import { renderBriefBody } from '@/components/tasks/TaskBriefEditor'
@@ -1609,7 +1609,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       if (!silent && nextStatus === 'in_review' && task.requires_approval && task.approver_id && task.approver_id !== currentUser.id) {
         const nextVersion = (task.submission_count ?? 0) + 1
         const versionTag = nextVersion > 0 ? ` (v${nextVersion})` : ''
-        supabase.from('notifications').insert({ user_id: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}"${versionTag} for review`, task_id: task.id, episode_id: task.episode_id, read: false }).then(() => {})
+        sendNotification(supabase, { userId: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}"${versionTag} for review`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
         fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name, version: nextVersion }) }).catch(() => {})
       }
     }
