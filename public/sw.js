@@ -22,7 +22,16 @@ self.addEventListener('push', function (event) {
 
 self.addEventListener('notificationclick', function (event) {
   event.notification.close()
-  const url = event.notification.data?.url || '/'
+  var url = event.notification.data && event.notification.data.url || '/'
+  // Safety: only ever navigate to same-origin paths. If a payload ever
+  // contains an external URL, fall back to the app root instead of opening
+  // a potentially malicious site from a trusted-looking notification.
+  try {
+    var parsed = new URL(url, self.location.origin)
+    url = parsed.origin === self.location.origin ? parsed.pathname + parsed.search + parsed.hash : '/'
+  } catch (e) {
+    url = '/'
+  }
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
       for (const client of clientList) {

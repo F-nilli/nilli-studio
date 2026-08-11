@@ -3,15 +3,72 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToUser } from '@/lib/push'
 
+// Comment notification fan-out.
+//
+// Trust model: the client sends only a commentId. Everything else — who the
+// author is, the comment body, the task, the assignee, the parent comment —
+// is read from the database. The previous version trusted authorId/body/
+// assigneeId/parentAuthorId from the request, so any logged-in user could
+// forge notifications as someone else ("Francis mentioned you").
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(request: NextRequest) {
   // Verify session
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { commentId, authorId, taskId, episodeId, body, assigneeId, parentAuthorId } = await request.json()
+  let payload: { commentId?: unknown }
+  try {
+    payload = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const commentId = payload.commentId
+  if (typeof commentId !== 'string' || !UUID_RE.test(commentId)) {
+    return NextResponse.json({ error: 'Invalid commentId' }, { status: 400 })
+  }
 
   const admin = createAdminClient()
+
+  // Load the comment itself — the source of truth for author, body, task,
+  // episode, and parent. You may only fan out notifications for a comment
+  // YOU authored in this session.
+  const { data: comment } = await admin
+    .from('comments')
+    .select('id, author_id, body, task_id, episode_id, parent_comment_id')
+    .eq('id', commentId)
+    .maybeSingle()
+
+  if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
+  if (comment.author_id !== user.id) {
+    return NextResponse.json({ error: 'You can only notify for your own comments' }, { status: 403 })
+  }
+
+  const authorId = user.id
+  const body: string = comment.body ?? ''
+  const taskId: string | null = comment.task_id ?? null
+  const episodeId: string = comment.episode_id
+
+  // Resolve the real recipients from the DB, not the request:
+  // the task's current assignee and the parent comment's author.
+  let assigneeId: string | null = null
+  if (taskId) {
+    const { data: task } = await admin.from('tasks').select('assignee_id').eq('id', taskId).maybeSingle()
+    assigneeId = task?.assignee_id ?? null
+  }
+
+  let parentAuthorId: string | null = null
+  if (comment.parent_comment_id) {
+    const { data: parent } = await admin
+      .from('comments')
+      .select('author_id')
+      .eq('id', comment.parent_comment_id)
+      .maybeSingle()
+    parentAuthorId = parent?.author_id ?? null
+  }
 
   // Fetch all users to resolve @mentions by name
   const { data: allUsers } = await admin.from('users').select('id, name')
@@ -83,7 +140,7 @@ export async function POST(request: NextRequest) {
         return sendPushToUser(i.user_id, {
           title,
           body: body.slice(0, 100),
-          url: episodeId ? `/episodes/${episodeId}` : '/',
+          url: `/episodes/${episodeId}`,
           tag: 'comment',
         })
       })
