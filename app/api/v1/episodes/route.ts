@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validateApiKey } from '@/lib/apiKeys'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,14 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const apiKey = await validateApiKey(req)
   if (!apiKey) return NextResponse.json({ error: 'Invalid or missing API key' }, { status: 401 })
+
+  const rl = checkRateLimit(`v1:${apiKey.id}`, 60)
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+    )
+  }
 
   const { searchParams } = new URL(req.url)
   const clientKey = searchParams.get('client_key')
