@@ -8,11 +8,15 @@ import { parseDate } from '@/lib/utils'
 // vercel.json: { "path": "/api/task-notifications-check", "schedule": "0 9 * * *" }
 
 export async function GET(request: Request) {
+  // Fail closed: if CRON_SECRET is not configured, refuse to run at all.
+  // (The old check silently skipped auth when the env var was missing.)
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    console.error('[task-notifications-check] CRON_SECRET is not set — refusing to run')
+    return NextResponse.json({ error: 'Cron endpoint not configured' }, { status: 500 })
+  }
   const authHeader = request.headers.get('authorization')
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
