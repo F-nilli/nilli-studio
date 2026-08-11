@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deliverEpisode } from '@/lib/deliver'
-import { headers } from 'next/headers'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -19,13 +18,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const hdrs = await headers()
-  const origin = `${req.nextUrl.protocol}//${hdrs.get('host')}`
-
   const result = await deliverEpisode(admin, {
     episodeId,
     deliveredBy: user.id,
-    origin,
     silent: Boolean(silent),
   })
 

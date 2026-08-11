@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deliverEpisode } from '@/lib/deliver'
-import { headers } from 'next/headers'
+import { sendPushToUser } from '@/lib/push'
 
 export async function POST(req: NextRequest) {
   const sessionClient = await createClient()
@@ -47,16 +47,13 @@ export async function POST(req: NextRequest) {
         episode_id: episodeId,
         read: false,
       })
-      fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ''}/api/push/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: assignee.id,
-          title: 'New task started',
-          body: `"${t.label}" is now in progress`,
-          url: `/episodes/${episodeId}`,
-          tag: 'task_unlocked',
-        }),
+      // Direct server-side push (the old self-HTTP-call had no session
+      // cookies, so middleware redirected it to /login and it never sent).
+      sendPushToUser(assignee.id, {
+        title: 'New task started',
+        body: `"${t.label}" is now in progress`,
+        url: `/episodes/${episodeId}`,
+        tag: 'task_unlocked',
       }).catch(() => {})
     }
   }
@@ -68,12 +65,9 @@ export async function POST(req: NextRequest) {
   if (episode && !episode.archived && allTasks.length > 0) {
     const allTerminal = allTasks.every(t => t.status === 'done' || t.status === 'approved')
     if (allTerminal) {
-      const hdrs = await headers()
-      const origin = `${req.nextUrl.protocol}//${hdrs.get('host')}`
       const result = await deliverEpisode(supabase, {
         episodeId,
         deliveredBy: null,
-        origin,
         // Per product spec: when the user issued the original action silently,
         // the auto-archive that cascades from it is also silent.
         silent: Boolean(silent),
