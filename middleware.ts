@@ -7,6 +7,10 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Skip: static assets AND /api routes.
+    // API routes authenticate themselves — session routes return 401 JSON,
+    // /api/v1 uses Bearer API keys, cron routes use CRON_SECRET. Routing them
+    // through this middleware redirected all of those to /login instead.
+    '/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

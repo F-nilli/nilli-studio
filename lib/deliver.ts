@@ -1,12 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { postToSlack, buildEpisodeDeliveredBlocks } from './slack'
+import { sendPushToUser } from './push'
 
 export interface DeliverOptions {
   episodeId: string
   // null when the episode is auto-completing (no explicit deliverer)
   deliveredBy: string | null
-  // origin (e.g. https://app.example.com) used for push notifications
-  origin: string
   // when true, skip in-app notifications, web push, and the slack message.
   // The DB update, snapshot, and activity log still happen.
   silent?: boolean
@@ -32,7 +31,7 @@ export interface DeliverResult {
  */
 export async function deliverEpisode(
   admin: SupabaseClient,
-  { episodeId, deliveredBy, origin, silent = false }: DeliverOptions
+  { episodeId, deliveredBy, silent = false }: DeliverOptions
 ): Promise<DeliverResult> {
   const autoCompleted = deliveredBy === null
 
@@ -125,20 +124,16 @@ export async function deliverEpisode(
     }))
     await admin.from('notifications').insert(notifications)
 
-    if (origin) {
-      for (const userId of assigneeIds) {
-        fetch(`${origin}/api/push/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            title: autoCompleted ? 'Episode Auto-Completed' : 'Episode Delivered',
-            body: notifBody,
-            url: `/episodes/${episodeId}`,
-            tag: 'episode_delivered',
-          }),
-        }).catch(() => {})
-      }
+    // Direct server-side push. The previous implementation HTTP-called our own
+    // /api/push/send endpoint with no session cookies — middleware redirected
+    // those calls to /login, so these pushes silently never sent.
+    for (const userId of assigneeIds) {
+      sendPushToUser(userId, {
+        title: autoCompleted ? 'Episode Auto-Completed' : 'Episode Delivered',
+        body: notifBody,
+        url: `/episodes/${episodeId}`,
+        tag: 'episode_delivered',
+      }).catch(() => {})
     }
   }
 

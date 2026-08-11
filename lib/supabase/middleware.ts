@@ -27,6 +27,14 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Defense in depth: API routes handle their own authentication (session
+  // checks returning 401 JSON, Bearer API keys on /api/v1, CRON_SECRET on
+  // cron routes). Never redirect them to /login — the matcher already
+  // excludes /api, keep this guard in case the matcher is broadened later.
+  if (pathname.startsWith('/api/')) {
+    return supabaseResponse
+  }
+
   // Pages that don't require authentication
   const publicPaths = ['/login', '/forgot-password', '/reset-password']
   const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
