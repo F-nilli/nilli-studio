@@ -36,21 +36,27 @@ export function invalidateInappPrefsCache() {
 }
 
 export async function sendNotification(
-  supabase: ReturnType<typeof import('./supabase/client').createClient>,
+  // Kept for backward compatibility with existing call sites — delivery now
+  // goes through /api/notifications/send (the open client-side INSERT policy
+  // on notifications was removed; members can no longer write directly).
+  _supabase: ReturnType<typeof import('./supabase/client').createClient>,
   payload: NotificationPayload
 ) {
   const inappPrefs = await getInappPrefs()
   if (inappPrefs[payload.type] === false) return
 
-  await supabase.from('notifications').insert({
-    user_id: payload.userId,
-    type: payload.type,
-    title: payload.title,
-    body: payload.body,
-    task_id: payload.taskId || null,
-    episode_id: payload.episodeId || null,
-    read: false,
-  })
+  await fetch('/api/notifications/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: payload.userId,
+      type: payload.type,
+      title: payload.title,
+      body: payload.body,
+      taskId: payload.taskId || null,
+      episodeId: payload.episodeId || null,
+    }),
+  }).catch(() => {})
 
   // Fire push in background — non-blocking
   fetch('/api/push/send', {
