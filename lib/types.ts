@@ -12,6 +12,7 @@ export function canAccessAnalytics(user: { role: UserRole }) { return user.role 
 
 export type TaskStatus =
   | 'locked'
+  | 'ready'
   | 'in_progress'
   | 'in_review'
   | 'approved'
@@ -88,6 +89,10 @@ export interface Task {
   track: Track
   status: TaskStatus
   due_date: string | null
+  // Days-before-release offset copied from the template at creation.
+  // Used to compute due_date when a locked task unlocks (spec: due dates
+  // are computed at unlock time, not at episode creation).
+  due_days: number | null
   note: string | null
   brief: string | null
   quantity: number

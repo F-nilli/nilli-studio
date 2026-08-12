@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deliverEpisode } from '@/lib/deliver'
-import { sendPushToUser } from '@/lib/push'
+import { unlockReadyTasks } from '@/lib/unlock'
 
 export async function POST(req: NextRequest) {
   const sessionClient = await createClient()
@@ -17,9 +17,6 @@ export async function POST(req: NextRequest) {
 
   const supabase = createAdminClient()
 
-  const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', episodeId)
-  if (!allTasks) return NextResponse.json({ unlocked: 0 })
-
   // Authorization: this route runs with the service role, so without a check
   // any signed-in user could unlock tasks and even force auto-archival on
   // episodes they have nothing to do with. The caller must be admin/ops, or
@@ -28,68 +25,40 @@ export async function POST(req: NextRequest) {
   const { data: caller } = await sessionClient.from('users').select('role').eq('id', user.id).single()
   const isPrivileged = caller?.role === 'admin' || caller?.role === 'ops_manager'
   if (!isPrivileged) {
-    const isInvolved = allTasks.some(t => t.assignee_id === user.id || t.approver_id === user.id)
-    if (!isInvolved) {
+    const { data: ownTasks } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('episode_id', episodeId)
+      .or(`assignee_id.eq.${user.id},approver_id.eq.${user.id}`)
+      .limit(1)
+    if (!ownTasks || ownTasks.length === 0) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
   }
 
-  const approvedIds = new Set(
-    allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id)
-  )
-
-  const { data: episode } = await supabase.from('episodes').select('*').eq('id', episodeId).single()
-
-  let unlocked = 0
-
-  for (const t of allTasks) {
-    if (t.status !== 'locked') continue
-    // A locked task with no dep_task_ids recorded is a creation bug — unlock it immediately
-    const shouldUnlock =
-      t.dep_task_ids.length === 0 ||
-      t.dep_task_ids.every((depId: string) => approvedIds.has(depId))
-    if (!shouldUnlock) continue
-
-    await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', t.id)
-    unlocked++
-
-    const { data: assignee } = await supabase.from('users').select('*').eq('id', t.assignee_id).single()
-    if (assignee) {
-      await supabase.from('notifications').insert({
-        user_id: assignee.id,
-        type: 'task_unlocked',
-        title: 'New task started',
-        body: `"${t.label}" is now in progress for ${episode ? `${episode.guest_name} / ${episode.client_label}` : ''}`,
-        task_id: t.id,
-        episode_id: episodeId,
-        read: false,
-      })
-      // Direct server-side push (the old self-HTTP-call had no session
-      // cookies, so middleware redirected it to /login and it never sent).
-      sendPushToUser(assignee.id, {
-        title: 'New task started',
-        body: `"${t.label}" is now in progress`,
-        url: `/episodes/${episodeId}`,
-        tag: 'task_unlocked',
-      }).catch(() => {})
-    }
-  }
+  // One shared unlock implementation (also used by the cron safety net).
+  const { unlocked } = await unlockReadyTasks(supabase, episodeId, { silent: Boolean(silent) })
 
   // Auto-archive: if every task on this episode is now done/approved, mark
   // the episode delivered automatically. Skips if the episode is already
   // archived (idempotent inside deliverEpisode).
   let autoArchived = false
-  if (episode && !episode.archived && allTasks.length > 0) {
-    const allTerminal = allTasks.every(t => t.status === 'done' || t.status === 'approved')
-    if (allTerminal) {
-      const result = await deliverEpisode(supabase, {
-        episodeId,
-        deliveredBy: null,
-        // Per product spec: when the user issued the original action silently,
-        // the auto-archive that cascades from it is also silent.
-        silent: Boolean(silent),
-      })
-      autoArchived = result.ok && !result.alreadyDelivered
+  const { data: episode } = await supabase
+    .from('episodes').select('id, archived').eq('id', episodeId).single()
+  if (episode && !episode.archived) {
+    const { data: allTasks } = await supabase.from('tasks').select('status').eq('episode_id', episodeId)
+    if (allTasks && allTasks.length > 0) {
+      const allTerminal = allTasks.every(t => t.status === 'done' || t.status === 'approved')
+      if (allTerminal) {
+        const result = await deliverEpisode(supabase, {
+          episodeId,
+          deliveredBy: null,
+          // Per product spec: when the user issued the original action silently,
+          // the auto-archive that cascades from it is also silent.
+          silent: Boolean(silent),
+        })
+        autoArchived = result.ok && !result.alreadyDelivered
+      }
     }
   }
 

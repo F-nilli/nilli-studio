@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { compareToWorkspaceToday, cronDedupSinceISO } from '@/lib/utils'
+import { unlockReadyTasks } from '@/lib/unlock'
 
 // This route can be called by a Vercel cron job daily
 // Add to vercel.json: { "crons": [{ "path": "/api/overdue-check", "schedule": "0 9 * * *" }] }
@@ -22,6 +23,13 @@ export async function GET(request: Request) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  // Workspace timezone (canonical: workspace_settings.timezone; env fallback).
+  const { data: settingsRows } = await supabase
+    .from('workspace_settings')
+    .select('timezone')
+    .limit(1)
+  const tz = (settingsRows?.[0] as { timezone?: string } | undefined)?.timezone || undefined
 
   // Dedup window: "already notified within the last 23 hours" — safe against
   // re-runs and independent of server timezone.
@@ -51,7 +59,7 @@ export async function GET(request: Request) {
   for (const task of overdueTasks) {
     if (!task.due_date) continue
     // Past due relative to "today" in the workspace timezone, not server UTC.
-    if (compareToWorkspaceToday(task.due_date) !== -1) continue
+    if (compareToWorkspaceToday(task.due_date, tz) !== -1) continue
 
     const assignee = task.assignee
     if (!assignee) continue
