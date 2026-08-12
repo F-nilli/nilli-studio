@@ -11,11 +11,28 @@ export async function POST(req: NextRequest) {
 
   const { episodeId, silent } = await req.json()
   if (!episodeId) return NextResponse.json({ unlocked: 0 })
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(episodeId)) {
+    return NextResponse.json({ error: 'Invalid episodeId' }, { status: 400 })
+  }
 
   const supabase = createAdminClient()
 
   const { data: allTasks } = await supabase.from('tasks').select('*').eq('episode_id', episodeId)
   if (!allTasks) return NextResponse.json({ unlocked: 0 })
+
+  // Authorization: this route runs with the service role, so without a check
+  // any signed-in user could unlock tasks and even force auto-archival on
+  // episodes they have nothing to do with. The caller must be admin/ops, or
+  // an assignee/approver of at least one task on this episode (the normal
+  // case: a member completes their task and the app re-checks dependencies).
+  const { data: caller } = await sessionClient.from('users').select('role').eq('id', user.id).single()
+  const isPrivileged = caller?.role === 'admin' || caller?.role === 'ops_manager'
+  if (!isPrivileged) {
+    const isInvolved = allTasks.some(t => t.assignee_id === user.id || t.approver_id === user.id)
+    if (!isInvolved) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  }
 
   const approvedIds = new Set(
     allTasks.filter(t => t.status === 'approved' || t.status === 'done').map(t => t.id)

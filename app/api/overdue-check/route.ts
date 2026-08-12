@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { isAfter, startOfDay } from 'date-fns'
-import { parseDate } from '@/lib/utils'
+import { compareToWorkspaceToday, cronDedupSinceISO } from '@/lib/utils'
 
 // This route can be called by a Vercel cron job daily
 // Add to vercel.json: { "crons": [{ "path": "/api/overdue-check", "schedule": "0 9 * * *" }] }
@@ -24,7 +23,9 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const today = startOfDay(new Date())
+  // Dedup window: "already notified within the last 23 hours" — safe against
+  // re-runs and independent of server timezone.
+  const dedupSince = cronDedupSinceISO()
 
   // Find overdue tasks
   const { data: overdueTasks } = await supabase
@@ -35,18 +36,22 @@ export async function GET(request: Request) {
 
   if (!overdueTasks) return NextResponse.json({ notified: 0 })
 
-  const { data: francis } = await supabase
+  // .limit(1), not .single(): with more than one admin in the workspace,
+  // .single() errors and silently disables the admin notification.
+  const { data: adminRows } = await supabase
     .from('users')
     .select('*')
     .eq('role', 'admin')
-    .single()
+    .limit(1)
+
+  const francis = adminRows?.[0]
 
   let notified = 0
 
   for (const task of overdueTasks) {
     if (!task.due_date) continue
-    const dueDate = startOfDay(parseDate(task.due_date))
-    if (!isAfter(today, dueDate)) continue
+    // Past due relative to "today" in the workspace timezone, not server UTC.
+    if (compareToWorkspaceToday(task.due_date) !== -1) continue
 
     const assignee = task.assignee
     if (!assignee) continue
@@ -57,10 +62,10 @@ export async function GET(request: Request) {
       .select('id')
       .eq('task_id', task.id)
       .eq('type', 'task_overdue')
-      .gte('created_at', today.toISOString())
-      .single()
+      .gte('created_at', dedupSince)
+      .limit(1)
 
-    if (existing) continue
+    if (existing && existing.length > 0) continue
 
     const notifBody = `"${task.label}" is overdue${task.episode ? ` for ${task.episode.guest_name} / ${task.episode.client_label}` : ''}`
 

@@ -133,6 +133,41 @@ export function calculateDueDates(
   return result
 }
 
+// ── Workspace-timezone helpers (server-side, used by cron routes) ─────────
+// "Today" for deadline reminders should mean the workspace's local day, not
+// the server's UTC day. Vercel crons run in UTC; for a workspace east of UTC
+// the UTC-based check fires during the previous local evening and misses or
+// mistimes tasks due on the local morning. Set WORKSPACE_TIMEZONE in Vercel
+// (e.g. "Europe/Helsinki"); defaults to UTC.
+export function getWorkspaceTimezone(): string {
+  return process.env.WORKSPACE_TIMEZONE || 'UTC'
+}
+
+// YYYY-MM-DD of `date` in the workspace timezone (lexicographically comparable).
+export function workspaceDateString(date: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: getWorkspaceTimezone() }).format(date)
+  } catch {
+    // Invalid timezone configured — fall back to UTC rather than crash the cron.
+    return date.toISOString().slice(0, 10)
+  }
+}
+
+// Compare a DB date/timestamp against "today" in the workspace timezone.
+// Returns -1 (before today / past due), 0 (due today), 1 (in the future).
+export function compareToWorkspaceToday(dateStr: string): -1 | 0 | 1 {
+  const d = workspaceDateString(parseDate(dateStr))
+  const today = workspaceDateString()
+  return d < today ? -1 : d > today ? 1 : 0
+}
+
+// Dedup window for once-daily crons: "already sent within the last 23 hours".
+// Timezone-independent (unlike the old startOfDay(server) boundary) and, since
+// the cron runs every 24h, guarantees at most one notification per task per day.
+export function cronDedupSinceISO(): string {
+  return new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString()
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')

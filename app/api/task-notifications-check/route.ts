@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { startOfDay, isAfter, isSameDay } from 'date-fns'
 import { sendPushToUser } from '@/lib/push'
-import { parseDate } from '@/lib/utils'
+import { compareToWorkspaceToday, cronDedupSinceISO } from '@/lib/utils'
 
 // Vercel cron: runs daily at 9 AM UTC
 // vercel.json: { "path": "/api/task-notifications-check", "schedule": "0 9 * * *" }
@@ -47,7 +46,9 @@ export async function GET(request: Request) {
 
   const adminIds = (admins ?? []).map((a: { id: string }) => a.id)
 
-  const today = startOfDay(new Date())
+  // Dedup window: "already notified within the last 23 hours" — safe against
+  // re-runs and independent of server timezone (the cron runs every 24h).
+  const dedupSince = cronDedupSinceISO()
 
   const { data: tasks } = await supabase
     .from('tasks')
@@ -62,9 +63,11 @@ export async function GET(request: Request) {
 
   for (const task of tasks) {
     if (!task.due_date || !task.assignee) continue
-    const dueDate = startOfDay(parseDate(task.due_date))
-    const isDueToday = isSameDay(dueDate, today)
-    const isPastDue = isAfter(today, dueDate)
+    // Compare against "today" in the workspace timezone (WORKSPACE_TIMEZONE,
+    // default UTC) — not the server's UTC day.
+    const dayComparison = compareToWorkspaceToday(task.due_date)
+    const isDueToday = dayComparison === 0
+    const isPastDue = dayComparison === -1
 
     const episodeSuffix = task.episode
       ? ` for ${task.episode.guest_name} / ${task.episode.client_label}`
@@ -72,15 +75,17 @@ export async function GET(request: Request) {
 
     // ── Deadline reminder (due today) ───────────────────────────────────────
     if (reminderEnabled && isDueToday) {
+      // NOTE: use .limit(1), not .single() — .single() errors when more than
+      // one row matches, which reads as "none found" and inserts duplicates.
       const { data: existingReminder } = await supabase
         .from('notifications')
         .select('id')
         .eq('task_id', task.id)
         .eq('type', 'task_deadline_reminder')
-        .gte('created_at', today.toISOString())
-        .single()
+        .gte('created_at', dedupSince)
+        .limit(1)
 
-      if (!existingReminder) {
+      if (!existingReminder || existingReminder.length === 0) {
         const notifBody = `"${task.label}" is due today${episodeSuffix}`
 
         await supabase.from('notifications').insert({
@@ -111,10 +116,10 @@ export async function GET(request: Request) {
         .select('id')
         .eq('task_id', task.id)
         .eq('type', 'task_overdue')
-        .gte('created_at', today.toISOString())
-        .single()
+        .gte('created_at', dedupSince)
+        .limit(1)
 
-      if (!existingOverdue) {
+      if (!existingOverdue || existingOverdue.length === 0) {
         const notifBody = `"${task.label}" is overdue${episodeSuffix}`
 
         await supabase.from('notifications').insert({
