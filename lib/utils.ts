@@ -1,8 +1,7 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { subDays, parseISO, format, isAfter, startOfDay } from 'date-fns'
+import { parseISO, format, isAfter, startOfDay } from 'date-fns'
 import { TaskStatus } from './types'
-import { TaskTemplate } from './templates'
 
 export function formatRelativeTime(dateStr: string): string {
   const date = parseDate(dateStr)
@@ -112,26 +111,6 @@ export function isOverdue(
   }
   if (!dueDate) return false
   return isAfter(startOfDay(new Date()), startOfDay(parseDate(dueDate)))
-}
-
-export function calculateDueDates(
-  releaseDate: string,
-  templates: TaskTemplate[]
-): Record<number, Date | null> {
-  const release = parseISO(releaseDate)
-
-  const result: Record<number, Date | null> = {}
-  for (const t of templates) {
-    if (t.dueDays === null) {
-      result[t.id] = null
-    } else {
-      // due_date = release_date - task.dueDays days
-      const d = subDays(release, t.dueDays)
-      d.setHours(9, 0, 0, 0)
-      result[t.id] = d
-    }
-  }
-  return result
 }
 
 // ── Workspace-timezone helpers (server-side, used by cron routes) ─────────
