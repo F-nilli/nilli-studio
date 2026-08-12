@@ -1355,6 +1355,19 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       : `Marked "${capturedTask.label}" done`
 
     const commit = async (silent: boolean) => {
+      // Save FIRST. Until this succeeds: no comment, no notifications, no
+      // Slack. The old order notified the approver before writing — when the
+      // write was then rejected, the approver was pinged about a submission
+      // that never happened and the UI silently snapped back later.
+      const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single()
+      if (error || !data) {
+        console.error('[Task] status update failed:', error)
+        onTaskUpdate(capturedTask)
+        setActionError('Couldn’t save that change — nothing was updated. Please try again.')
+        return
+      }
+
+      // Save succeeded — now the side effects.
       // Comment + comment notification: skipped on silent
       if (!silent && capturedNote.trim() && capturedNextUser) {
         const body = `→ ${capturedNextUser.user.name}: ${capturedNote.trim()}`
@@ -1389,20 +1402,17 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         }).catch(err => console.error('[Slack]', err))
       }
 
-      const { data } = await supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single()
-      if (data) {
-        onTaskUpdate(data as unknown as Task)
-        markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
-        supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
-        // Pass silent through so any auto-archive triggered by this status
-        // change also stays silent.
-        checkAndUnlockDependencies(capturedTask.episode_id, silent).catch(console.error)
-        if (resolvedStatus === 'done') {
-          fetch('/api/episodes/check-triggers', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: capturedTask.id, episodeId: capturedTask.episode_id }),
-          }).catch(() => {})
-        }
+      onTaskUpdate(data as unknown as Task)
+      markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
+      supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})
+      // Pass silent through so any auto-archive triggered by this status
+      // change also stays silent.
+      checkAndUnlockDependencies(capturedTask.episode_id, silent).catch(console.error)
+      if (resolvedStatus === 'done') {
+        fetch('/api/episodes/check-triggers', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: capturedTask.id, episodeId: capturedTask.episode_id }),
+        }).catch(() => {})
       }
     }
 
