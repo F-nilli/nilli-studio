@@ -38,8 +38,8 @@ JOIN public.clients c ON c.key = e.client_key
 JOIN public.task_templates tt
   ON tt.client_id = c.id
  AND COALESCE(tt.template_name, 'Default') = COALESCE(e.template_name, 'Default')
- AND tt.seq_id = t.template_task_id
 WHERE t.episode_id = e.id
+  AND tt.seq_id = t.template_task_id
   AND t.due_days IS NULL
   AND tt.due_days IS NOT NULL;
 
