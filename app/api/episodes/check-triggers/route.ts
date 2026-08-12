@@ -8,6 +8,14 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await sessionClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Authz note: this endpoint is intentionally callable by any logged-in user
+  // — it runs as part of the normal member workflow (completing a task can
+  // spawn the next pipeline). It is safe because (a) a trigger only fires
+  // when the underlying task is genuinely approved/done — which the
+  // guard_task_update trigger now enforces at the database level — and
+  // (b) spawning is idempotent via the episodes_source_episode_template_unique
+  // index, so races and replays can't create duplicates.
+
   const { taskId, episodeId } = await req.json()
   if (!taskId || !episodeId) return NextResponse.json({ triggered: false })
 
@@ -91,7 +99,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the new episode
-    const { data: newEpisode } = await supabase.from('episodes').insert({
+    const { data: newEpisode, error: spawnError } = await supabase.from('episodes').insert({
       client_key: episode.client_key,
       client_label: episode.client_label,
       guest_name: `${episode.guest_name} (${trigger.template_name})`,
@@ -102,6 +110,15 @@ export async function POST(req: NextRequest) {
       source_episode_id: episodeId,
       created_by: episode.created_by,
     }).select().single()
+
+    if (spawnError) {
+      // Unique-violation (23505) = a concurrent call already spawned this
+      // exact pipeline for this episode. That's the idempotency guard doing
+      // its job — treat as "already spawned" and move on.
+      if (spawnError.code === '23505') continue
+      console.error('[check-triggers] episode spawn failed:', spawnError.message)
+      continue
+    }
     if (!newEpisode) continue
 
     // Create tasks
