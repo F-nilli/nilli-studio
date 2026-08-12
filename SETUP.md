@@ -3,7 +3,40 @@
 ## 1. Supabase Project
 
 1. Go to [supabase.com](https://supabase.com) and create a new project
-2. In the SQL Editor, run the full contents of `supabase/schema.sql`
+2. In the SQL Editor, run `supabase/schema.sql` first, then **every** `supabase/migration_*.sql` / `supabase/add_*.sql` file. Suggested order:
+
+   ```
+   schema.sql
+   migration_v2.sql
+   migration_v3.sql
+   migration_task_brief.sql
+   migration_release_time.sql
+   migration_round_times.sql
+   migration_due_date_timestamptz.sql
+   migration_task_submission_count.sql
+   migration_auto_completed.sql
+   migration_episode_archive_tracking.sql
+   migration_episode_deliver.sql
+   migration_active_last_seen.sql
+   migration_password_changed.sql
+   migration_quotas.sql
+   migration_push_subscriptions.sql
+   migration_slack_notifications.sql
+   migration_inapp_notifications.sql
+   migration_task_notifications.sql
+   migration_threaded_comments.sql
+   add_comment_attachments.sql
+   migration_api_keys.sql
+   migration_rls_remaining_tables.sql
+   migration_protect_user_management.sql
+   migration_task_workflow_rls.sql
+   migration_message_notifications_author.sql
+   migration_episode_spawn_unique.sql
+   migration_batch_b_workflow.sql
+   migration_reconstruct_missing_tables.sql
+   ```
+
+   Everything is idempotent (`IF NOT EXISTS` / `CREATE OR REPLACE`), so re-running is safe.
 3. Copy your project URL and anon key from **Settings → API**
 
 ## 2. Environment Variables
@@ -13,35 +46,39 @@ Update `.env.local`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # for overdue-check API
-CRON_SECRET=some-random-secret                      # protect the cron endpoint
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # API routes + cron
+CRON_SECRET=some-random-secret                    # required — cron endpoints refuse to run without it
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=...                  # web push (generate: npx web-push generate-vapid-keys)
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:you@example.com
+WORKSPACE_TIMEZONE=America/New_York               # optional fallback; canonical value below
+```
+
+After setup, set the workspace timezone in the database (used for due dates and "due today" checks):
+
+```sql
+UPDATE public.workspace_settings SET timezone = 'America/New_York';
 ```
 
 ## 3. Create Team Accounts
 
-Sign up each team member at `/signup` using these emails (role + color auto-assigns):
+Sign-up is invite-only: admins create accounts from **Settings → Team** (name, email, role, color, temp password). The DB trigger auto-creates each profile on first auth.
 
-| Name | Email | Role |
-|------|-------|------|
-| Francis | francis@nillistudio.com | Admin |
-| Ali | ali@nillistudio.com | Member |
-| Eph | eph@nillistudio.com | Member |
-| Abdo | abdo@nillistudio.com | Member |
-| Nguyen | nguyen@nillistudio.com | Member |
-| Donya | donya@nillistudio.com | Member |
-| Zeeshan | zeeshan@nillistudio.com | Member |
-| Phil | phil@nillistudio.com | Member |
+To bootstrap the **first admin**:
 
-> **Note:** Use any email domain — the important thing is the name part matching (francis, ali, eph, etc.) OR the exact email match. The signup page auto-detects the role and color.
+1. Create the user in Supabase **Auth → Users → Create user** (or sign up once via `/login` if enabled)
+2. Promote them in the SQL Editor:
 
-Alternatively, you can create all accounts via Supabase Auth > Users > Create user, then the database trigger will auto-create their profile with the right metadata if you pass it.
+   ```sql
+   UPDATE public.users SET role = 'admin' WHERE email = 'you@example.com';
+   ```
 
-## 4. Slack Webhooks (Optional)
+3. Log in and invite the rest of the team from Settings.
 
-Each team member can set their personal Slack incoming webhook URL in their `/profile` page. To create one:
-1. Go to your Slack workspace → Apps → Incoming Webhooks
-2. Add a new webhook pointing to your personal DM or a team channel
-3. Copy the webhook URL and paste it in your Nilli Studio profile
+## 4. Slack & Push Notifications (Optional)
+
+- **Slack**: admin connects a workspace bot token in Settings → Notifications; members can add personal webhook URLs in `/profile`.
+- **Web push**: needs the VAPID env vars above; members enable it from their profile/browser prompt.
 
 ## 5. Deploy to Vercel
 
@@ -51,7 +88,7 @@ npx vercel
 
 Set the same environment variables in your Vercel project settings.
 
-The `vercel.json` cron job will call `/api/overdue-check` daily at 9am UTC to send overdue notifications. Add `CRON_SECRET` to Vercel env vars.
+The `vercel.json` cron calls `/api/task-notifications-check` daily at 9:00 UTC (due-today reminders + overdue notices). `CRON_SECRET` must be set — the endpoint refuses to run without it. `/api/overdue-check` (older overlapping checker + unlock safety net) can optionally be added as a second cron entry.
 
 ## 6. Development
 
@@ -65,19 +102,18 @@ Open [http://localhost:3000](http://localhost:3000)
 
 - `/dashboard` — Your personal task list (grouped by status)
 - `/calendar` — Monthly calendar of your tasks by due date
-- `/board` — Admin only: all episodes overview + create new episodes
+- `/board` — Admin/ops: all episodes overview
 - `/episodes/[id]` — Full episode with all tracks and tasks
-- `/episodes/new` — Admin only: create a new episode
-- `/profile` — Update your name, avatar color, Slack webhook
+- `/episodes/new` — Admin/ops: create a new project (also via the New Project modal)
+- `/settings` — Admin/ops: team, clients, pipeline templates, notifications, API keys
+- `/profile` — Your name, avatar, notification prefs
 
 ## How it works
 
-1. Francis creates an episode → tasks auto-generate from the client template
-2. Task due dates are auto-calculated from release date
-3. Team members see their ready tasks on their dashboard
-4. Click a task → update status, leave comments
-5. When a task is submitted for review → Ali/Francis get notified
-6. Ali/Francis use the Approve/Send Back modal:
-   - **Approve**: set due dates for the next unlocking tasks → notifications fire
-   - **Send Back**: set revised due date → editor gets notified
-7. Notifications appear in the bell icon + Slack DM
+1. Admin/ops creates a project → the server route `/api/episodes/create` generates all tasks from the client's pipeline template in one all-or-nothing write
+2. Starting (dependency-free) tasks get due dates from the release date; their assignees are notified (in-app + push)
+3. Locked tasks unlock automatically when their dependencies are approved — their due date is computed **at that moment** (release date − offset, workspace timezone)
+4. Members submit work for review; approvers approve or send back. Tasks without a named approver complete directly
+5. When every task on an episode is done/approved, the episode auto-archives (delivered)
+6. Optional pipeline triggers auto-spawn follow-up episodes (e.g. "Shorts" pipeline a few days after the main one)
+7. A daily cron sends due-today and overdue notifications; an in-cron safety net also unlocks any task that got stuck
