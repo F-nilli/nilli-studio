@@ -288,7 +288,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       const updatePayload: Record<string, unknown> = { status: resolvedStatus }
       if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
       const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single()
-      if (error || !data) { onUpdate(originalTask); return }
+      if (error || !data) { console.error('[Task] status update failed:', error); onUpdate(originalTask); return }
 
       // Auto-clear my own action-required notifications for this task.
       markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
@@ -339,7 +339,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       }
 
       const { data, error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id).select('*').single()
-      if (error || !data) { onUpdate(originalTask); return }
+      if (error || !data) { console.error('[Task] approve failed:', error); onUpdate(originalTask); return }
 
       markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: 'approved', changed_by: currentUser.id }).then(() => {})
@@ -388,7 +388,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
       }
 
       const { data, error } = await supabase.from('tasks').update({ status: 'revision' }).eq('id', task.id).select('*').single()
-      if (error || !data) { onUpdate(originalTask); return }
+      if (error || !data) { console.error('[Task] revision failed:', error); onUpdate(originalTask); return }
 
       markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: task.id, episode_id: task.episode_id, from_status: task.status, to_status: 'revision', changed_by: currentUser.id }).then(() => {})
