@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { User, Client, DbTaskTemplate, Track } from '@/lib/types'
-import { cn, fromDatetimeLocal, roundToHour, getCurrentTimezoneAbbr } from '@/lib/utils'
+import { cn, roundToHour, getCurrentTimezoneAbbr } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
@@ -224,133 +224,48 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
     setError('')
     setSubmitting(true)
 
-    const { data: episode, error: epError } = await supabase
-      .from('episodes')
-      .insert({
-        client_key: selectedClient.key,
-        client_label: selectedClient.label,
-        guest_name: guestName,
-        release_date: releaseDate.slice(0, 10),
-        release_time: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
-        footage_url: footageUrl || null,
-        notes: notes || null,
-        template_name: isCustom ? 'custom' : selectedTemplateName,
-        created_by: currentUser.id,
+    // Server-side, all-or-nothing creation (episode + tasks + dep wiring +
+    // starting-task notifications happen in /api/episodes/create).
+    let episodeId: string
+    try {
+      const res = await fetch('/api/episodes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          guestName,
+          releaseDate: releaseDate.slice(0, 10),
+          releaseTime: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
+          footageUrl: footageUrl || null,
+          notes: notes || null,
+          templateName: isCustom ? 'custom' : selectedTemplateName,
+          dueDateOverrides: isCustom ? {} : taskDueDates,
+          customTasks: isCustom ? customTasks : undefined,
+          browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       })
-      .select().single()
-
-    if (epError || !episode) { setError(epError?.message || 'Failed to create episode'); setSubmitting(false); return }
-
-    if (isCustom) {
-      // ── Custom tasks ────────────────────────────────────────────────────────
-      const taskInserts = customTasks.map(ct => ({
-        episode_id: episode.id,
-        template_task_id: ct.tmpId,
-        label: ct.label.trim(),
-        assignee_id: ct.assignee_id || currentUser.id,
-        track: ct.track,
-        status: ct.dep_tmp_ids.length === 0 ? 'in_progress' : 'locked',
-        due_date: ct.due_date ? fromDatetimeLocal(ct.due_date) : null,
-        note: null,
-        dep_task_ids: [],
-        requires_approval: ct.requires_approval,
-        approver_id: ct.requires_approval ? ct.approver_id : null,
-      }))
-
-      const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
-      if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setSubmitting(false); return }
-
-      const tmpIdToDbId: Record<number, string> = {}
-      for (const task of createdTasks) tmpIdToDbId[task.template_task_id] = task.id
-
-      for (const ct of customTasks) {
-        if (ct.dep_tmp_ids.length > 0) {
-          const depDbIds = ct.dep_tmp_ids.map(id => tmpIdToDbId[id]).filter(Boolean)
-          if (depDbIds.length > 0) {
-            await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', tmpIdToDbId[ct.tmpId])
-          }
-        }
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(json?.error || 'Failed to create episode')
+        setSubmitting(false)
+        return
       }
-
-      for (const task of createdTasks) {
-        if (task.status === 'in_progress' && task.assignee_id) {
-          const assignee = allUsers.find(u => u.id === task.assignee_id)
-          if (assignee) {
-            await supabase.from('notifications').insert({
-              user_id: assignee.id, type: 'task_unlocked', title: 'New task started',
-              body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
-              task_id: task.id, episode_id: episode.id, read: false,
-            })
-          }
-        }
-      }
-    } else {
-      // ── Template tasks ──────────────────────────────────────────────────────
-      const seqIdToDbId: Record<number, string> = {}
-      const taskInserts = clientTemplates.map(template => {
-        const rawDate = taskDueDates[template.seq_id]
-
-        let resolvedApproverId: string | null = null
-        if (template.requires_approval && template.approver_id) {
-          const val = template.approver_id
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
-          if (isUuid) {
-            resolvedApproverId = val
-          } else {
-            const match = allUsers.find(u => u.name.toLowerCase() === val.toLowerCase())
-            if (match) resolvedApproverId = match.id
-          }
-        }
-
-        return {
-          episode_id: episode.id,
-          template_task_id: template.seq_id,
-          label: template.label,
-          assignee_id: template.assignee_id || currentUser.id,
-          track: template.track,
-          status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
-          due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
-          note: template.note || null,
-          quantity: template.quantity ?? 1,
-          dep_task_ids: [],
-          requires_approval: template.requires_approval || false,
-          approver_id: resolvedApproverId,
-        }
-      })
-
-      const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
-      if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setSubmitting(false); return }
-
-      for (const task of createdTasks) seqIdToDbId[task.template_task_id] = task.id
-      for (const template of clientTemplates) {
-        if (template.dep_seq_ids.length > 0) {
-          const depDbIds = template.dep_seq_ids.map(id => seqIdToDbId[id]).filter(Boolean)
-          await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[template.seq_id])
-        }
-      }
-      for (const task of createdTasks) {
-        if (task.status === 'in_progress' && task.assignee_id) {
-          const assignee = allUsers.find(u => u.id === task.assignee_id)
-          if (assignee) {
-            await supabase.from('notifications').insert({
-              user_id: assignee.id, type: 'task_unlocked', title: 'New task started',
-              body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
-              task_id: task.id, episode_id: episode.id, read: false,
-            })
-          }
-        }
-      }
+      episodeId = json.episodeId
+    } catch {
+      setError('Network error while creating the project — please try again')
+      setSubmitting(false)
+      return
     }
 
     // Upload reference images
     if (imageFiles.length > 0) {
       for (const file of imageFiles) {
-        const path = `${episode.id}/${Date.now()}-${file.name}`
+        const path = `${episodeId}/${Date.now()}-${file.name}`
         const { error: uploadError } = await supabase.storage.from('episode-references').upload(path, file)
         if (uploadError) continue
         const { data: urlData } = supabase.storage.from('episode-references').getPublicUrl(path)
         await supabase.from('episode_images').insert({
-          episode_id: episode.id,
+          episode_id: episodeId,
           url: urlData.publicUrl,
           filename: file.name,
           uploaded_by: currentUser.id,
@@ -370,13 +285,13 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'new_project',
-        episodeId: episode.id,
+        episodeId,
         newDate: releaseDateFormatted,
         newTime: releaseTimeFormatted,
       }),
     }).catch(() => {})
 
-    onSuccess({ id: episode.id, guest_name: guestName, client_label: selectedClient.label })
+    onSuccess({ id: episodeId, guest_name: guestName, client_label: selectedClient.label })
   }
 
   // Close on Escape

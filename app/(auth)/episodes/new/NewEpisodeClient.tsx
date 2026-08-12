@@ -6,7 +6,7 @@ import { ArrowLeft, Upload, X } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate } from '@/lib/types'
-import { cn, fromDatetimeLocal, roundToHour, getCurrentTimezoneAbbr } from '@/lib/utils'
+import { cn, roundToHour, getCurrentTimezoneAbbr } from '@/lib/utils'
 import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { subDays, format } from 'date-fns'
 
@@ -151,98 +151,43 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
     setError('')
     setLoading(true)
 
-    const { data: episode, error: epError } = await supabase
-      .from('episodes')
-      .insert({
-        client_key: selectedClient.key,
-        client_label: selectedClient.label,
-        guest_name: guestName,
-        release_date: releaseDate.slice(0, 10),
-        release_time: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
-        footage_url: footageUrl || null,
-        notes: notes || null,
-        template_name: selectedTemplateName,
-        created_by: currentUser.id,
+    // Server-side, all-or-nothing creation (episode + tasks + dep wiring +
+    // starting-task notifications happen in /api/episodes/create).
+    let episodeId: string
+    try {
+      const res = await fetch('/api/episodes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          guestName,
+          releaseDate: releaseDate.slice(0, 10),
+          releaseTime: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
+          footageUrl: footageUrl || null,
+          notes: notes || null,
+          templateName: selectedTemplateName,
+          dueDateOverrides: taskDueDates,
+          browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       })
-      .select().single()
-
-    if (epError || !episode) { setError(epError?.message || 'Failed to create episode'); setLoading(false); return }
-
-    const seqIdToDbId: Record<number, string> = {}
-
-    const taskInserts = clientTemplates.map(template => {
-      const rawDate = taskDueDates[template.seq_id]
-
-      // Resolve approver_id: the template may store a UUID or a legacy username/name string
-      let resolvedApproverId: string | null = null
-      if (template.requires_approval && template.approver_id) {
-        const val = template.approver_id
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
-        if (isUuid) {
-          resolvedApproverId = val
-        } else {
-          const match = allUsers.find(u => u.name.toLowerCase() === val.toLowerCase())
-          if (match) {
-            resolvedApproverId = match.id
-          } else {
-            console.warn(`Warning: approver '${val}' not found in users table for task '${template.label}'`)
-          }
-        }
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(json?.error || 'Failed to create episode')
+        setLoading(false)
+        return
       }
-
-      return {
-        episode_id: episode.id,
-        template_task_id: template.seq_id,
-        label: template.label,
-        assignee_id: template.assignee_id || currentUser.id,
-        track: template.track,
-        status: template.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
-        due_date: rawDate ? fromDatetimeLocal(rawDate) : null,
-        note: template.note || null,
-        dep_task_ids: [],
-        requires_approval: template.requires_approval || false,
-        approver_id: resolvedApproverId,
-      }
-    })
-
-    const { data: createdTasks, error: tasksError } = await supabase.from('tasks').insert(taskInserts).select()
-    if (tasksError || !createdTasks) { setError(tasksError?.message || 'Failed to create tasks'); setLoading(false); return }
-
-    for (const task of createdTasks) seqIdToDbId[task.template_task_id] = task.id
-
-    for (const template of clientTemplates) {
-      if (template.dep_seq_ids.length > 0) {
-        const depDbIds = template.dep_seq_ids.map(depId => seqIdToDbId[depId]).filter(Boolean)
-        if (depDbIds.length !== template.dep_seq_ids.length) {
-          console.error(`[NewEpisode] dep wiring mismatch for task ${template.seq_id}: expected ${template.dep_seq_ids.length} deps, got ${depDbIds.length}`)
-        }
-        const taskDbId = seqIdToDbId[template.seq_id]
-        if (taskDbId && depDbIds.length > 0) {
-          const { error: depErr } = await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', taskDbId)
-          if (depErr) console.error(`[NewEpisode] failed to wire deps for task ${template.seq_id}:`, depErr.message)
-        }
-      }
-    }
-
-    for (const task of createdTasks) {
-      if (task.status === 'in_progress' && task.assignee_id) {
-        const assignee = allUsers.find(u => u.id === task.assignee_id)
-        if (assignee) {
-          await supabase.from('notifications').insert({
-            user_id: assignee.id, type: 'task_unlocked',
-            title: 'New task started',
-            body: `"${task.label}" is now in progress for ${guestName} / ${selectedClient.label}`,
-            task_id: task.id, episode_id: episode.id, read: false,
-          })
-        }
-      }
+      episodeId = json.episodeId
+    } catch {
+      setError('Network error while creating the project — please try again')
+      setLoading(false)
+      return
     }
 
     // Upload reference images
     if (imageFiles.length > 0) {
       let failCount = 0
       for (const file of imageFiles) {
-        const path = `${episode.id}/${Date.now()}-${file.name}`
+        const path = `${episodeId}/${Date.now()}-${file.name}`
         const { error: uploadError } = await supabase.storage
           .from('episode-references')
           .upload(path, file)
@@ -251,7 +196,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
           .from('episode-references')
           .getPublicUrl(path)
         await supabase.from('episode_images').insert({
-          episode_id: episode.id,
+          episode_id: episodeId,
           url: urlData.publicUrl,
           filename: file.name,
           uploaded_by: currentUser.id,
@@ -275,13 +220,13 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'new_project',
-        episodeId: episode.id,
+        episodeId,
         newDate: releaseDateFormatted,
         newTime: releaseTimeFormatted,
       }),
     }).catch(() => {})
 
-    router.push(`/episodes/${episode.id}`)
+    router.push(`/episodes/${episodeId}`)
   }
 
   return (

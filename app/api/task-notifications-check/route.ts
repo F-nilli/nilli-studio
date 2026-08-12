@@ -24,15 +24,17 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Load notification settings
+  // Load notification settings (+ workspace timezone for day comparisons)
   const { data: settingsRows } = await supabase
     .from('workspace_settings')
-    .select('task_notifications')
+    .select('task_notifications, timezone')
     .limit(1)
 
-  const taskNotifs = (settingsRows?.[0] as any)?.task_notifications ?? { deadline_reminder: true, overdue: true }
+  const settingsRow = settingsRows?.[0] as { task_notifications?: { deadline_reminder?: boolean; overdue?: boolean }; timezone?: string } | undefined
+  const taskNotifs = settingsRow?.task_notifications ?? { deadline_reminder: true, overdue: true }
   const reminderEnabled = taskNotifs.deadline_reminder !== false
   const overdueEnabled = taskNotifs.overdue !== false
+  const tz = settingsRow?.timezone || undefined
 
   if (!reminderEnabled && !overdueEnabled) {
     return NextResponse.json({ skipped: true, reason: 'all notifications disabled' })
@@ -63,9 +65,10 @@ export async function GET(request: Request) {
 
   for (const task of tasks) {
     if (!task.due_date || !task.assignee) continue
-    // Compare against "today" in the workspace timezone (WORKSPACE_TIMEZONE,
-    // default UTC) — not the server's UTC day.
-    const dayComparison = compareToWorkspaceToday(task.due_date)
+    // Compare against "today" in the workspace timezone (from
+    // workspace_settings.timezone, fallback WORKSPACE_TIMEZONE env, then UTC)
+    // — not the server's UTC day.
+    const dayComparison = compareToWorkspaceToday(task.due_date, tz)
     const isDueToday = dayComparison === 0
     const isPastDue = dayComparison === -1
 

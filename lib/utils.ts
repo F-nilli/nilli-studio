@@ -20,6 +20,7 @@ export function formatRelativeTime(dateStr: string): string {
 
 export const STATUS_LABELS: Record<string, string> = {
   locked: 'Locked',
+  ready: 'Ready',
   in_progress: 'In Progress',
   in_review: 'In Review',
   approved: 'Approved',
@@ -137,16 +138,17 @@ export function calculateDueDates(
 // "Today" for deadline reminders should mean the workspace's local day, not
 // the server's UTC day. Vercel crons run in UTC; for a workspace east of UTC
 // the UTC-based check fires during the previous local evening and misses or
-// mistimes tasks due on the local morning. Set WORKSPACE_TIMEZONE in Vercel
-// (e.g. "Europe/Helsinki"); defaults to UTC.
+// mistimes tasks due on the local morning. The canonical timezone lives in
+// workspace_settings.timezone (cron/unlock code reads it from the DB);
+// WORKSPACE_TIMEZONE in Vercel is the fallback. Defaults to UTC.
 export function getWorkspaceTimezone(): string {
   return process.env.WORKSPACE_TIMEZONE || 'UTC'
 }
 
 // YYYY-MM-DD of `date` in the workspace timezone (lexicographically comparable).
-export function workspaceDateString(date: Date = new Date()): string {
+export function workspaceDateString(date: Date = new Date(), tz?: string): string {
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: getWorkspaceTimezone() }).format(date)
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || getWorkspaceTimezone() }).format(date)
   } catch {
     // Invalid timezone configured — fall back to UTC rather than crash the cron.
     return date.toISOString().slice(0, 10)
@@ -155,10 +157,40 @@ export function workspaceDateString(date: Date = new Date()): string {
 
 // Compare a DB date/timestamp against "today" in the workspace timezone.
 // Returns -1 (before today / past due), 0 (due today), 1 (in the future).
-export function compareToWorkspaceToday(dateStr: string): -1 | 0 | 1 {
-  const d = workspaceDateString(parseDate(dateStr))
-  const today = workspaceDateString()
+export function compareToWorkspaceToday(dateStr: string, tz?: string): -1 | 0 | 1 {
+  const d = workspaceDateString(parseDate(dateStr), tz)
+  const today = workspaceDateString(new Date(), tz)
   return d < today ? -1 : d > today ? 1 : 0
+}
+
+// Offset in milliseconds between timezone `tz` and UTC at instant `at`
+// (positive when the zone is ahead of UTC).
+function tzOffsetMs(at: Date, tz: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at)
+  const get = (type: string) => Number(parts.find(p => p.type === type)!.value)
+  const wallAsUTC = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'))
+  return wallAsUTC - Math.floor(at.getTime() / 1000) * 1000
+}
+
+// Convert a wall-clock date+time expressed in timezone `tz` to the
+// corresponding UTC instant. Used to compute due dates from a release
+// date/time without depending on the server's own timezone.
+// Falls back to UTC interpretation if the timezone is invalid.
+export function wallTimeInTzToUTC(dateStr: string, timeStr: string, tz: string): Date {
+  const naiveUTC = new Date(`${dateStr}T${timeStr}:00Z`).getTime()
+  try {
+    let utcMs = naiveUTC
+    // Two iterations cover DST transitions near the guessed instant.
+    for (let i = 0; i < 2; i++) utcMs = naiveUTC - tzOffsetMs(new Date(utcMs), tz)
+    return new Date(utcMs)
+  } catch {
+    return new Date(naiveUTC)
+  }
 }
 
 // Dedup window for once-daily crons: "already sent within the last 23 hours".
@@ -180,6 +212,7 @@ export function getInitials(name: string): string {
 export function getStatusColor(status: TaskStatus): string {
   switch (status) {
     case 'locked': return 'text-gray-400 dark:text-gray-600'
+    case 'ready': return 'text-blue-500'
     case 'in_progress': return 'text-yellow-500'
     case 'in_review': return 'text-purple-500'
     case 'approved': return 'text-green-500'
@@ -192,6 +225,7 @@ export function getStatusColor(status: TaskStatus): string {
 export function getStatusBg(status: TaskStatus): string {
   switch (status) {
     case 'locked': return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+    case 'ready': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'in_progress': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'in_review': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     case 'approved': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'

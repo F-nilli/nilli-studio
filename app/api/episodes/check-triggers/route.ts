@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { addDays, parseISO, format, subDays } from 'date-fns'
+import { createEpisodeWithTasks, resolveApproverId } from '@/lib/episodeCreate'
+import { wallTimeInTzToUTC } from '@/lib/utils'
 
 export async function POST(req: NextRequest) {
   const sessionClient = await createClient()
@@ -79,92 +81,62 @@ export async function POST(req: NextRequest) {
     // Load all users for approver_id resolution (UUID or name fallback)
     const { data: allUsers } = await supabase.from('users').select('id, name')
 
+    // Workspace timezone for due-date computation
+    const { data: settingsRows } = await supabase.from('workspace_settings').select('timezone').limit(1)
+    const tz = (settingsRows?.[0] as { timezone?: string } | undefined)?.timezone || 'UTC'
+
     // Calculate new release date
     const newReleaseDate = format(
       addDays(parseISO(episode.release_date), trigger.offset_days),
       'yyyy-MM-dd'
     )
 
-    // Calculate due dates (same D-X logic as NewEpisodeClient)
-    const fixedTasks = pipelineTemplates.filter((t: { due_days: number | null }) => t.due_days !== null)
-    const dueDates: Record<number, string> = {}
-    if (fixedTasks.length > 0) {
-      const release = parseISO(newReleaseDate)
-      const maxDays = Math.max(...fixedTasks.map((t: { due_days: number }) => t.due_days))
-      for (const t of fixedTasks) {
-        const d = subDays(release, maxDays - t.due_days)
-        d.setHours(9, 0, 0, 0)
-        dueDates[t.seq_id] = d.toISOString()
-      }
+    // Due date for starting (dep-free) tasks: release − due_days at 09:00
+    // workspace time. Locked tasks get theirs computed when they unlock.
+    const spawnDueDate = (dueDays: number | null): string | null => {
+      if (dueDays === null) return null
+      const d = subDays(parseISO(newReleaseDate), dueDays)
+      return wallTimeInTzToUTC(format(d, 'yyyy-MM-dd'), '09:00', tz).toISOString()
     }
 
-    // Create the new episode
-    const { data: newEpisode, error: spawnError } = await supabase.from('episodes').insert({
-      client_key: episode.client_key,
-      client_label: episode.client_label,
-      guest_name: `${episode.guest_name} (${trigger.template_name})`,
-      release_date: newReleaseDate,
-      footage_url: episode.footage_url,
+    // Create episode + tasks atomically via the shared creator (dep wiring
+    // happens in a single bulk insert; on task failure the episode is
+    // deleted again — no half-created pipelines).
+    const result = await createEpisodeWithTasks(supabase, {
+      clientKey: episode.client_key,
+      clientLabel: episode.client_label,
+      guestName: `${episode.guest_name} (${trigger.template_name})`,
+      releaseDate: newReleaseDate,
+      releaseTime: null,
+      footageUrl: episode.footage_url,
       notes: episode.notes,
-      template_name: trigger.template_name,
-      source_episode_id: episodeId,
-      created_by: episode.created_by,
-    }).select().single()
+      templateName: trigger.template_name,
+      sourceEpisodeId: episodeId,
+      createdBy: episode.created_by,
+      tasks: pipelineTemplates.map((t: { seq_id: number; label: string; assignee_id: string | null; track: string; dep_seq_ids: number[]; requires_approval: boolean; approver_id: string | null; due_days: number | null; note: string | null }) => ({
+        seqId: t.seq_id,
+        label: t.label,
+        assigneeId: t.assignee_id || episode.created_by,
+        track: t.track,
+        depSeqIds: t.dep_seq_ids ?? [],
+        requiresApproval: t.requires_approval || false,
+        approverId: t.requires_approval ? resolveApproverId(t.approver_id, allUsers ?? []) : null,
+        dueDate: (t.dep_seq_ids ?? []).length === 0 ? spawnDueDate(t.due_days ?? null) : null,
+        dueDays: t.due_days ?? null,
+        note: t.note || null,
+      })),
+    })
 
-    if (spawnError) {
+    if (!result.ok) {
       // Unique-violation (23505) = a concurrent call already spawned this
       // exact pipeline for this episode. That's the idempotency guard doing
       // its job — treat as "already spawned" and move on.
-      if (spawnError.code === '23505') continue
-      console.error('[check-triggers] episode spawn failed:', spawnError.message)
+      if (result.code === '23505') continue
+      console.error('[check-triggers] episode spawn failed:', result.error)
       continue
     }
-    if (!newEpisode) continue
 
-    // Create tasks
-    const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
-
-    const taskInserts = pipelineTemplates.map((t: { seq_id: number; label: string; assignee_id: string | null; track: string; dep_seq_ids: number[]; requires_approval: boolean; approver_id: string | null; note: string | null }) => {
-      let resolvedApproverId: string | null = null
-      if (t.requires_approval && t.approver_id) {
-        if (isUuid(t.approver_id)) {
-          resolvedApproverId = t.approver_id
-        } else {
-          const match = (allUsers || []).find(u => u.name.toLowerCase() === t.approver_id!.toLowerCase())
-          if (match) resolvedApproverId = match.id
-          else console.warn(`check-triggers: approver '${t.approver_id}' not found for task '${t.label}'`)
-        }
-      }
-      return {
-        episode_id: newEpisode.id,
-        template_task_id: t.seq_id,
-        label: t.label,
-        assignee_id: t.assignee_id || episode.created_by,
-        track: t.track,
-        status: t.dep_seq_ids.length === 0 ? 'in_progress' : 'locked',
-        due_date: dueDates[t.seq_id] || null,
-        note: t.note || null,
-        dep_task_ids: [],
-        requires_approval: t.requires_approval || false,
-        approver_id: resolvedApproverId,
-      }
-    })
-
-    const { data: createdTasks } = await supabase.from('tasks').insert(taskInserts).select()
-    if (!createdTasks) continue
-
-    // Wire dep_task_ids
-    const seqIdToDbId: Record<number, string> = {}
-    for (const t of createdTasks) seqIdToDbId[t.template_task_id] = t.id
-
-    for (const template of pipelineTemplates) {
-      if (template.dep_seq_ids.length > 0) {
-        const depDbIds = template.dep_seq_ids.map((d: number) => seqIdToDbId[d]).filter(Boolean)
-        await supabase.from('tasks').update({ dep_task_ids: depDbIds }).eq('id', seqIdToDbId[template.seq_id])
-      }
-    }
-
-    spawned.push(newEpisode.id)
+    spawned.push(result.episodeId)
   }
 
   return NextResponse.json({ triggered: spawned.length > 0, spawned })
