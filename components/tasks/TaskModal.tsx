@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import { X, Lock, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Task, User, TaskStatus, Episode } from '@/lib/types'
@@ -54,8 +55,16 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
   const [depTasks, setDepTasks] = useState<DepTaskInfo[] | null>(null)
   // Client Action track: "Client Requested Changes" picker
   const [clientChangesOpen, setClientChangesOpen] = useState(false)
-  const [clientChangesTaskId, setClientChangesTaskId] = useState<string>('')
+  const [clientChangesTaskIds, setClientChangesTaskIds] = useState<string[]>([])
   const [clientChangesLoading, setClientChangesLoading] = useState(false)
+  const [clientChangesError, setClientChangesError] = useState<string | null>(null)
+  // New due date applied to every reopened task. Prefilled suggestion:
+  // 2 days from now at 09:00 local.
+  const [clientChangesDate, setClientChangesDate] = useState(() => {
+    const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+    d.setHours(9, 0, 0, 0)
+    return format(d, "yyyy-MM-dd'T'HH:mm")
+  })
 
   const [lastHistory, setLastHistory] = useState<{ from_status: string; to_status: string } | null>(null)
   const [reverting, setReverting] = useState(false)
@@ -337,65 +346,42 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
     })
   }
 
-  // Mirrors the episode page card (EpisodeDetailClient.handleClientChanges):
-  // send the chosen completed dependency back to revision, re-lock this
-  // Client Action task, log both transitions, notify the dep task's assignee.
+  // Same server-side flow as the episode page card: one request reopens the
+  // chosen deps with the new due date, re-locks this task, writes history,
+  // and notifies assignees + Slack.
   async function handleClientChanges() {
-    if (!clientChangesTaskId || clientChangesLoading) return
-    const depTask = (depTasks ?? []).find(d => d.id === clientChangesTaskId)
-    if (!depTask) return
+    if (clientChangesTaskIds.length === 0 || clientChangesLoading) return
     setClientChangesLoading(true)
+    setClientChangesError(null)
 
-    // 1. Send the chosen dep task back to revision
-    await supabase.from('tasks').update({ status: 'revision' }).eq('id', depTask.id)
-    supabase.from('task_history').insert({
-      task_id: depTask.id,
-      episode_id: task.episode_id,
-      from_status: depTask.status,
-      to_status: 'revision',
-      changed_by: currentUser.id,
-      note: 'Client requested changes',
-    }).then(() => {})
-
-    // 2. Re-lock this Client Action task
-    const { data: updatedClientTask } = await supabase
-      .from('tasks')
-      .update({ status: 'locked' })
-      .eq('id', task.id)
-      .select('*')
-      .single()
-
-    supabase.from('task_history').insert({
-      task_id: task.id,
-      episode_id: task.episode_id,
-      from_status: task.status,
-      to_status: 'locked',
-      changed_by: currentUser.id,
-      note: 'Re-locked: client requested changes on dependency',
-    }).then(() => {})
-
-    // 3. Notify dep task assignee (in-app + Slack)
-    if (depTask.assignee_id) {
-      await sendNotification(supabase, {
-        userId: depTask.assignee_id,
-        type: 'task_revision',
-        title: 'Client requested changes',
-        body: `"${depTask.label}" was sent back — client requested revisions on "${task.label}"`,
-        taskId: depTask.id,
-        episodeId: task.episode_id,
-      })
-      fetch('/api/slack/notify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+    try {
+      const res = await fetch('/api/tasks/client-changes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'revision',
-          episodeId: task.episode_id,
-          taskLabel: depTask.label,
-          assigneeName: depTask.assignee_name ?? '',
+          clientTaskId: task.id,
+          depTaskIds: clientChangesTaskIds,
+          dueDate: new Date(clientChangesDate).toISOString(),
         }),
-      }).catch(() => {})
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        console.error('[Client changes] failed:', data?.error)
+        setClientChangesError(data?.error ?? 'Couldn’t send back for revisions — please try again.')
+        setClientChangesLoading(false)
+        return
+      }
+      for (const reopened of data.reopenedTasks ?? []) {
+        onUpdate(reopened as Task)
+      }
+      if (data.clientTask) onUpdate(data.clientTask as Task)
+    } catch (e) {
+      console.error('[Client changes] failed:', e)
+      setClientChangesError('Couldn’t send back for revisions — please try again.')
+      setClientChangesLoading(false)
+      return
     }
 
-    if (updatedClientTask) onUpdate(updatedClientTask as unknown as Task)
     setClientChangesLoading(false)
     // The task just became locked — nothing left to do in this modal.
     onClose()
@@ -679,10 +665,10 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
               </div>
             )}
 
-            {/* Client Requested Changes: pick which completed dep goes back */}
+            {/* Client Requested Changes: pick which completed deps go back */}
             {canAction && isClientAction && clientChangesOpen && (
               <div className="p-4 bg-[#141414] rounded-lg space-y-3" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
-                <p className="text-xs font-semibold text-[#888]">Which task needs to go back?</p>
+                <p className="text-xs font-semibold text-[#888]">Which tasks need to go back?</p>
                 {depTasks === null ? (
                   <p className="text-xs text-[#555]">Loading…</p>
                 ) : completedDeps.length === 0 ? (
@@ -692,11 +678,11 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                     {completedDeps.map(dt => (
                       <label key={dt.id} className="flex items-center gap-2.5 cursor-pointer group">
                         <input
-                          type="radio"
-                          name="clientChangesDep"
-                          value={dt.id}
-                          checked={clientChangesTaskId === dt.id}
-                          onChange={() => setClientChangesTaskId(dt.id)}
+                          type="checkbox"
+                          checked={clientChangesTaskIds.includes(dt.id)}
+                          onChange={() => setClientChangesTaskIds(prev =>
+                            prev.includes(dt.id) ? prev.filter(id => id !== dt.id) : [...prev, dt.id]
+                          )}
                           className="accent-[#ff3c00]"
                         />
                         <span className="text-xs text-[#ccc] group-hover:text-white transition-colors">{dt.label}</span>
@@ -705,16 +691,28 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                     ))}
                   </div>
                 )}
+                <div>
+                  <p className="text-xs font-semibold text-[#888] mb-1.5">New due date for the reopened tasks</p>
+                  <input
+                    type="datetime-local"
+                    value={clientChangesDate}
+                    onChange={e => setClientChangesDate(e.target.value)}
+                    className="px-2 py-1.5 bg-[#0f0f0f] border border-[#2e2e2e] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00] [color-scheme:dark]"
+                  />
+                </div>
+                {clientChangesError && (
+                  <p className="text-xs text-[#ff6644]">{clientChangesError}</p>
+                )}
                 <div className="flex items-center gap-3 pt-0.5">
                   <button
-                    onClick={() => { setClientChangesOpen(false); setClientChangesTaskId('') }}
+                    onClick={() => { setClientChangesOpen(false); setClientChangesTaskIds([]); setClientChangesError(null) }}
                     className="text-xs text-[#555] hover:text-[#888] transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleClientChanges}
-                    disabled={clientChangesLoading || !clientChangesTaskId}
+                    disabled={clientChangesLoading || clientChangesTaskIds.length === 0 || !clientChangesDate}
                     className="ml-auto py-1 px-3 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded transition-colors"
                   >
                     {clientChangesLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm'}
