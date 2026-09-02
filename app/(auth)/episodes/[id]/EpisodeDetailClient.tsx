@@ -1142,7 +1142,14 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
 
   const isClientAction = task.track === 'Client Action'
   const [clientChangesOpen, setClientChangesOpen] = useState(false)
-  const [clientChangesTaskId, setClientChangesTaskId] = useState<string>('')
+  const [clientChangesTaskIds, setClientChangesTaskIds] = useState<string[]>([])
+  // New due date applied to every reopened task. Prefilled suggestion:
+  // 2 days from now at 09:00 local.
+  const [clientChangesDate, setClientChangesDate] = useState(() => {
+    const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+    d.setHours(9, 0, 0, 0)
+    return format(d, "yyyy-MM-dd'T'HH:mm")
+  })
   const depTasks = allTasks.filter(t => task.dep_task_ids.includes(t.id) && ['done', 'approved'].includes(t.status))
 
   const showAssigneeAction = !isLocked && isAssignee &&
@@ -1549,66 +1556,43 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
   }
 
   async function handleClientChanges() {
-    if (!clientChangesTaskId || actionLoading) return
+    if (clientChangesTaskIds.length === 0 || actionLoading) return
     setActionLoading(true)
 
-    const depTask = allTasks.find(t => t.id === clientChangesTaskId)
-    if (!depTask) { setActionLoading(false); return }
-
-    const capturedClientTask = task
-
-    // 1. Send the chosen dep task back to revision
-    await supabase.from('tasks').update({ status: 'revision' }).eq('id', depTask.id)
-    supabase.from('task_history').insert({
-      task_id: depTask.id,
-      episode_id: task.episode_id,
-      from_status: depTask.status,
-      to_status: 'revision',
-      changed_by: currentUser.id,
-      note: 'Client requested changes',
-    }).then(() => {})
-
-    // 2. Re-lock this Client Action task
-    const { data: updatedClientTask } = await supabase
-      .from('tasks')
-      .update({ status: 'locked' })
-      .eq('id', task.id)
-      .select('*')
-      .single()
-
-    supabase.from('task_history').insert({
-      task_id: task.id,
-      episode_id: task.episode_id,
-      from_status: task.status,
-      to_status: 'locked',
-      changed_by: currentUser.id,
-      note: 'Re-locked: client requested changes on dependency',
-    }).then(() => {})
-
-    // 3. Notify dep task assignee
-    if (depTask.assignee_id) {
-      await sendNotification(supabase, {
-        userId: depTask.assignee_id,
-        type: 'task_revision',
-        title: 'Client requested changes',
-        body: `"${depTask.label}" was sent back — client requested revisions on "${capturedClientTask.label}"`,
-        taskId: depTask.id,
-        episodeId: task.episode_id,
-      })
-      fetch('/api/slack/notify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+    // Server-side route does everything as one operation: reopen the chosen
+    // deps with the new due date, re-lock this task, history, notifications,
+    // Slack. (Browser-side writes silently failed for non-admin/ops roles —
+    // the task guard blocks members from re-locking tasks and editing dates.)
+    try {
+      const res = await fetch('/api/tasks/client-changes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'revision',
-          episodeId: task.episode_id,
-          taskLabel: depTask.label,
-          assigneeName: (depTask.assignee as User | undefined)?.name ?? '',
+          clientTaskId: task.id,
+          depTaskIds: clientChangesTaskIds,
+          dueDate: new Date(clientChangesDate).toISOString(),
         }),
-      }).catch(() => {})
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        console.error('[Client changes] failed:', data?.error)
+        setActionError(data?.error ?? 'Couldn’t send back for revisions — please try again.')
+        setActionLoading(false)
+        return
+      }
+      for (const reopened of data.reopenedTasks ?? []) {
+        onTaskUpdate(reopened as Task)
+      }
+      if (data.clientTask) onTaskUpdate(data.clientTask as Task)
+    } catch (e) {
+      console.error('[Client changes] failed:', e)
+      setActionError('Couldn’t send back for revisions — please try again.')
+      setActionLoading(false)
+      return
     }
 
-    if (updatedClientTask) onTaskUpdate(updatedClientTask as unknown as Task)
     setClientChangesOpen(false)
-    setClientChangesTaskId('')
+    setClientChangesTaskIds([])
     setActionLoading(false)
     onReassignToast('Sent back for client revisions')
   }
@@ -1882,7 +1866,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
           style={{ border: '1px solid rgba(255,255,255,0.09)' }}
           onClick={e => e.stopPropagation()}
         >
-          <p className="text-xs font-semibold text-[#888]">Which task needs to go back?</p>
+          <p className="text-xs font-semibold text-[#888]">Which tasks need to go back?</p>
           {depTasks.length === 0 ? (
             <p className="text-xs text-[#555]">No completed dependency tasks found.</p>
           ) : (
@@ -1890,11 +1874,11 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
               {depTasks.map(dt => (
                 <label key={dt.id} className="flex items-center gap-2.5 cursor-pointer group">
                   <input
-                    type="radio"
-                    name="clientChangesDep"
-                    value={dt.id}
-                    checked={clientChangesTaskId === dt.id}
-                    onChange={() => setClientChangesTaskId(dt.id)}
+                    type="checkbox"
+                    checked={clientChangesTaskIds.includes(dt.id)}
+                    onChange={() => setClientChangesTaskIds(prev =>
+                      prev.includes(dt.id) ? prev.filter(id => id !== dt.id) : [...prev, dt.id]
+                    )}
                     className="accent-[#ff3c00]"
                   />
                   <span className="text-xs text-[#ccc] group-hover:text-white transition-colors">{dt.label}</span>
@@ -1903,16 +1887,25 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
               ))}
             </div>
           )}
+          <div>
+            <p className="text-xs font-semibold text-[#888] mb-1.5">New due date for the reopened tasks</p>
+            <input
+              type="datetime-local"
+              value={clientChangesDate}
+              onChange={e => setClientChangesDate(e.target.value)}
+              className="px-2 py-1.5 bg-[#141414] border border-[#2e2e2e] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00] [color-scheme:dark]"
+            />
+          </div>
           <div className="flex items-center gap-3 pt-0.5">
             <button
-              onClick={() => { setClientChangesOpen(false); setClientChangesTaskId('') }}
+              onClick={() => { setClientChangesOpen(false); setClientChangesTaskIds([]) }}
               className="text-xs text-[#555] hover:text-[#888] transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               onClick={handleClientChanges}
-              disabled={actionLoading || !clientChangesTaskId}
+              disabled={actionLoading || clientChangesTaskIds.length === 0 || !clientChangesDate}
               className="ml-auto py-1 px-3 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded transition-colors"
             >
               {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm'}
