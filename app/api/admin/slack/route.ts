@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { testSlackToken } from '@/lib/slack'
+import { testSlackToken, SLACK_TEMPLATE_DEFAULTS } from '@/lib/slack'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +16,7 @@ export async function GET() {
   const admin = createAdminClient()
   const { data: rows, error: selectError } = await admin
     .from('workspace_settings')
-    .select('slack_bot_token, workspace_name, slack_notifications, inapp_notifications')
+    .select('slack_bot_token, workspace_name, slack_notifications, inapp_notifications, slack_templates')
     .limit(1)
 
   if (selectError) {
@@ -27,6 +27,7 @@ export async function GET() {
       tokenHint: null,
       notifications: {},
       inappNotifications: {},
+      slackTemplates: {},
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
@@ -40,6 +41,7 @@ export async function GET() {
     tokenHint: row?.slack_bot_token ? '…' + row.slack_bot_token.slice(-4) : null,
     notifications: (row as any)?.slack_notifications ?? {},
     inappNotifications: (row as any)?.inapp_notifications ?? {},
+    slackTemplates: (row as any)?.slack_templates ?? {},
   }, {
     headers: { 'Cache-Control': 'no-store' },
   })
@@ -89,12 +91,36 @@ export async function PATCH(request: Request) {
   const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { notifications, inappNotifications } = await request.json()
+  const { notifications, inappNotifications, slackTemplates } = await request.json()
 
   const admin = createAdminClient()
   const updates: Record<string, unknown> = {}
   if (notifications !== undefined) updates.slack_notifications = notifications
   if (inappNotifications !== undefined) updates.inapp_notifications = inappNotifications
+
+  if (slackTemplates !== undefined) {
+    // Validate: plain object, known event keys only, string values, sane size.
+    // Empty values are dropped — clearing a template resets it to the built-in.
+    if (typeof slackTemplates !== 'object' || slackTemplates === null || Array.isArray(slackTemplates)) {
+      return NextResponse.json({ error: 'slackTemplates must be an object' }, { status: 400 })
+    }
+    const knownKeys = new Set(Object.keys(SLACK_TEMPLATE_DEFAULTS))
+    const clean: Record<string, string> = {}
+    for (const [key, value] of Object.entries(slackTemplates)) {
+      if (!knownKeys.has(key)) {
+        return NextResponse.json({ error: `Unknown template key: ${key}` }, { status: 400 })
+      }
+      if (typeof value !== 'string') {
+        return NextResponse.json({ error: `Template for ${key} must be text` }, { status: 400 })
+      }
+      if (value.length > 1000) {
+        return NextResponse.json({ error: `Template for ${key} is too long (max 1000 characters)` }, { status: 400 })
+      }
+      const trimmed = value.trim()
+      if (trimmed) clean[key] = trimmed
+    }
+    updates.slack_templates = clean
+  }
 
   const { error } = await admin
     .from('workspace_settings')

@@ -266,3 +266,76 @@ export function buildReassignBlocks({
     },
   ]
 }
+
+// ─── Custom message templates ──────────────────────────────────────────────────
+// Workspace-editable plain-text templates with {placeholder} tokens, stored in
+// workspace_settings.slack_templates. An event with no saved template keeps
+// using its built-in builder above — defaults only apply once edited & saved.
+
+export interface TemplateVars {
+  client: string
+  project: string
+  task: string
+  assignee: string
+  approver: string
+  author: string
+  comment: string
+  from: string
+  to: string
+  date: string
+  time: string
+  version: string
+  by: string
+  next_tasks: string
+}
+
+/** Which placeholders are meaningful for each Slack event type */
+export const SLACK_TEMPLATE_VARS: Record<string, (keyof TemplateVars)[]> = {
+  done: ['task', 'assignee'],
+  approval: ['task', 'approver', 'next_tasks'],
+  review_submitted: ['task', 'assignee', 'version'],
+  revision: ['task', 'assignee', 'date'],
+  comment: ['task', 'author', 'comment'],
+  reassign: ['task', 'from', 'to'],
+  release_date_changed: ['date', 'time'],
+  new_project: ['date', 'time'],
+  episode_delivered: ['by'],
+}
+
+/** Starting text shown in the editor — mirrors the built-in messages */
+export const SLACK_TEMPLATE_DEFAULTS: Record<string, string> = {
+  done: '✔️ Completed: ~{task}~\n{assignee}',
+  approval: '✅ Approved: ~{task}~\nApproved by {approver}\n\n*NEXT:*\n{next_tasks}',
+  review_submitted: '*{assignee}* submitted *{task}*{version} for review',
+  revision: '🔴 ~{task}~\n*{assignee}* — revision requested · due {date}',
+  comment: '*{author}* commented on *{task}*:\n{comment}',
+  reassign: '*{from}* reassigned *{task}* to *{to}*',
+  release_date_changed: '📅 Release date updated to *{date} {time}*',
+  new_project: '🎙️ New project created · releases *{date} · {time}*',
+  episode_delivered: 'Episode marked as delivered by *{by}*',
+}
+
+/**
+ * Replace {key} tokens with values. Known keys render their value (empty
+ * string if unset); unrecognized tokens are left as-is so typos stay visible.
+ */
+export function renderSlackTemplate(template: string, vars: Partial<TemplateVars>): string {
+  return template.replace(/\{([a-z_]+)\}/g, (raw, key: string) => {
+    if (key in vars) return vars[key as keyof TemplateVars] ?? ''
+    return raw
+  })
+}
+
+/** Wrap a rendered custom template in the standard header + section blocks */
+export function buildTemplateBlocks(clientLabel: string, guestName: string, rendered: string) {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${clientLabel} — ${guestName}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: rendered },
+    },
+  ]
+}

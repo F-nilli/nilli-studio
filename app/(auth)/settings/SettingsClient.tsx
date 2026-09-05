@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { User, Client, DbTaskTemplate, ActivityEntry, UserRole, Track, PipelineTrigger, UserQuota, canManageTeam } from '@/lib/types'
 import { invalidateInappPrefsCache } from '@/lib/notifications'
+import { SLACK_TEMPLATE_DEFAULTS, SLACK_TEMPLATE_VARS } from '@/lib/slack'
 import { Avatar } from '@/components/ui/Avatar'
 import { InfoIcon } from '@/components/ui/InfoIcon'
 import { cn, formatDate, parseDate } from '@/lib/utils'
@@ -1819,6 +1820,7 @@ const SLACK_NOTIF_TYPES = [
   { key: 'reassign', label: 'Task reassigned', description: 'When a task is reassigned to a different person' },
   { key: 'release_date_changed', label: 'Release date changed', description: 'When the release date or time is updated on a project' },
   { key: 'new_project', label: 'New project created', description: 'When a new project is created for a client' },
+  { key: 'episode_delivered', label: 'Episode delivered', description: 'When an episode is marked as delivered' },
 ] as const
 
 function TaskNotificationsCard() {
@@ -2093,14 +2095,60 @@ function IntegrationsTab() {
     tokenHint: string | null
     notifications: Record<string, boolean>
     inappNotifications: Record<string, boolean>
+    slackTemplates: Record<string, string>
   } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  const [templateDrafts, setTemplateDrafts] = useState<Record<string, string> | null>(null)
+  const [savingTemplates, setSavingTemplates] = useState(false)
+  const [templateSaved, setTemplateSaved] = useState(false)
+  const [templateError, setTemplateError] = useState('')
 
   useEffect(() => {
     fetch('/api/admin/slack', { cache: 'no-store' }).then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
+
+  // Initialize template editor drafts once settings load:
+  // saved custom template if present, otherwise the built-in default text
+  useEffect(() => {
+    if (status && templateDrafts === null) {
+      const initial: Record<string, string> = {}
+      for (const key of Object.keys(SLACK_TEMPLATE_DEFAULTS)) {
+        initial[key] = status.slackTemplates?.[key] ?? SLACK_TEMPLATE_DEFAULTS[key]
+      }
+      setTemplateDrafts(initial)
+    }
+  }, [status, templateDrafts])
+
+  async function handleSaveTemplates() {
+    if (!templateDrafts) return
+    setSavingTemplates(true)
+    setTemplateError('')
+    setTemplateSaved(false)
+    // Store only real overrides: empty or unchanged-from-default text means
+    // "use the built-in message", keeping the saved object minimal
+    const payload: Record<string, string> = {}
+    for (const [key, value] of Object.entries(templateDrafts)) {
+      const trimmed = value.trim()
+      if (trimmed && trimmed !== (SLACK_TEMPLATE_DEFAULTS[key] ?? '').trim()) payload[key] = trimmed
+    }
+    const res = await fetch('/api/admin/slack', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slackTemplates: payload }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setTemplateError(data.error || 'Failed to save templates')
+      setSavingTemplates(false)
+      return
+    }
+    setStatus(prev => prev ? { ...prev, slackTemplates: payload } : prev)
+    setTemplateSaved(true)
+    setTimeout(() => setTemplateSaved(false), 3000)
+    setSavingTemplates(false)
+  }
 
   async function handleSlackToggle(key: string, enabled: boolean) {
     if (!status) return
@@ -2136,7 +2184,7 @@ function IntegrationsTab() {
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error || 'Failed to connect'); setSaving(false); return }
-    setStatus(prev => ({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4), notifications: prev?.notifications ?? {}, inappNotifications: prev?.inappNotifications ?? {} }))
+    setStatus(prev => ({ connected: true, workspaceName: data.workspaceName, tokenHint: '…' + token.slice(-4), notifications: prev?.notifications ?? {}, inappNotifications: prev?.inappNotifications ?? {}, slackTemplates: prev?.slackTemplates ?? {} }))
     setToken('')
     setToast('Slack connected!')
     setTimeout(() => setToast(''), 3000)
@@ -2262,6 +2310,59 @@ function IntegrationsTab() {
         <TaskNotificationsCard />
 
       </div>
+
+      {/* Slack message templates — full width, one editor per event */}
+      {status?.connected && templateDrafts && (
+        <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
+              <Pencil className="w-5 h-5 text-[#ff3c00]" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white">Slack Message Templates</h3>
+              <p className="text-xs text-[#666]">Edit the message posted for each event. Use {'{placeholders}'} for the parts that change per message.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {SLACK_NOTIF_TYPES.map(({ key, label }) => {
+              const vars = SLACK_TEMPLATE_VARS[key] ?? []
+              const isCustom = !!status.slackTemplates?.[key]
+              return (
+                <div key={key} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-white">{label}</p>
+                    {isCustom
+                      ? <span className="text-[10px] font-semibold text-[#ff3c00] bg-[#ff3c00]/10 px-1.5 py-0.5 rounded shrink-0">CUSTOM</span>
+                      : <span className="text-[10px] font-semibold text-[#666] bg-[#1e1e1e] px-1.5 py-0.5 rounded shrink-0">DEFAULT</span>}
+                  </div>
+                  <textarea
+                    value={templateDrafts[key] ?? ''}
+                    onChange={e => setTemplateDrafts(prev => prev ? { ...prev, [key]: e.target.value } : prev)}
+                    rows={3}
+                    spellCheck={false}
+                    className="w-full px-3 py-2 bg-[#1e1e1e] border border-[#2e2e2e] text-white rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#ff3c00] placeholder-[#555] resize-y"
+                  />
+                  <p className="text-[11px] text-[#555]">Placeholders: {vars.map(v => `{${v}}`).join('  ')}</p>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSaveTemplates}
+              disabled={savingTemplates}
+              className="px-4 py-2 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
+            >
+              {savingTemplates ? 'Saving…' : 'Save templates'}
+            </button>
+            {templateSaved && <p className="text-sm text-green-400">Templates saved!</p>}
+            {templateError && <p className="text-sm text-[#ff3c00]">{templateError}</p>}
+          </div>
+          <p className="text-xs text-[#555]">
+            A template only takes effect once it differs from the default text. To go back to the built-in message, restore the default text (or clear the box) and save.
+          </p>
+        </div>
+      )}
 
       {/* API Keys — full width, external read-only API access */}
       <ApiKeysCard />

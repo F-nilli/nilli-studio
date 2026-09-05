@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks, buildEpisodeDeliveredBlocks, buildDoneBlocks } from '@/lib/slack'
+import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks, buildEpisodeDeliveredBlocks, buildDoneBlocks, renderSlackTemplate, buildTemplateBlocks } from '@/lib/slack'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   const { data: settingsRows, error: settingsError } = await admin
     .from('workspace_settings')
-    .select('slack_bot_token, slack_notifications')
+    .select('slack_bot_token, slack_notifications, slack_templates')
     .limit(1)
   if (settingsError) {
     console.error('[Slack notify] settings read error:', JSON.stringify(settingsError))
@@ -57,8 +57,31 @@ export async function POST(request: Request) {
   const clientLabel = episode.client_label
   const guestName = episode.guest_name
 
+  // If the workspace saved a custom template for this event type, render it
+  // instead of the built-in message. Empty/missing templates fall through.
+  const customTemplates = ((settings as Record<string, unknown>).slack_templates ?? {}) as Record<string, string>
+  const customTemplate = typeof customTemplates[type] === 'string' ? customTemplates[type].trim() : ''
+
   let blocks: object[]
-  if (type === 'approval') {
+  if (customTemplate) {
+    const rendered = renderSlackTemplate(customTemplate, {
+      client: clientLabel ?? '',
+      project: guestName ?? '',
+      task: completedTaskLabel ?? taskLabel ?? '',
+      assignee: assigneeName ?? '',
+      approver: approverName ?? '',
+      author: authorName ?? '',
+      comment: commentBody ?? '',
+      from: fromName ?? '',
+      to: toName ?? '',
+      date: newDate ?? dueDate ?? '',
+      time: newTime ?? '',
+      version: version ? ` (v${version})` : '',
+      by: deliveredByName ?? '',
+      next_tasks: (nextTasks ?? []).map((t: { label: string; assigneeName: string }) => `*${t.assigneeName}* — ${t.label}`).join('\n'),
+    })
+    blocks = buildTemplateBlocks(clientLabel, guestName, rendered)
+  } else if (type === 'approval') {
     blocks = buildApprovalBlocks({ clientLabel, guestName, completedTaskLabel, nextTasks: nextTasks || [], approverName })
   } else if (type === 'done') {
     blocks = buildDoneBlocks({ clientLabel, guestName, taskLabel, assigneeName })
