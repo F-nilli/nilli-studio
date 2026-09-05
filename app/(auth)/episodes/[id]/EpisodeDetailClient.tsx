@@ -1409,6 +1409,13 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         }).catch(err => console.error('[Slack]', err))
       }
 
+      if (!silent && resolvedStatus === 'done') {
+        fetch('/api/slack/notify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'done', episodeId: capturedTask.episode_id, taskLabel: capturedTask.label, assigneeName: currentUser.name }),
+        }).catch(err => console.error('[Slack]', err))
+      }
+
       onTaskUpdate(data as unknown as Task)
       markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
       supabase.from('task_history').insert({ task_id: capturedTask.id, episode_id: capturedTask.episode_id, from_status: capturedTask.status, to_status: resolvedStatus, changed_by: currentUser.id }).then(() => {})

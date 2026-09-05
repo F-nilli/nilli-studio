@@ -1811,6 +1811,7 @@ const TASK_NOTIF_TYPES = [
 ] as const
 
 const SLACK_NOTIF_TYPES = [
+  { key: 'done', label: 'Task completed', description: 'When a task is marked done without needing approval' },
   { key: 'approval', label: 'Task approved', description: 'When a task is approved and next tasks unlock' },
   { key: 'review_submitted', label: 'Submitted for review', description: 'When a task is submitted for approval' },
   { key: 'revision', label: 'Revision requested', description: 'When a task is sent back for revision' },
@@ -1850,8 +1851,8 @@ function TaskNotificationsCard() {
           <AlertTriangle className="w-5 h-5 text-[#ff3c00]" />
         </div>
         <div>
-          <h3 className="font-bold text-white">Task Notifications</h3>
-          <p className="text-xs text-[#666]">In-app and push alerts sent to assignees and admins</p>
+          <h3 className="font-bold text-white">Deadline &amp; Overdue Alerts</h3>
+          <p className="text-xs text-[#666]">Automatic daily checks → in-app + push to assignees and admins</p>
         </div>
       </div>
       <div className="space-y-3">
@@ -2144,6 +2145,9 @@ function IntegrationsTab() {
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-[#888]">
+        Choose what gets sent where — <span className="text-white font-medium">Slack</span> posts to client channels, <span className="text-white font-medium">In-app &amp; Push</span> goes to your team&apos;s bell and phones, and <span className="text-white font-medium">Deadline &amp; Overdue Alerts</span> are automatic daily checks.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
 
         {/* Column 1 — Slack */}
@@ -2154,7 +2158,7 @@ function IntegrationsTab() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-bold text-white">Slack</h3>
-              <p className="text-xs text-[#666]">Post Block Kit notifications to client channels</p>
+              <p className="text-xs text-[#666]">Posts to client Slack channels</p>
             </div>
             {status && (
               status.connected
@@ -2224,10 +2228,7 @@ function IntegrationsTab() {
           )}
         </div>
 
-        {/* Column 2 — Task Notifications */}
-        <TaskNotificationsCard />
-
-        {/* Column 3 — In-app & Push */}
+        {/* Column 2 — In-app & Push */}
         <div className="bg-[#141414] border border-[#2e2e2e] rounded-xl p-5 space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center shrink-0">
@@ -2238,7 +2239,7 @@ function IntegrationsTab() {
             </div>
             <div>
               <h3 className="font-bold text-white">In-app &amp; Push</h3>
-              <p className="text-xs text-[#666]">Bell notifications and mobile push delivery</p>
+              <p className="text-xs text-[#666]">Goes to the bell in the app + phone push</p>
             </div>
           </div>
           <div className="space-y-3">
@@ -2256,6 +2257,9 @@ function IntegrationsTab() {
             })}
           </div>
         </div>
+
+        {/* Column 3 — Deadline & Overdue Alerts (automatic daily checks) */}
+        <TaskNotificationsCard />
 
       </div>
 

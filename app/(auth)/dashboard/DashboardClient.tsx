@@ -1612,6 +1612,9 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         sendNotification(supabase, { userId: task.approver_id, type: 'task_submitted_review', title: 'Task submitted for review', body: `${currentUser.name} submitted "${task.label}"${versionTag} for review`, taskId: task.id, episodeId: task.episode_id }).catch(() => {})
         fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'review_submitted', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name, version: nextVersion }) }).catch(() => {})
       }
+      if (!silent && nextStatus === 'done') {
+        fetch('/api/slack/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'done', episodeId: task.episode_id, taskLabel: task.label, assigneeName: currentUser.name }) }).catch(() => {})
+      }
     }
 
     if (onPendingAction) {

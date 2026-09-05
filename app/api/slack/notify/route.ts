@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks, buildEpisodeDeliveredBlocks } from '@/lib/slack'
+import { postToSlack, buildApprovalBlocks, buildRevisionBlocks, buildReviewSubmittedBlocks, buildCommentBlocks, buildReassignBlocks, buildReleaseDateChangedBlocks, buildNewProjectBlocks, buildEpisodeDeliveredBlocks, buildDoneBlocks } from '@/lib/slack'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -60,6 +60,8 @@ export async function POST(request: Request) {
   let blocks: object[]
   if (type === 'approval') {
     blocks = buildApprovalBlocks({ clientLabel, guestName, completedTaskLabel, nextTasks: nextTasks || [], approverName })
+  } else if (type === 'done') {
+    blocks = buildDoneBlocks({ clientLabel, guestName, taskLabel, assigneeName })
   } else if (type === 'revision') {
     blocks = buildRevisionBlocks({ clientLabel, guestName, taskLabel, assigneeName, dueDate })
   } else if (type === 'review_submitted') {

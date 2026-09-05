@@ -155,6 +155,8 @@ function CompletionCircle({ filling, filled }: { filling: boolean; filled: boole
 
 export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedEpisodes: initialPublished, memberFilterId }: Props) {
   const [filter, setFilter] = useState<'all' | 'active' | 'overdue' | 'archive'>('all')
+  const [boardClientFilter, setBoardClientFilter] = useState('')
+  const [boardAssigneeFilter, setBoardAssigneeFilter] = useState('')
   const [showNewEpisodeModal, setShowNewEpisodeModal] = useState(false)
   const [published, setPublished] = useState<Episode[]>(initialPublished)
   const [liveEpisodes, setLiveEpisodes] = useState<Episode[]>(episodes)
@@ -465,6 +467,9 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const filteredEpisodes = episodesWithTasks.filter(ep => {
     // Member filter: only episodes where this user has at least one task
     if (memberFilter && !ep.tasks.some(t => t.assignee_id === memberFilter.id)) return false
+    // Dropdown filters: client + assignee (assignee = has at least one task)
+    if (boardClientFilter && ep.client_label !== boardClientFilter) return false
+    if (boardAssigneeFilter && !ep.tasks.some(t => t.assignee_id === boardAssigneeFilter)) return false
     const stats = getEpisodeStats(ep.tasks)
     if (filter === 'active') {
       if (!(stats.inProgress > 0 || false)) return false
@@ -474,6 +479,12 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     }
     return true
   })
+
+  // Dropdown options: clients present on the board + users with at least one task
+  const boardClientOptions = [...new Set(episodesWithTasks.map(ep => ep.client_label))].sort()
+  const boardAssigneeOptions = allUsers.filter(u =>
+    episodesWithTasks.some(ep => ep.tasks.some(t => t.assignee_id === u.id))
+  )
 
   const filterCounts = {
     all: episodesWithTasks.length,
@@ -565,7 +576,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       )}
 
       {/* Filter tabs with counts */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(['all', 'active', 'overdue'] as const).map(f => (
           <button
             key={f}
@@ -586,6 +597,29 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
             </span>
           </button>
         ))}
+
+        {/* Client + assignee dropdowns (hidden in archive view) */}
+        {filter !== 'archive' && (
+          <>
+            <select
+              value={boardClientFilter}
+              onChange={e => setBoardClientFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm bg-[#141414] border border-[#2e2e2e] text-[#888] hover:text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00] cursor-pointer"
+            >
+              <option value="">All clients</option>
+              {boardClientOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select
+              value={boardAssigneeFilter}
+              onChange={e => setBoardAssigneeFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm bg-[#141414] border border-[#2e2e2e] text-[#888] hover:text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00] cursor-pointer"
+            >
+              <option value="">All assignees</option>
+              {boardAssigneeOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </>
+        )}
+
         <button
           onClick={() => setFilter('archive')}
           className={cn(

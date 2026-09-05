@@ -61,6 +61,29 @@ export function buildApprovalBlocks({
   return blocks
 }
 
+export function buildDoneBlocks({
+  clientLabel,
+  guestName,
+  taskLabel,
+  assigneeName,
+}: {
+  clientLabel: string
+  guestName: string
+  taskLabel: string
+  assigneeName: string
+}) {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${clientLabel} — ${guestName}`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `✔️ Completed: ~${taskLabel}~\n${assigneeName}` },
+    },
+  ]
+}
+
 export function buildRevisionBlocks({
   clientLabel,
   guestName,
