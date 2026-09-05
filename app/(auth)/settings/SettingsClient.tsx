@@ -2146,7 +2146,7 @@ function IntegrationsTab() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-[#888]">
-        Choose what gets sent where — <span className="text-white font-medium">Slack</span> posts to client channels, <span className="text-white font-medium">In-app &amp; Push</span> goes to your team&apos;s bell and phones, and <span className="text-white font-medium">Deadline &amp; Overdue Alerts</span> are automatic daily checks.
+        Choose what gets sent where — <span className="text-white font-medium">Slack</span> posts to your team channels and is the most reliable way to reach people, <span className="text-white font-medium">In-app &amp; Push</span> goes to the bell in the app (push only reaches devices that have opted in), and <span className="text-white font-medium">Deadline &amp; Overdue Alerts</span> are automatic daily checks.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
 
@@ -2158,7 +2158,7 @@ function IntegrationsTab() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-bold text-white">Slack</h3>
-              <p className="text-xs text-[#666]">Posts to client Slack channels</p>
+              <p className="text-xs text-[#666]">Posts to your team Slack channels</p>
             </div>
             {status && (
               status.connected
@@ -2239,7 +2239,7 @@ function IntegrationsTab() {
             </div>
             <div>
               <h3 className="font-bold text-white">In-app &amp; Push</h3>
-              <p className="text-xs text-[#666]">Goes to the bell in the app + phone push</p>
+              <p className="text-xs text-[#666]">Goes to the bell in the app (push reaches only opted-in devices)</p>
             </div>
           </div>
           <div className="space-y-3">
