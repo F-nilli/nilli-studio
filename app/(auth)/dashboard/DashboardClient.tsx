@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
+
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2, ArrowRight } from 'lucide-react'
@@ -57,53 +59,7 @@ export function DashboardClient({
   const [selectedTask, setSelectedTask] = useState<(Task & { episode?: Episode }) | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const { pendingActions, addPending, undoPending, silentPending } = usePendingActions()
-  const lastRefreshRef = useRef<number>(Date.now())
-  const lastCountsRef = useRef<{ myTasksCount: number; reviewCount: number } | null>(null)
-
-  // Refresh on tab focus + smart poll every 3 minutes as Realtime fallback
-  useEffect(() => {
-    const POLL_INTERVAL = 3 * 60 * 1000 // 3 minutes
-    const MIN_REFRESH_GAP = 30 * 1000   // don't full-refresh more than once per 30s
-
-    function fullRefresh() {
-      const now = Date.now()
-      if (now - lastRefreshRef.current < MIN_REFRESH_GAP) return
-      lastRefreshRef.current = now
-      router.refresh()
-    }
-
-    // Lightweight poll: only triggers full refresh if counts changed
-    async function smartPoll() {
-      try {
-        const res = await fetch('/api/dashboard-counts')
-        if (!res.ok) return
-        const counts = await res.json() as { myTasksCount: number; reviewCount: number }
-        const prev = lastCountsRef.current
-        lastCountsRef.current = counts
-        if (!prev) return // first poll — just store baseline
-        if (counts.myTasksCount !== prev.myTasksCount || counts.reviewCount !== prev.reviewCount) {
-          fullRefresh()
-        }
-      } catch {
-        // ignore network errors silently
-      }
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === 'visible') fullRefresh()
-    }
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    const interval = setInterval(smartPoll, POLL_INTERVAL)
-    // Seed the baseline immediately
-    smartPoll()
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      clearInterval(interval)
-    }
-  }, [router])
-
+  useLiveRefresh(pendingActions.length > 0)
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 3500)
@@ -553,7 +509,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, atRiskTasks, upcoming
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   // Group at-risk tasks by assignee for team overdue view
-  const teamOverdueMap = atRiskTasks.reduce<Record<string, { user: User; count: number }>>((acc, t) => {
+  const teamOverdueMap = atRiskTasks.filter(t => isOverdue(t.due_date, t.status)).reduce<Record<string, { user: User; count: number }>>((acc, t) => {
     const assignee = t.assignee as User | undefined
     if (!assignee) return acc
     if (!acc[assignee.id]) acc[assignee.id] = { user: assignee, count: 0 }
@@ -1129,10 +1085,10 @@ function AtRiskTaskRow({ task, onClick }: { task: Task & { episode: Episode }; o
         </p>
       </div>
       <div className="shrink-0 flex flex-col items-end gap-1">
-        {daysOverdue !== null && daysOverdue > 0 && (
-          <span className="text-[11px] font-bold text-[#ff3c00]">{daysOverdue}d overdue</span>
+        {isOverdue(task.due_date, task.status) && (
+          <span className="text-[11px] font-bold text-[#ff3c00]">{daysOverdue && daysOverdue > 0 ? `${daysOverdue}d overdue` : 'Overdue'}</span>
         )}
-        {hoursInReview !== null && hoursInReview > 0 && daysOverdue === null && (
+        {hoursInReview !== null && hoursInReview >= 12 && (
           <span className="text-[11px] font-bold text-purple-400">{hoursInReview}h in review</span>
         )}
         <div className="flex items-center gap-1.5">
@@ -1386,7 +1342,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseDate(task.due_date), new Date()) : null
-  const isDueSoon = !overdue && hoursUntilDue !== null && hoursUntilDue >= 0 && hoursUntilDue <= 24
+  const isDueSoon = !overdue && hoursUntilDue !== null && parseDate(task.due_date!).getTime() >= Date.now() && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
   // Eagerly determine next person for inline note

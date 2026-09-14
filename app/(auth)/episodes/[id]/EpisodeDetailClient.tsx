@@ -1,5 +1,7 @@
 'use client'
 
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, Lock, AlertCircle, Pencil, Check, X, MessageSquare, CornerDownLeft, Link as LinkIcon, Paperclip, FileText } from 'lucide-react'
@@ -75,6 +77,7 @@ async function checkAndUnlockDependencies(episodeId: string, silent = false): Pr
 
 export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskComments, allUsers, initialTaskId, initialCommentId }: Props) {
   const supabase = createClient()
+  useLiveRefresh()
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [activeTaskFilter, setActiveTaskFilter] = useState<Task | null>(null)
@@ -200,6 +203,17 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     const t = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(t)
   }, [toast])
+
+  useEffect(() => {
+    setTasks(initialTasks)
+    setActiveTaskFilter(prev => prev ? initialTasks.find(t => t.id === prev.id) ?? null : null)
+  }, [initialTasks])
+  useEffect(() => {
+    setDelivered(episode.archived ?? false)
+    setCurrentGuestName(episode.guest_name)
+    setCurrentReleaseDate(episode.release_date)
+    setCurrentReleaseTime(episode.release_time)
+  }, [episode.archived, episode.guest_name, episode.release_date, episode.release_time])
 
   // Load last-read timestamps from localStorage
   useEffect(() => {
