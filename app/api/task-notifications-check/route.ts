@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendPushToUser } from '@/lib/push'
-import { compareToWorkspaceToday, cronDedupSinceISO } from '@/lib/utils'
+import { compareToWorkspaceToday, cronDedupSinceISO, isOverdue } from '@/lib/utils'
 
 // Vercel cron: runs daily at 9 AM UTC
 // vercel.json: { "path": "/api/task-notifications-check", "schedule": "0 9 * * *" }
@@ -69,8 +69,8 @@ export async function GET(request: Request) {
     // workspace_settings.timezone, fallback WORKSPACE_TIMEZONE env, then UTC)
     // — not the server's UTC day.
     const dayComparison = compareToWorkspaceToday(task.due_date, tz)
-    const isDueToday = dayComparison === 0
-    const isPastDue = dayComparison === -1
+    const isPastDue = isOverdue(task.due_date, task.status)
+    const isDueToday = dayComparison === 0 && !isPastDue
 
     const episodeSuffix = task.episode
       ? ` for ${task.episode.guest_name} / ${task.episode.client_label}`

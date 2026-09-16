@@ -80,8 +80,6 @@ export default async function DashboardPage() {
   type EpRow = { id: string; guest_name: string; client_label: string; release_date: string; tasks: EpTask[] }
 
   const now = new Date()
-  const todayMidnight = new Date(now)
-  todayMidnight.setHours(0, 0, 0, 0)
 
   const episodesProgress: EpisodeProgress[] = isAdminOrManager
     ? ((epData.data || []) as unknown as EpRow[])
@@ -91,10 +89,7 @@ export default async function DashboardPage() {
           const done = tasks.filter(t => t.status === 'done' || t.status === 'approved').length
           const overdue = tasks.filter(t => {
             if (['done', 'approved', 'locked'].includes(t.status)) return false
-            if (t.due_date && parseDate(t.due_date) < todayMidnight) return true
-            if (t.status === 'in_review' && t.requires_approval && t.review_started_at) {
-              return Date.now() - new Date(t.review_started_at).getTime() >= 12 * 60 * 60 * 1000
-            }
+            if (t.due_date && parseDate(t.due_date) < now) return true
             return false
           }).length
           return { id: ep.id, guest_name: ep.guest_name, client_label: ep.client_label, release_date: ep.release_date, totalTasks: total, doneTasks: done, overdueTasks: overdue }
@@ -116,8 +111,8 @@ export default async function DashboardPage() {
       supabase
         .from('tasks')
         .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
-        .in('status', ['in_progress', 'revision'])
-        .lt('due_date', todayStr)
+        .in('status', ['in_progress', 'revision', 'in_review'])
+        .lt('due_date', now.toISOString())
         .order('due_date', { ascending: true }),
       supabase
         .from('tasks')

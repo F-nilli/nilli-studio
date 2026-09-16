@@ -1,5 +1,7 @@
 'use client'
 
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -45,7 +47,9 @@ export function CalendarClient({ currentUser, tasks: initialTasks, episodes }: P
   const supabase = createClient()
   const isAdmin = currentUser.role === 'admin' || currentUser.role === 'ops_manager'
 
+  useLiveRefresh()
   const [tasks, setTasks] = useState(initialTasks)
+  useEffect(() => { setTasks(initialTasks) }, [initialTasks])
   const [viewMode, setViewMode] = useState<'month' | 'week'>('week')
   const [teamMode, setTeamMode] = useState<TeamMode>('my')
   const [currentDate, setCurrentDate] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))

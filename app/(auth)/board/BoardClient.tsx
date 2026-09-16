@@ -2,6 +2,8 @@
 
 import { SlidingTabs } from '@/components/motion/WorkflowMotion'
 
+import { useLiveRefresh } from '@/lib/useLiveRefresh'
+
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -78,9 +80,9 @@ function DeadlineChip({ daysLeft, releaseDate, releaseTime }: {
 
   let badgeClass: string
   let badgeText: string
-  if (daysLeft < 0) {
+  if (new Date(`${releaseDate}T${releaseTime?.slice(0, 5) || '00:00'}`).getTime() < Date.now()) {
     badgeClass = 'bg-[#ff3c00]/20 text-[#ff3c00]'
-    badgeText = `${Math.abs(daysLeft)}d overdue`
+    badgeText = daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : 'Overdue'
   } else if (daysLeft === 0) {
     badgeClass = 'bg-[#ff3c00]/20 text-[#ff3c00]'
     badgeText = 'Today'
@@ -156,6 +158,7 @@ function CompletionCircle({ filling, filled }: { filling: boolean; filled: boole
 }
 
 export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedEpisodes: initialPublished, memberFilterId }: Props) {
+  useLiveRefresh()
   const [filter, setFilter] = useState<'all' | 'active' | 'overdue' | 'archive'>('all')
   const [boardClientFilter, setBoardClientFilter] = useState('')
   const [boardAssigneeFilter, setBoardAssigneeFilter] = useState('')
@@ -186,15 +189,13 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
     }
   }, [circleUndoInfo?.timer])
 
-  // Merge server-fetched episodes when router.refresh() brings updated props
+  // Reconcile updates and removals as well as new rows after recovery refreshes.
   useEffect(() => {
-    setLiveEpisodes(prev => {
-      const existingIds = new Set(prev.map(e => e.id))
-      const toAdd = episodes.filter(e => !existingIds.has(e.id))
-      if (toAdd.length === 0) return prev
-      return [...prev, ...toAdd].sort((a, b) => new Date(a.release_date).getTime() - new Date(b.release_date).getTime())
-    })
-  }, [episodes])
+    if (animatingRef.current.size > 0) return
+    setLiveEpisodes(episodes)
+    setPublished(initialPublished)
+    setLiveTasks(tasks)
+  }, [episodes, initialPublished, tasks])
 
   // Realtime: episode inserts, updates (archive/restore), deletes
   useEffect(() => {
@@ -667,8 +668,8 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
             : releaseDay
           const daysUntilRelease = differenceInDays(releaseDay, todayMidnight)
           const hoursUntilRelease = differenceInHours(releaseDateTime, new Date())
-          const isReleaseOverdue = daysUntilRelease < 0
-          const isReleaseSoon = !isReleaseOverdue && hoursUntilRelease <= 24
+          const isReleaseOverdue = releaseDateTime.getTime() < Date.now()
+          const isReleaseSoon = !isReleaseOverdue && hoursUntilRelease >= 0 && hoursUntilRelease <= 24
 
           const isCompleting = circleCompletingId === ep.id
           const isCompleted = circleCompletedIds.has(ep.id)

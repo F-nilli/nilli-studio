@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { parseISO, format, isAfter, startOfDay } from 'date-fns'
+import { parseISO, format } from 'date-fns'
 import { TaskStatus } from './types'
 
 export function formatRelativeTime(dateStr: string): string {
@@ -35,7 +35,7 @@ export function cn(...inputs: ClassValue[]) {
 // Supabase plain `timestamp` columns return without 'Z'; treat those as UTC.
 // Date-only strings (no 'T') are left alone — they use local-date semantics.
 function normalizeDateStr(s: string): string {
-  return s.includes('T') && !s.includes('+') && !s.endsWith('Z') ? s + 'Z' : s
+  return s.includes('T') && !/(Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s + 'Z' : s
 }
 
 // Parse a DB date/timestamp string into a Date, correctly treating UTC timestamps.
@@ -104,13 +104,9 @@ export function isOverdue(
   reviewStartedAt?: string | null,
 ): boolean {
   if (status === 'approved' || status === 'done') return false
-  // Flag approval tasks that have been waiting in review for 12+ hours
-  if (status === 'in_review' && requiresApproval && reviewStartedAt) {
-    const hoursInReview = (Date.now() - new Date(reviewStartedAt).getTime()) / (1000 * 60 * 60)
-    if (hoursInReview >= 12) return true
-  }
-  if (!dueDate) return false
-  return isAfter(startOfDay(new Date()), startOfDay(parseDate(dueDate)))
+  // Review waiting time is a separate concern; deadlines use the exact instant.
+  if (status === 'locked' || !dueDate) return false
+  return Date.now() > parseDate(dueDate).getTime()
 }
 
 // ── Workspace-timezone helpers (server-side, used by cron routes) ─────────

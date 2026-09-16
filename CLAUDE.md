@@ -63,6 +63,10 @@ Pipelines live in the **`task_templates` table** (per client + `template_name`; 
 
 Presentation primitives live in `components/motion/WorkflowMotion.tsx`. Motion uses 180–220 ms transitions and respects reduced motion. `withSaveMotion` observes existing save results without changing writes, errors, callbacks or undo timing. Save feedback persists outside task modals. Resize and badge effects do not replay on unchanged data refreshes.
 
+## Live screens and deadlines
+
+Dashboard, board, calendar and episode detail use `useLiveRefresh`: coalesced task/episode events, reconnect/focus recovery and a 15-second visible-tab snapshot refresh. Client state must reconcile refreshed props without resetting form drafts. Deadline styling ticks every 10 seconds. Overdue means the exact timestamp has passed; review age is shown separately. Daily notification scheduling remains unchanged.
+
 ## Notifications
 
 1. **In-app** — `notifications` table + Supabase Realtime
