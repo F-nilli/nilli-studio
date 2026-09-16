@@ -1,5 +1,7 @@
 'use client'
 
+import { SaveFeedback } from '@/components/motion/WorkflowMotion'
+
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from './Sidebar'
@@ -73,6 +75,7 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
           <main className="flex-1 px-4 md:px-8 py-4 md:py-8 max-w-[1400px] w-full mx-auto overflow-x-clip pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8">
             <div key={pathname} className="min-h-full">
               {children}
+        <SaveFeedback />
             </div>
           </main>
         </div>

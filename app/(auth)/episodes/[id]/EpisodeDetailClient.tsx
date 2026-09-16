@@ -1,5 +1,8 @@
 'use client'
 
+import { ResizeMotion } from '@/components/motion/WorkflowMotion'
+import { withSaveMotion } from '@/lib/saveMotion'
+
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
@@ -153,7 +156,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
         id: t.id,
         due_date: new Date(parseDate(t.due_date!).getTime() + deltaMs).toISOString(),
       }))
-      await Promise.all(updates.map(u => supabase.from('tasks').update({ due_date: u.due_date }).eq('id', u.id)))
+      await Promise.all(updates.map(u => withSaveMotion(supabase.from('tasks').update({ due_date: u.due_date }).eq('id', u.id))))
       setTasks(prev => prev.map(t => {
         const u = updates.find(x => x.id === t.id)
         return u ? { ...t, due_date: u.due_date } : t
@@ -430,7 +433,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     }
 
     await Promise.all(updates.map(u =>
-      supabase.from('tasks').update({ due_date: u.due_date }).eq('id', u.id)
+      withSaveMotion(supabase.from('tasks').update({ due_date: u.due_date }).eq('id', u.id))
     ))
     setTasks(prev => prev.map(t => {
       const u = updates.find(x => x.id === t.id)
@@ -1087,8 +1090,7 @@ function TrackPanel({ track, trackColor, tasks, allTasks, done, canEditDates, ca
       {/* Task cards */}
       <div className="divide-y" style={{ '--tw-divide-opacity': 1, borderColor: 'rgba(255,255,255,0.06)' } as React.CSSProperties}>
         {tasks.map(task => (
-          <TrackTaskCard
-            key={task.id}
+          <ResizeMotion key={task.id}><TrackTaskCard
             task={task}
             allTasks={allTasks}
             isSelected={activeTask?.id === task.id}
@@ -1106,7 +1108,7 @@ function TrackPanel({ track, trackColor, tasks, allTasks, done, canEditDates, ca
             canReassign={canReassign}
             onReassignToast={onReassignToast}
             onReplyToLatest={onReplyToLatest}
-          />
+          /></ResizeMotion>
         ))}
       </div>
     </div>
@@ -1197,12 +1199,12 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     if (!lastHistory || reverting) return
     setReverting(true)
     const fromStatus = lastHistory.from_status
-    const { data } = await supabase
+    const { data } = await withSaveMotion(supabase
       .from('tasks')
       .update({ status: fromStatus })
       .eq('id', task.id)
       .select('*')
-      .single()
+      .single())
     if (data) {
       supabase.from('task_history').insert({
         task_id: task.id,
@@ -1319,12 +1321,12 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       setLabelValue(task.label)
       return
     }
-    const { data, error } = await supabase
+    const { data, error } = await withSaveMotion(supabase
       .from('tasks')
       .update({ label: trimmed })
       .eq('id', task.id)
       .select('*')
-      .single()
+      .single())
     if (data && !error) {
       onTaskUpdate(data as unknown as Task)
       onReassignToast(`Renamed to "${trimmed}"`)
@@ -1380,7 +1382,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
       // Slack. The old order notified the approver before writing — when the
       // write was then rejected, the approver was pinged about a submission
       // that never happened and the UI silently snapped back later.
-      const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single()
+      const { data, error } = await withSaveMotion(supabase.from('tasks').update(updatePayload).eq('id', capturedTask.id).select('*').single())
       if (error || !data) {
         console.error('[Task] status update failed:', error)
         onTaskUpdate(capturedTask)
@@ -1472,7 +1474,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         }
       }
 
-      const { data } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', capturedTask.id).select('*').single()
+      const { data } = await withSaveMotion(supabase.from('tasks').update({ status: 'approved' }).eq('id', capturedTask.id).select('*').single())
       if (data) {
         onTaskUpdate(data as unknown as Task)
         markTaskNotificationsRead(supabase, currentUser.id, capturedTask.id).catch(() => {})
@@ -1532,12 +1534,12 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     setSendBackReason('')
 
     const commit = async (silent: boolean) => {
-      const { data } = await supabase
+      const { data } = await withSaveMotion(supabase
         .from('tasks')
         .update({ status: 'revision', due_date: dueDateIso })
         .eq('id', capturedTask.id)
         .select('*')
-        .single()
+        .single())
 
       if (data) {
         onTaskUpdate(data as unknown as Task)
@@ -1646,6 +1648,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             ? <Lock className="w-3 h-3 text-[#555] shrink-0" />
             : <StatusBadge status={task.status} />
           }
+
           {!isLocked && <VersionBadge version={task.submission_count} />}
           {editingLabel ? (
             <div className="flex items-center gap-1 flex-1 min-w-0" onClick={e => e.stopPropagation()}>

@@ -1,5 +1,9 @@
 'use client'
 
+import { withSaveMotion } from '@/lib/saveMotion'
+
+import { ResizeMotion } from '@/components/motion/WorkflowMotion'
+
 import { useState, useRef } from 'react'
 import { Link as LinkIcon, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -63,7 +67,7 @@ interface Props {
   compact?: boolean
 }
 
-export function TaskBriefEditor({
+function TaskBriefEditorContent({
   taskId,
   episodeId,
   initialBrief,
@@ -92,7 +96,7 @@ export function TaskBriefEditor({
   async function handleSave() {
     setSaving(true)
     const newBrief = brief.trim() || null
-    await supabase.from('tasks').update({ brief: newBrief }).eq('id', taskId)
+    await withSaveMotion(supabase.from('tasks').update({ brief: newBrief }).eq('id', taskId))
 
     // Notify the assignee when someone else adds or updates the brief
     if (newBrief && assigneeId && assigneeId !== currentUser.id) {
@@ -282,4 +286,8 @@ export function TaskBriefEditor({
       </div>
     </div>
   )
+}
+
+export function TaskBriefEditor(props: React.ComponentProps<typeof TaskBriefEditorContent>) {
+  return <ResizeMotion><TaskBriefEditorContent {...props} /></ResizeMotion>
 }
