@@ -1,5 +1,7 @@
 'use client'
 
+import { withSaveMotion } from '@/lib/saveMotion'
+
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -1588,7 +1590,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
 
       const updatePayload: Record<string, unknown> = { status: nextStatus }
       if (nextStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
-      const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single()
+      const { data, error } = await withSaveMotion(supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single())
       if (error) { console.error('[Task] status update failed:', error); onUpdate(originalTask as unknown as Task); return }
       if (!data) return
 

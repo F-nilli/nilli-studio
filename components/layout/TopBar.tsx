@@ -1,5 +1,7 @@
 'use client'
 
+import { PanelPresence, CountMotion } from '@/components/motion/WorkflowMotion'
+
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -567,8 +569,8 @@ export function TopBar({ user, collapsed = false, onToggle, isMobile = false }: 
         </div>
       </header>
 
-      {showNotifDrawer && user && <NotificationDrawer user={user} onClose={handleCloseNotifDrawer} />}
-      {showMsgDrawer && user && <MessagesDrawer user={user} onClose={handleCloseMsgDrawer} />}
+      {user && <PanelPresence open={showNotifDrawer}><NotificationDrawer user={user} onClose={handleCloseNotifDrawer} /></PanelPresence>}
+      {user && <PanelPresence open={showMsgDrawer}><MessagesDrawer user={user} onClose={handleCloseMsgDrawer} /></PanelPresence>}
       {showManifesto && <ManifestoModal onClose={() => setShowManifesto(false)} />}
 
       {showNewEpisodeModal && user && (
@@ -638,8 +640,7 @@ function IconButton({ onClick, color, hasUnread, count, tooltip, children }: Ico
 
         {children}
 
-        {count > 0 && (
-          <span
+          <CountMotion count={count}
             className="absolute flex items-center justify-center bg-[#ff3c00] text-white font-bold rounded-full"
             style={{
               fontSize: 10,
@@ -651,8 +652,7 @@ function IconButton({ onClick, color, hasUnread, count, tooltip, children }: Ico
             }}
           >
             {count > 9 ? '9+' : count}
-          </span>
-        )}
+          </CountMotion>
       </button>
 
       <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#1e1e1e] border border-[#2e2e2e] rounded text-[11px] text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">

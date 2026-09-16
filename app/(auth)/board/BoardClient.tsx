@@ -1,5 +1,7 @@
 'use client'
 
+import { SlidingTabs } from '@/components/motion/WorkflowMotion'
+
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -576,15 +578,16 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
       )}
 
       {/* Filter tabs with counts */}
-      <div className="flex flex-wrap items-center gap-2">
+      <SlidingTabs value={filter}>
         {(['all', 'active', 'overdue'] as const).map(f => (
           <button
             key={f}
+            data-motion-active={filter === f}
             onClick={() => setFilter(f)}
             className={cn(
               'flex items-center gap-2 px-4 py-1.5 rounded-lg text-base font-medium transition-colors capitalize',
               filter === f
-                ? 'bg-[#ff3c00] text-white'
+                ? 'bg-transparent text-white'
                 : 'bg-[#141414] text-[#888] border border-[#2e2e2e] hover:text-white hover:bg-[#1e1e1e]'
             )}
           >
@@ -621,11 +624,12 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
         )}
 
         <button
+          data-motion-active={filter === 'archive'}
           onClick={() => setFilter('archive')}
           className={cn(
             'flex items-center gap-2 px-4 py-1.5 rounded-lg text-base font-medium transition-colors ml-auto',
             filter === 'archive'
-              ? 'bg-[#ff3c00] text-white'
+              ? 'bg-transparent text-white'
               : 'bg-[#141414] text-[#888] border border-[#2e2e2e] hover:text-white hover:bg-[#1e1e1e]'
           )}
         >
@@ -638,7 +642,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
             {published.length}
           </span>
         </button>
-      </div>
+      </SlidingTabs>
 
       {/* Archive tab */}
       {filter === 'archive' && (

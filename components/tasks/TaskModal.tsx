@@ -1,5 +1,7 @@
 'use client'
 
+import { withSaveMotion } from '@/lib/saveMotion'
+
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { X, Lock, AlertCircle } from 'lucide-react'
@@ -218,12 +220,12 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
     if (!lastHistory || reverting) return
     setReverting(true)
     const fromStatus = lastHistory.from_status
-    const { data } = await supabase
+    const { data } = await withSaveMotion(supabase
       .from('tasks')
       .update({ status: fromStatus })
       .eq('id', task.id)
       .select('*')
-      .single()
+      .single())
     if (data) {
       supabase.from('task_history').insert({
         task_id: task.id,
@@ -310,7 +312,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
 
       const updatePayload: Record<string, unknown> = { status: resolvedStatus }
       if (resolvedStatus === 'in_review') updatePayload.review_started_at = new Date().toISOString()
-      const { data, error } = await supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single()
+      const { data, error } = await withSaveMotion(supabase.from('tasks').update(updatePayload).eq('id', task.id).select('*').single())
       if (error || !data) { console.error('[Task] status update failed:', error); onUpdate(originalTask); return }
 
       // Auto-clear my own action-required notifications for this task.
@@ -405,7 +407,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
         if (comment) fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: capturedNextUser.taskId, episodeId: task.episode_id, body, assigneeId: capturedNextUser.user.id }) }).catch(() => {})
       }
 
-      const { data, error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id).select('*').single()
+      const { data, error } = await withSaveMotion(supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id).select('*').single())
       if (error || !data) { console.error('[Task] approve failed:', error); onUpdate(originalTask); return }
 
       markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
@@ -454,7 +456,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
         if (comment) fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: task.id, episodeId: task.episode_id, body, assigneeId: task.assignee_id }) }).catch(() => {})
       }
 
-      const { data, error } = await supabase.from('tasks').update({ status: 'revision' }).eq('id', task.id).select('*').single()
+      const { data, error } = await withSaveMotion(supabase.from('tasks').update({ status: 'revision' }).eq('id', task.id).select('*').single())
       if (error || !data) { console.error('[Task] revision failed:', error); onUpdate(originalTask); return }
 
       markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
@@ -480,7 +482,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
     <>
       <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
         <div
-          className="w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col"
+          className="motion-dialog w-full sm:max-w-2xl sm:rounded-xl rounded-t-xl max-h-[90vh] flex flex-col"
           style={{ background: '#222222', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 60px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.05) inset' }}
           onClick={e => e.stopPropagation()}
         >

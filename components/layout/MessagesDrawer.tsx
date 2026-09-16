@@ -94,8 +94,8 @@ export function MessagesDrawer({ user, onClose }: Props) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-[380px] border-l z-50 flex flex-col shadow-2xl" style={{ background: '#1a1a1a', borderColor: 'rgba(255,255,255,0.09)', boxShadow: '-20px 0 60px rgba(0,0,0,0.5)' }}>
+      <div className="motion-backdrop fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      <div className="motion-panel fixed right-0 top-0 h-full w-[380px] border-l z-50 flex flex-col shadow-2xl" style={{ background: '#1a1a1a', borderColor: 'rgba(255,255,255,0.09)', boxShadow: '-20px 0 60px rgba(0,0,0,0.5)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e1e1e] shrink-0">
           <h2 className="text-[15px] font-semibold text-white">Messages</h2>

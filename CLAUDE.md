@@ -59,6 +59,10 @@ Defined in `lib/types.ts`: `admin`, `ops_manager`, `member`
 
 Pipelines live in the **`task_templates` table** (per client + `template_name`; NULL name = 'Default'). Episodes are generated from them server-side by `/api/episodes/create`; each task copies `due_days` so its due date can be computed when it unlocks.
 
+## Workflow motion
+
+Presentation primitives live in `components/motion/WorkflowMotion.tsx`. Motion uses 180–220 ms transitions and respects reduced motion. `withSaveMotion` observes existing save results without changing writes, errors, callbacks or undo timing. Save feedback persists outside task modals. Resize and badge effects do not replay on unchanged data refreshes.
+
 ## Notifications
 
 1. **In-app** — `notifications` table + Supabase Realtime
