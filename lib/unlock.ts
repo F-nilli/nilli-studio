@@ -23,6 +23,7 @@ export interface UnlockResult {
 interface UnlockTaskRow {
   id: string
   status: string
+  client_revision_task_ids?: string[]
   dep_task_ids: string[] | null
   due_date: string | null
   due_days: number | null
@@ -44,7 +45,7 @@ export async function unlockReadyTasks(
 
   const { data: allTasks } = await supabase
     .from('tasks')
-    .select('id, status, dep_task_ids, due_date, due_days, label, assignee_id')
+    .select('id, status, dep_task_ids, due_date, due_days, label, assignee_id, client_revision_task_ids')
     .eq('episode_id', episodeId)
   if (!allTasks) return { unlocked: 0, unlockedTaskIds: [] }
 
@@ -55,6 +56,7 @@ export async function unlockReadyTasks(
   // old client-side creator — unlock it immediately rather than strand it.
   const toUnlock = tasks.filter(t =>
     t.status === 'locked' &&
+    !(t.client_revision_task_ids?.length) &&
     ((t.dep_task_ids ?? []).length === 0 || (t.dep_task_ids ?? []).every(d => approvedIds.has(d)))
   )
   if (toUnlock.length === 0) return { unlocked: 0, unlockedTaskIds: [] }

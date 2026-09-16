@@ -7,20 +7,10 @@ import { checkRateLimit } from '@/lib/rateLimit'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Client requested changes on a Client Action task.
-//
-// One server-side operation that:
-//   1. sends the chosen completed dependency task(s) back to revision,
-//      with a new due date chosen by the caller,
-//   2. re-locks the Client Action task (it unlocks again once every dep is
-//      re-approved — the single review round means its own date stays as-is),
-//   3. writes task_history for every change,
-//   4. notifies each affected assignee (in-app + push) and posts to Slack.
-//
-// This used to run as several browser-side writes, which silently failed for
-// anyone without admin/ops rights (the task guard blocks members from
-// re-locking tasks and editing dates). Running here under the service role
-// makes it role-independent and all-or-nothing.
+// Client corrections: the service-role RPC atomically reopens the selected
+// dependencies and locks Client Action. Each correction finishes directly as
+// done; the database closes Client Action after the last selected task finishes.
+// Notifications run only after that transaction succeeds.
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -66,6 +56,7 @@ export async function POST(req: NextRequest) {
     admin.from('users').select('id, role').eq('id', user.id).maybeSingle(),
   ])
   if (!clientTask) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+  if (clientTask.track !== 'Client Action') return NextResponse.json({ error: 'Not a Client Action task' }, { status: 400 })
   if (clientTask.status !== 'in_progress' && clientTask.status !== 'revision') {
     return NextResponse.json({ error: 'Task is not actionable' }, { status: 409 })
   }
@@ -94,49 +85,19 @@ export async function POST(req: NextRequest) {
   }
   const validDeps = deps as Array<{ task: { id: string; label: string; status: string; assignee_id: string | null; assignee: unknown } }>
 
-  // 1. Reopen the chosen dep tasks with the new due date.
-  const reopenedTasks: unknown[] = []
-  for (const { task: dep } of validDeps) {
-    const { data: reopened, error } = await admin
-      .from('tasks')
-      .update({ status: 'revision', due_date: newDueDate })
-      .eq('id', dep.id)
-      .in('status', ['done', 'approved']) // lost the race? skip rather than clobber
-      .select('*')
-    if (error) {
-      console.error('[client-changes] failed to reopen task', dep.id, error.message)
-      return NextResponse.json({ error: `Failed to reopen "${dep.label}"` }, { status: 500 })
-    }
-    if (reopened?.[0]) reopenedTasks.push(reopened[0])
-    await admin.from('task_history').insert({
-      task_id: dep.id,
-      episode_id: clientTask.episode_id,
-      from_status: dep.status,
-      to_status: 'revision',
-      changed_by: user.id,
-      note: 'Client requested changes',
-    })
-  }
-
-  // 2. Re-lock the client task.
-  const { data: updatedClientTask, error: lockError } = await admin
-    .from('tasks')
-    .update({ status: 'locked' })
-    .eq('id', clientTaskId)
-    .select('*')
-    .single()
-  if (lockError) {
-    console.error('[client-changes] failed to re-lock client task', clientTaskId, lockError.message)
-    return NextResponse.json({ error: 'Failed to re-lock the client task' }, { status: 500 })
-  }
-  await admin.from('task_history').insert({
-    task_id: clientTaskId,
-    episode_id: clientTask.episode_id,
-    from_status: clientTask.status,
-    to_status: 'locked',
-    changed_by: user.id,
-    note: 'Re-locked: client requested changes on dependency',
+  // The RPC locks and validates the round, then writes tasks and history atomically.
+  const { data: round, error: roundError } = await admin.rpc('start_client_revision_round', {
+    p_client_task_id: clientTaskId,
+    p_task_ids: depTaskIds,
+    p_due_date: newDueDate,
+    p_actor: user.id,
   })
+  if (roundError) {
+    console.error('[client-changes] revision round failed:', roundError.message)
+    return NextResponse.json({ error: 'Could not start revisions. Refresh and try again.' }, { status: 409 })
+  }
+  const updatedClientTask = round.clientTask
+  const reopenedTasks = round.reopenedTasks
 
   // 3. Notify each affected assignee (in-app + push).
   const notifRows = validDeps
