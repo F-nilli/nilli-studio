@@ -1,5 +1,6 @@
 'use client'
 
+import { completionStatus } from '@/lib/taskCompletion'
 import { withSaveMotion } from '@/lib/saveMotion'
 
 import { useState, useEffect } from 'react'
@@ -93,7 +94,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
 
     async function compute() {
       if (canAction) {
-        const resolvedStatus: TaskStatus = nextStatus === 'in_review' && !task.approver_id ? 'done' : nextStatus!
+        const resolvedStatus: TaskStatus = completionStatus(task) ?? nextStatus!
         if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
           // Note goes to approver, on this task
           const approver = task.approver as User | undefined
@@ -284,7 +285,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
 
   async function updateStatus(newStatus: TaskStatus) {
     const resolvedStatus: TaskStatus =
-      newStatus === 'in_review' && !task.approver_id ? 'done' : newStatus
+      newStatus === 'in_review' ? (completionStatus(task) ?? newStatus) : newStatus
 
     const originalTask = task
     const capturedNote = noteText
@@ -640,7 +641,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
               >
                 {task.status === 'in_progress'
                   ? (task.approver_id ? 'Submit for Review' : 'Mark Done')
-                  : task.status === 'revision' ? 'Resubmit for Review'
+                  : task.status === 'revision' ? (completionStatus(task) === 'done' ? 'Mark Done' : 'Resubmit for Review')
                   : `Mark as ${STATUS_LABELS[nextStatus!]}`}
               </button>
             )}

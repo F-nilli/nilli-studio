@@ -117,3 +117,15 @@ Open [http://localhost:3000](http://localhost:3000)
 5. When every task on an episode is done/approved, the episode auto-archives (delivered)
 6. Optional pipeline triggers auto-spawn follow-up episodes (e.g. "Shorts" pipeline a few days after the main one)
 7. A daily cron sends due-today and overdue notifications; an in-cron safety net also unlocks any task that got stuck
+
+## Client correction round deployment
+
+Before deploying the client correction UI, apply
+`supabase/migration_client_revision_rounds.sql` in the Supabase SQL editor.
+It adds explicit correction-round tracking, the server-only atomic RPC, and
+completion triggers. Apply it after the existing workflow/submission migrations.
+Then deploy the application branch. Do not deploy the UI first.
+
+Existing tasks are deliberately not backfilled: their client-vs-internal revision
+origin must be checked against task history before repairing them.
+Validation: `node --test tests/*.cjs` includes a local PostgreSQL integration test.

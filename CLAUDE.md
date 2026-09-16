@@ -59,6 +59,18 @@ Defined in `lib/types.ts`: `admin`, `ops_manager`, `member`
 
 Pipelines live in the **`task_templates` table** (per client + `template_name`; NULL name = 'Default'). Episodes are generated from them server-side by `/api/episodes/create`; each task copies `due_days` so its due date can be computed when it unlocks.
 
+## Client correction rounds
+
+Client-requested corrections are started atomically by the service-role-only
+`start_client_revision_round` RPC. Selected completed dependencies receive
+`client_revision_parent_id` and return to revision with the selected deadline.
+`completionStatus` is shared across all task screens: these corrections finish
+as done without review. The DB closes Client Action after all selected tasks
+complete, and re-locks it if completion is reverted. Internal review decisions
+clear the bypass marker and retain normal approver routing. Apply
+`supabase/migration_client_revision_rounds.sql` before deploying this code.
+Existing stuck tasks are not automatically reclassified.
+
 ## Workflow motion
 
 Presentation primitives live in `components/motion/WorkflowMotion.tsx`. Motion uses 180–220 ms transitions and respects reduced motion. `withSaveMotion` observes existing save results without changing writes, errors, callbacks or undo timing. Save feedback persists outside task modals. Resize and badge effects do not replay on unchanged data refreshes.

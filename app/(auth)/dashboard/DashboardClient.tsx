@@ -1,5 +1,6 @@
 'use client'
 
+import { completionStatus } from '@/lib/taskCompletion'
 import { withSaveMotion } from '@/lib/saveMotion'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 
@@ -1313,9 +1314,9 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
 }
 
 function getActionLabel(task: Task): string {
-  if (task.status === 'in_progress') return task.requires_approval ? 'Submit for Review' : 'Mark Complete'
+  if (task.status === 'in_progress') return completionStatus(task) === 'in_review' ? 'Submit for Review' : 'Mark Complete'
   if (task.status === 'in_review') return 'Review'
-  if (task.status === 'revision') return 'Resubmit'
+  if (task.status === 'revision') return completionStatus(task) === 'done' ? 'Mark Complete' : 'Resubmit'
   return ''
 }
 
@@ -1357,7 +1358,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         task.status === 'in_progress' ? 'in_review' :
         task.status === 'revision' ? 'in_review' : task.status
       const nextStatus: TaskStatus =
-        rawNext === 'in_review' && !task.requires_approval ? 'done' : rawNext
+        completionStatus(task) ?? rawNext
 
       if (nextStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
         const approver = (task as Task & { approver?: User }).approver
@@ -1525,7 +1526,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
       task.status === 'in_progress' ? 'in_review' :
       task.status === 'revision' ? 'in_review' : task.status
     const nextStatus: TaskStatus =
-      rawNext === 'in_review' && !task.requires_approval ? 'done' : rawNext
+      completionStatus(task) ?? rawNext
 
     const originalTask = task
     const capturedNote = noteText

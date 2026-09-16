@@ -97,6 +97,8 @@ export interface Task {
   brief: string | null
   quantity: number
   dep_task_ids: string[]
+  client_revision_parent_id?: string | null
+  client_revision_task_ids?: string[]
   requires_approval: boolean
   approver_id: string | null
   review_started_at: string | null

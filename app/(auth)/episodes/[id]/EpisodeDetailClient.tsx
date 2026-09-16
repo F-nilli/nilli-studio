@@ -1,6 +1,7 @@
 'use client'
 
 import { ResizeMotion } from '@/components/motion/WorkflowMotion'
+import { completionStatus } from '@/lib/taskCompletion'
 import { withSaveMotion } from '@/lib/saveMotion'
 
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
@@ -1088,7 +1089,7 @@ function TrackPanel({ track, trackColor, tasks, allTasks, done, canEditDates, ca
         <span className="text-[12px] text-white/30">{done}/{tasks.length}</span>
       </div>
       {/* Task cards */}
-      <div className="divide-y" style={{ '--tw-divide-opacity': 1, borderColor: 'rgba(255,255,255,0.06)' } as React.CSSProperties}>
+      <div className="divide-y divide-white/[0.06]">
         {tasks.map(task => (
           <ResizeMotion key={task.id}><TrackTaskCard
             task={task}
@@ -1223,7 +1224,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
 
   const actionLabel =
     task.status === 'in_progress' ? (task.approver_id ? 'Submit for Review' : 'Mark Done') :
-    task.status === 'revision' ? 'Resubmit' :
+    task.status === 'revision' ? (completionStatus(task) === 'done' ? 'Mark Done' : 'Resubmit') :
     ''
 
   const [actionError, setActionError] = useState<string | null>(null)
@@ -1258,8 +1259,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     async function compute() {
       if (showAssigneeAction) {
         const resolvedStatus =
-          task.status === 'in_progress' ? (task.approver_id ? 'in_review' : 'done') :
-          task.status === 'revision' ? 'in_review' : null
+          completionStatus(task)
         if (resolvedStatus === 'in_review' && task.approver_id && task.approver_id !== currentUser.id) {
           const approver = task.approver as User | undefined
           if (approver?.name) {
@@ -1358,9 +1358,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
   function handleStatusAction() {
     const capturedTask = task
     const resolvedStatus: TaskStatus | null =
-      capturedTask.status === 'in_progress' ? (capturedTask.approver_id ? 'in_review' : 'done') :
-      capturedTask.status === 'revision' ? 'in_review' :
-      null
+      completionStatus(capturedTask)
     if (!resolvedStatus) return
 
     const capturedNote = noteText
