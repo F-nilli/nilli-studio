@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     .from('tasks')
     .select('*, assignee:users(*), episode:episodes(*)')
     .not('due_date', 'is', null)
-    .not('status', 'in', '("approved","done","locked")')
+    .not('status', 'in', '("approved","done","locked","in_review")')
 
   if (!overdueTasks) return NextResponse.json({ notified: 0 })
 

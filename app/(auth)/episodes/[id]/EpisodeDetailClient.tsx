@@ -1520,10 +1520,11 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
   }
 
   function handleSendBack() {
+    if (!sendBackDate || !Number.isFinite(new Date(sendBackDate).getTime()) || new Date(sendBackDate).getTime() <= Date.now()) return
     const capturedTask = task
     const capturedDate = sendBackDate
     const capturedReason = sendBackReason
-    const dueDateIso = capturedDate ? fromDatetimeLocal(capturedDate + 'T00:00') : null
+    const dueDateIso = fromDatetimeLocal(capturedDate)
 
     onTaskUpdate({ ...capturedTask, status: 'revision', due_date: dueDateIso } as Task)
     setActionError(null)
@@ -1844,11 +1845,11 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         >
           <p className="text-xs font-semibold text-[#888]">Send back for revision</p>
           <div>
-            <label className="text-[10px] text-[#555] uppercase tracking-wider">Revised due date</label>
+            <label className="text-[10px] text-[#555] uppercase tracking-wider">Revised deadline (required)</label>
             <input
-              type="date"
+              type="datetime-local"
               value={sendBackDate}
-              min={format(new Date(), 'yyyy-MM-dd')}
+              min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
               onChange={e => setSendBackDate(e.target.value)}
               className="w-full mt-1 px-2 py-1.5 bg-[#141414] border border-[#2e2e2e] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
             />
@@ -1872,7 +1873,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             </button>
             <button
               onClick={handleSendBack}
-              disabled={actionLoading}
+              disabled={actionLoading || !sendBackDate || !Number.isFinite(new Date(sendBackDate).getTime()) || new Date(sendBackDate).getTime() <= Date.now()}
               className="ml-auto py-1 px-3 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded transition-colors"
             >
               {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Sending…</span> : 'Confirm Send Back'}

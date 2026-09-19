@@ -103,8 +103,9 @@ export function isOverdue(
   requiresApproval?: boolean,
   reviewStartedAt?: string | null,
 ): boolean {
-  if (status === 'approved' || status === 'done') return false
-  // Review waiting time is a separate concern; deadlines use the exact instant.
+  if (status === 'approved' || status === 'done' || status === 'in_review') return false
+  // Submission pauses the assignee deadline, including late submissions.
+  // A revision resumes deadline checks against its newly selected due date.
   if (status === 'locked' || !dueDate) return false
   return Date.now() > parseDate(dueDate).getTime()
 }
