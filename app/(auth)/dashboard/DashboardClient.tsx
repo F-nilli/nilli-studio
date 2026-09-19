@@ -611,7 +611,7 @@ function AdminDashboard({ currentUser, tasks, reviewTasks, atRiskTasks, upcoming
                 <AtRiskTaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
               ))}
               {atRiskTasks.length > 8 && (
-                <p className="text-sm text-[#555] pl-1">+{atRiskTasks.length - 8} more overdue tasks</p>
+                <p className="text-sm text-[#555] pl-1">+{atRiskTasks.length - 8} more tasks needing attention</p>
               )}
             </div>
           </div>
@@ -1344,7 +1344,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
   const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
   const hoursUntilDue = task.due_date ? differenceInHours(parseDate(task.due_date), new Date()) : null
-  const isDueSoon = !overdue && hoursUntilDue !== null && parseDate(task.due_date!).getTime() >= Date.now() && hoursUntilDue <= 24
+  const isDueSoon = task.status !== 'in_review' && !overdue && hoursUntilDue !== null && parseDate(task.due_date!).getTime() >= Date.now() && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
 
   // Eagerly determine next person for inline note

@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Task, User, TaskStatus, Episode } from '@/lib/types'
 import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
-import { cn, formatDate, isOverdue, STATUS_LABELS } from '@/lib/utils'
+import { cn, formatDate, fromDatetimeLocal, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
 import { Spinner } from '@/components/ui/Spinner'
@@ -51,6 +51,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [sendingBack, setSendingBack] = useState(false)
   const [noteText, setNoteText] = useState('')         // note for approve / submit action
+  const [sendBackDate, setSendBackDate] = useState('')
   const [sendBackNote, setSendBackNote] = useState('') // note for send back action (→ assignee)
   // downstream task assignee for approve action
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
@@ -443,10 +444,12 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
   }
 
   async function handleRevision() {
+    if (!sendBackDate || !Number.isFinite(new Date(sendBackDate).getTime()) || new Date(sendBackDate).getTime() <= Date.now()) return
+    const dueDateIso = fromDatetimeLocal(sendBackDate)
     const originalTask = task
     const capturedSendBackNote = sendBackNote
 
-    onUpdate({ ...task, status: 'revision' } as unknown as Task)
+    onUpdate({ ...task, status: 'revision', due_date: dueDateIso } as unknown as Task)
     onClose()
 
     const commit = async (silent: boolean) => {
@@ -457,7 +460,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
         if (comment) fetch('/api/notifications/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, authorId: currentUser.id, taskId: task.id, episodeId: task.episode_id, body, assigneeId: task.assignee_id }) }).catch(() => {})
       }
 
-      const { data, error } = await withSaveMotion(supabase.from('tasks').update({ status: 'revision' }).eq('id', task.id).select('*').single())
+      const { data, error } = await withSaveMotion(supabase.from('tasks').update({ status: 'revision', due_date: dueDateIso }).eq('id', task.id).select('*').single())
       if (error || !data) { console.error('[Task] revision failed:', error); onUpdate(originalTask); return }
 
       markTaskNotificationsRead(supabase, currentUser.id, task.id).catch(() => {})
@@ -727,6 +730,18 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
               </div>
             )}
 
+            {canReview && (
+              <label className="block text-sm text-[#aaa]">
+                New revision deadline (choose a future date and time)
+                <input
+                  type="datetime-local"
+                  value={sendBackDate}
+                  onChange={e => setSendBackDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-[#141414] p-2 text-white"
+                />
+              </label>
+            )}
+
             {/* Reviewer: two note fields aligned above their respective buttons */}
             {canReview && (task.assignee || nextUserForNote) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -751,7 +766,8 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
               <div className="flex gap-2">
                 <button
                   onClick={handleRevision}
-                  className="flex-1 py-2.5 px-4 bg-[#1a1a1a] hover:bg-[#222] border border-[#ff3c00]/30 hover:border-[#ff3c00]/60 text-[#ff6644] font-semibold rounded-lg text-base transition-colors cursor-pointer"
+                  disabled={!sendBackDate || !Number.isFinite(new Date(sendBackDate).getTime()) || new Date(sendBackDate).getTime() <= Date.now()}
+                  className="flex-1 py-2.5 px-4 bg-[#1a1a1a] hover:bg-[#222] border border-[#ff3c00]/30 hover:border-[#ff3c00]/60 text-[#ff6644] font-semibold rounded-lg text-base transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Send Back
                 </button>

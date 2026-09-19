@@ -2,8 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DashboardClient } from './DashboardClient'
-import { parseDate } from '@/lib/utils'
-import type { User, Task, Episode, UserQuota } from '@/lib/types'
+import { isOverdue } from '@/lib/utils'
+import type { User, Task, Episode, UserQuota, TaskStatus } from '@/lib/types'
 
 export interface EpisodeProgress {
   id: string
@@ -76,7 +76,7 @@ export default async function DashboardPage() {
   const reviewTasks = ((reviewData.data || []) as unknown as (Task & { episode: Episode })[])
     .filter(t => !t.episode?.archived)
 
-  type EpTask = { id: string; status: string; due_date: string | null; requires_approval: boolean; review_started_at: string | null }
+  type EpTask = { id: string; status: TaskStatus; due_date: string | null; requires_approval: boolean; review_started_at: string | null }
   type EpRow = { id: string; guest_name: string; client_label: string; release_date: string; tasks: EpTask[] }
 
   const now = new Date()
@@ -87,11 +87,7 @@ export default async function DashboardPage() {
           const tasks = ep.tasks || []
           const total = tasks.length
           const done = tasks.filter(t => t.status === 'done' || t.status === 'approved').length
-          const overdue = tasks.filter(t => {
-            if (['done', 'approved', 'locked'].includes(t.status)) return false
-            if (t.due_date && parseDate(t.due_date) < now) return true
-            return false
-          }).length
+          const overdue = tasks.filter(t => isOverdue(t.due_date, t.status)).length
           return { id: ep.id, guest_name: ep.guest_name, client_label: ep.client_label, release_date: ep.release_date, totalTasks: total, doneTasks: done, overdueTasks: overdue }
         })
         .filter(ep => ep.totalTasks > 0 && ep.doneTasks < ep.totalTasks)
@@ -111,7 +107,7 @@ export default async function DashboardPage() {
       supabase
         .from('tasks')
         .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
-        .in('status', ['in_progress', 'revision', 'in_review'])
+        .in('status', ['ready', 'in_progress', 'revision'])
         .lt('due_date', now.toISOString())
         .order('due_date', { ascending: true }),
       supabase

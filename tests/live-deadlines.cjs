@@ -16,11 +16,15 @@ test('deadline precision, terminal states, review age and timezone offsets', () 
   assert.equal(isOverdue('2026-09-14T14:00:00Z', 'in_progress'), true)
   assert.equal(isOverdue('2026-09-14T15:00:00Z', 'in_progress'), false)
   assert.equal(isOverdue('2026-09-14T14:30:00Z', 'in_progress'), false)
-  for (const status of ['done', 'approved', 'locked']) assert.equal(isOverdue('2026-09-13T00:00:00Z', status), false)
+  for (const status of ['done', 'approved', 'locked', 'in_review']) assert.equal(isOverdue('2026-09-13T00:00:00Z', status), false)
   assert.equal(isOverdue('2026-09-15T00:00:00Z', 'in_review', true, '2026-09-12T00:00:00Z'), false)
   assert.equal(parseDate('2026-09-14T10:00:00-04:00').toISOString(), '2026-09-14T14:00:00.000Z')
   assert.equal(isOverdue('2026-09-14T10:00:00-04:00', 'revision'), true)
   assert.equal(isOverdue(null, 'in_progress'), false)
+  // Submission suspends even an already-late deadline; revisions use the replacement.
+  assert.equal(isOverdue('2026-09-14T10:00:00Z', 'in_review', true), false)
+  assert.equal(isOverdue('2026-09-14T16:00:00Z', 'revision', true), false)
+  assert.equal(isOverdue('2026-09-14T14:00:00Z', 'revision', true), true)
 })
 test('recovery refresh works without count changes; events coalesce and cleanup stops work', () => {
   let cleanup, refreshes = 0, ticks = 0, removed = false, subscribed
