@@ -98,6 +98,10 @@ Auth is via API key: `Authorization: Bearer nilli_live_...`, validated by `lib/a
 
 Admins manage keys from Settings → Notifications → API Keys, backed by `app/api/admin/api-keys/` (`GET`/`POST`) and `app/api/admin/api-keys/[id]/` (`DELETE`, soft-revoke via `revoked_at`).
 
+## Creator portal foundation
+
+`/portal-admin` and `/api/portal/admin/*` require active admin/ops. `/api/portal/me` and invoice PDFs verify a bearer token against a separate creator Supabase Auth project and enforce an explicit client mapping. Never register creators in the staff auth project. Apply `supabase/migration_creator_portal.sql`; configuration and activation gates are documented in `PORTAL_SETUP.md`. The static separate-origin invoice UI is `public/creator-portal/live.html`; its public config stays unconfigured until the backend is deployed. QBO OAuth/webhooks and the daily reconciliation cron are read-only integrations. No invitations or payments are sent. All new tables/functions are service-role-only.
+
 ## Key Files
 
 | File | Purpose |

@@ -3,6 +3,10 @@
     {
       "path": "/api/task-notifications-check",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/portal/qbo/sync",
+      "schedule": "15 9 * * *"
     }
   ]
 }
