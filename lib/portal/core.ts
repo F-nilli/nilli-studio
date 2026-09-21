@@ -8,6 +8,10 @@ export function validWebhook(body:string,signature:string,secret:string){return 
 function key(){const k=Buffer.from(required('PORTAL_TOKEN_KEY'),'base64');if(k.length!==32)throw new PortalError(503,'Portal encryption is not configured.');return k}
 export function encrypt(value:unknown){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',key(),iv);return Buffer.concat([iv,c.update(JSON.stringify(value)),c.final(),c.getAuthTag()]).toString('base64')}
 export function decrypt<T>(value:string):T{const b=Buffer.from(value,'base64'),d=createDecipheriv('aes-256-gcm',key(),b.subarray(0,12));d.setAuthTag(b.subarray(-16));return JSON.parse(Buffer.concat([d.update(b.subarray(12,-16)),d.final()]).toString())}
+export function qboEnvironment(){const value=required('QBO_ENVIRONMENT');if(value!=='sandbox'&&value!=='production')throw new PortalError(503,'Invalid QuickBooks environment.');return value}
+// Keyed identifier: neither company ID nor credentials are exposed in storage keys.
+export function qboScope(){const realm=required('QBO_EXPECTED_REALM_ID');if(!/^\d+$/.test(realm))throw new PortalError(503,'Invalid QuickBooks company configuration.');return createHmac('sha256',key()).update(qboEnvironment()+':'+realm).digest('hex')}
+export const privateHeaders={'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache','Referrer-Policy':'no-referrer'}
 export function staffAllowed(profile:{role?:string;active?:boolean}|null){return !!profile&&profile.active===true&&['admin','ops_manager'].includes(profile.role||'')}
 export function normalizeInvoice(i:Record<string,unknown>){
  const currency=(i.CurrencyRef as {value?:string})?.value;
