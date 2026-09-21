@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Task, User, TaskStatus, Episode } from '@/lib/types'
 import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
+import { DateHourPicker } from '@/components/ui/DateHourPicker'
 import { cn, formatDate, fromDatetimeLocal, isOverdue, STATUS_LABELS } from '@/lib/utils'
 import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
@@ -702,10 +703,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                 )}
                 <div>
                   <p className="text-xs font-semibold text-[#888] mb-1.5">New due date for the reopened tasks</p>
-                  <input
-                    type="datetime-local"
+                  <DateHourPicker
                     value={clientChangesDate}
-                    onChange={e => setClientChangesDate(e.target.value)}
+                    onChange={setClientChangesDate}
                     className="px-2 py-1.5 bg-[#0f0f0f] border border-[#2e2e2e] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00] [color-scheme:dark]"
                   />
                 </div>
@@ -733,10 +733,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
             {canReview && (
               <label className="block text-sm text-[#aaa]">
                 New revision deadline (choose a future date and time)
-                <input
-                  type="datetime-local"
+                <DateHourPicker
                   value={sendBackDate}
-                  onChange={e => setSendBackDate(e.target.value)}
+                  onChange={setSendBackDate}
                   className="mt-1 w-full rounded-lg border border-white/10 bg-[#141414] p-2 text-white"
                 />
               </label>

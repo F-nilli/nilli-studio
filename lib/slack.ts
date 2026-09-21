@@ -89,13 +89,11 @@ export function buildRevisionBlocks({
   guestName,
   taskLabel,
   assigneeName,
-  dueDate,
 }: {
   clientLabel: string
   guestName: string
   taskLabel: string
   assigneeName: string
-  dueDate?: string
 }) {
   return [
     {
@@ -110,7 +108,7 @@ export function buildRevisionBlocks({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${assigneeName}* — revision requested${dueDate ? ` · due ${dueDate}` : ''}`,
+        text: `*${assigneeName}* — revision requested`,
       },
     },
   ]
@@ -307,7 +305,7 @@ export const SLACK_TEMPLATE_DEFAULTS: Record<string, string> = {
   done: '✔️ Completed: ~{task}~\n{assignee}',
   approval: '✅ Approved: ~{task}~\nApproved by {approver}\n\n*NEXT:*\n{next_tasks}',
   review_submitted: '*{assignee}* submitted *{task}*{version} for review',
-  revision: '🔴 ~{task}~\n*{assignee}* — revision requested · due {date}',
+  revision: '🔴 ~{task}~\n*{assignee}* — revision requested',
   comment: '*{author}* commented on *{task}*:\n{comment}',
   reassign: '*{from}* reassigned *{task}* to *{to}*',
   release_date_changed: '📅 Release date updated to *{date} {time}*',

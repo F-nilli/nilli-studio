@@ -150,7 +150,6 @@ export async function POST(req: NextRequest) {
               guestName: episode.guest_name,
               taskLabel: dep.label,
               assigneeName,
-              dueDate: newDueDate,
             })
           )
         }
