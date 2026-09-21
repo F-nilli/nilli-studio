@@ -1,3 +1,4 @@
+import {projectFeed,saveProject} from '@/lib/portal/production'
 import { replaceManual, manualList, manualAccount, uploadManual, manualDownload, updateManual } from '@/lib/portal/manual'
 import { after, NextResponse } from 'next/server'
 import { check, consumeToken, creator, db, issueToken, staff, locked } from '@/lib/portal/store'
@@ -33,6 +34,7 @@ async function route(r:Request){
  if(path==='logout'&&method==='POST'){
   const token=r.headers.get('authorization')?.replace(/^Bearer /,'')||'';if(token.startsWith('preview_')){const {error}=await db().from('portal_tokens').delete().eq('token_hash',hash(token.slice(8))).eq('kind','preview_session').eq('scope',qboScope());check(error)}return json({ok:true});
  }
+ if(path==='production'&&method==='GET'){const {account}=await creator(r);const section=u.searchParams.get('section')||'home';if(section==='all')throw new PortalError(400,'Invalid project page.');return json(await projectFeed(account.client_id,section,Number(u.searchParams.get('offset')||0)));}
  if(path==='me'&&method==='GET'){
   const {account,preview}=await creator(r);const {data,error}=await db().from('portal_invoices').select('qbo_id,doc_number,invoice_date,due_date,currency,total,balance,synced_at').eq('account_id',account.id).order('invoice_date',{ascending:false});check(error);
   const {data:sync,error:e}=await db().from('portal_connections').select('last_success_at,last_error,state').eq('scope',qboScope()).maybeSingle();check(e);
@@ -45,6 +47,7 @@ async function route(r:Request){
  }
  if(path.startsWith('admin/')){
   const user=await staff();if(method==='POST')sameOrigin(r);
+  if(path==='admin/production'&&(method==='GET'||method==='POST')){const body=method==='POST'?await r.json():null;const clientId=body?.client_id||u.searchParams.get('client_id');if(typeof clientId!=='string')throw new PortalError(400,'Select a client.');const {data,error}=await db().from('portal_clients').select('id').eq('id',clientId).eq('active',true).maybeSingle();check(error);if(!data)throw new PortalError(404,'Active client not found.');return json(body?await saveProject(clientId,body,user.id):await projectFeed(clientId,'all',Number(u.searchParams.get('offset')||0)));}
   if(path==='admin/history'&&method==='GET'){const id=await manualAccount(u.searchParams.get('account_id'));return json({invoices:await manualList(id)});}
   if(path==='admin/history-upload'&&method==='POST'){if(Number(r.headers.get('content-length'))>3500000)throw new PortalError(413,'Choose a file smaller than 3 MB.');return json(await uploadManual(await r.formData(),user.id));}
   if(path==='admin/history-replace'&&method==='POST'){if(Number(r.headers.get('content-length'))>3500000)throw new PortalError(413,'Choose a file smaller than 3 MB.');return json(await replaceManual(await r.formData()));}
