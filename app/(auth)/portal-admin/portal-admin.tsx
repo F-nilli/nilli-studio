@@ -1,5 +1,6 @@
 'use client'
 import { useEffect,useState } from 'react'
+import InvoiceHistory from './invoice-history'
 type Client={id:string;label:string}
 type Account={id:string;client_id:string;creator_user_id:string|null;qbo_customer_id:string|null;customer_name:string|null;enabled:boolean;payment_url?:string|null}
 type Data={environment:string;legacyAccounts:number;clients:Client[];accounts:Account[];missing:string[];sync:null|{state:string;last_success_at:string|null;last_error:string|null;dirty_version:number;synced_version:number}}
@@ -50,5 +51,5 @@ function AccountForm({client,account,busy,connected,save,preview}:{client:Client
  <label style={{display:'block',margin:'16px 0'}}><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> Enable creator portal</label>
  <button disabled={busy||checking||!!customer&&!confirmed} style={{...button,background:'#e03200'}}>Save account</button>
  {account?.enabled&&<button type="button" disabled={busy} style={button} onClick={()=>preview(account.id)}>View as creator ↗</button>}
- </form></section>
+ </form>{account&&<InvoiceHistory accountId={account.id} clientName={client.label}/>}</section>
 }

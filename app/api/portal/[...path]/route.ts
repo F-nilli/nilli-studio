@@ -1,3 +1,4 @@
+import { manualList, manualAccount, uploadManual, manualDownload, updateManual } from '@/lib/portal/manual'
 import { after, NextResponse } from 'next/server'
 import { check, consumeToken, creator, db, issueToken, staff, locked } from '@/lib/portal/store'
 import { paymentUrl, creatorAuthUrl, constantEqual, hash, invoiceStatus, PortalError, required, validWebhook, qboEnvironment, qboScope, privateHeaders } from '@/lib/portal/core'
@@ -35,13 +36,19 @@ async function route(r:Request){
  if(path==='me'&&method==='GET'){
   const {account,preview}=await creator(r);const {data,error}=await db().from('portal_invoices').select('qbo_id,doc_number,invoice_date,due_date,currency,total,balance,synced_at').eq('account_id',account.id).order('invoice_date',{ascending:false});check(error);
   const {data:sync,error:e}=await db().from('portal_connections').select('last_success_at,last_error,state').eq('scope',qboScope()).maybeSingle();check(e);
-  return json({account:{id:account.id,client:account.clients,paymentUrl:account.payment_url||null},preview,invoices:(data||[]).map(i=>({...i,status:invoiceStatus(i,new Date().toISOString().slice(0,10))})),sync:{lastSuccessAt:sync?.last_success_at||null,needsAttention:!!sync?.last_error,connected:sync?.state==='connected'}});
+  const history=await manualList(account.id);
+  const invoices=[...(data||[]).map(i=>({...i,source:'qbo'})),...history.map(i=>({...i,qbo_id:'manual_'+i.id,source:'manual'}))].sort((a,b)=>(b.invoice_date||'').localeCompare(a.invoice_date||'')||String(a.qbo_id).localeCompare(String(b.qbo_id)));
+  return json({account:{id:account.id,client:account.clients,paymentUrl:account.payment_url||null},preview,invoices:invoices.map(i=>({...i,status:invoiceStatus(i,new Date().toISOString().slice(0,10))})),sync:{lastSuccessAt:sync?.last_success_at||null,needsAttention:!!sync?.last_error,connected:sync?.state==='connected'}});
  }
  if(path.startsWith('invoice/')&&method==='GET'){
-  const {account}=await creator(r);const id=path.slice(8);if(!/^\d+$/.test(id))throw new PortalError(400,'Invalid invoice ID.');const bytes=await invoicePdf(account.id,id);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="invoice-${id}.pdf"`,...privateHeaders}});
+  const {account}=await creator(r);const id=path.slice(8);if(id.startsWith('manual_'))return NextResponse.redirect(await manualDownload(account.id,id.slice(7)),302);if(!/^\d+$/.test(id))throw new PortalError(400,'Invalid invoice ID.');const bytes=await invoicePdf(account.id,id);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="invoice-${id}.pdf"`,...privateHeaders}});
  }
  if(path.startsWith('admin/')){
   const user=await staff();if(method==='POST')sameOrigin(r);
+  if(path==='admin/history'&&method==='GET'){const id=await manualAccount(u.searchParams.get('account_id'));return json({invoices:await manualList(id)});}
+  if(path==='admin/history-upload'&&method==='POST'){if(Number(r.headers.get('content-length'))>3500000)throw new PortalError(413,'Choose a PDF smaller than 3 MB.');return json(await uploadManual(await r.formData(),user.id));}
+  if(path==='admin/history-update'&&method==='POST'){const b=await r.json();const id=await manualAccount(b.account_id);return json(await updateManual(id,b));}
+  if(path==='admin/history-download'&&method==='POST'){const b=await r.json();const id=await manualAccount(b.account_id);return json({url:await manualDownload(id,b.id)});}
   if(path==='admin/status'&&method==='GET'){
    const results=await Promise.all([db().from('clients').select('id,key,label').eq('active',true),db().from('portal_accounts').select('*').eq('scope',qboScope()),db().from('portal_connections').select('state,last_success_at,last_error,dirty_version,synced_version').eq('scope',qboScope()).maybeSingle(),db().from('portal_accounts').select('id',{count:'exact',head:true}).is('scope',null)]);for(const x of results)check(x.error);
    const keys=['PORTAL_AUTH_URL','PORTAL_AUTH_ANON_KEY','PORTAL_ORIGIN','PORTAL_TOKEN_KEY','QBO_CLIENT_ID','QBO_CLIENT_SECRET','QBO_REDIRECT_URI','QBO_EXPECTED_REALM_ID','QBO_ENVIRONMENT','QBO_WEBHOOK_VERIFIER','CRON_SECRET'];return json({environment:qboEnvironment(),legacyAccounts:results[3].count||0,clients:results[0].data,accounts:results[1].data,sync:results[2].data,missing:keys.filter(k=>!process.env[k])});

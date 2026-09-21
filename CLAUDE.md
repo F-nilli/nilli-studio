@@ -134,3 +134,5 @@ WORKSPACE_TIMEZONE   # optional fallback; canonical value is workspace_settings.
 Keep this file under 200 lines. When making significant changes to this codebase — new routes, new tables, new notification channels, new clients/templates, role changes, or new environment variables — update the relevant section of this file. Remove outdated entries rather than appending.
 
 Portal QBO connections/accounts/tickets are scoped to an HMAC of environment and expected company; use lib/portal/core qboScope(). Run migration_portal_scoped_connections.sql before this version. Legacy NULL-scope rows are quarantined. Never roll back to unscoped account readers after activation. Disconnect must stop sync before revocation and retain pending credentials on failure.
+
+Historical invoice uploads use service-only portal_manual_invoices and private portal-invoice-archive storage. Downloads verify account ownership before 60-second signed URLs; never expose storage paths to creators. QBO reconciliation never touches manual records. Apply migration_portal_manual_invoices.sql before deployment.
