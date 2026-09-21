@@ -132,3 +132,5 @@ WORKSPACE_TIMEZONE   # optional fallback; canonical value is workspace_settings.
 ## CLAUDE.md Maintenance
 
 Keep this file under 200 lines. When making significant changes to this codebase — new routes, new tables, new notification channels, new clients/templates, role changes, or new environment variables — update the relevant section of this file. Remove outdated entries rather than appending.
+
+Portal QBO connections/accounts/tickets are scoped to an HMAC of environment and expected company; use lib/portal/core qboScope(). Run migration_portal_scoped_connections.sql before this version. Legacy NULL-scope rows are quarantined. Never roll back to unscoped account readers after activation. Disconnect must stop sync before revocation and retain pending credentials on failure.
