@@ -140,3 +140,7 @@ Historical invoice uploads use service-only portal_manual_invoices and private p
 Manual billing now supports PDF/JPEG/PNG and attachment replacement. Apply migration_portal_manual_attachments.sql. QBO customer IDs are optional; manual-only accounts use the existing configured scope and can be enabled without a live QBO connection.
 
 Portal identities are in portal_clients (separate from production clients/template groups). portal_accounts.client_id now references portal_clients; preserve account IDs and use the explicit portal_clients relationship for creator reads. Apply migration_portal_clients.sql before code deployment. Template associations use production client ID + normalized template name; never infer by label. Archive via portal_set_client_active disables access; restore does not enable it. Template associations are metadata only, not authorization for production content.
+
+## Standing UX standard
+
+Read `UX_STANDARD.md` for every new build or UX/UI change. Francis's baseline includes skeletons, subtle purposeful motion, local save feedback, stable drafts and accessible uploads. Consult the four saved references proactively; reuse `WorkflowMotion` and respect reduced motion. Portal panel drafts remain mounted across tab/collapse changes; no extra polling is required.
