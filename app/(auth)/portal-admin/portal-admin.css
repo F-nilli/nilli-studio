@@ -28,3 +28,4 @@
 @media(prefers-reduced-motion:reduce){.portal-workspace *,.portal-workspace *::before,.portal-workspace *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .portal-tabs .motion-tab-pill{background:#342016;border:1px solid #67402e}
 .portal-local-feedback p{margin:0}
+.portal-project-editor{border:1px solid #383838;background:#202020;border-radius:10px;margin:14px 0}.portal-project-editor summary{padding:18px;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer}.portal-project-editor summary small{display:block;color:#aaa;margin-top:7px}.portal-project-editor form{padding:0 18px 20px}.portal-project-check{display:flex;align-items:center;gap:10px;margin:20px 0}.portal-project-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px}.portal-project-editor input[type=checkbox]{accent-color:#ff5419}
