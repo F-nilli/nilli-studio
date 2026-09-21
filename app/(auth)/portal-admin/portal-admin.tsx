@@ -1,5 +1,6 @@
 'use client'
 import { useEffect,useState } from 'react'
+import InvoiceHistory from './invoice-history'
 type Client={id:string;label:string}
 type Account={id:string;client_id:string;creator_user_id:string|null;qbo_customer_id:string|null;customer_name:string|null;enabled:boolean;payment_url?:string|null}
 type Data={environment:string;legacyAccounts:number;clients:Client[];accounts:Account[];missing:string[];sync:null|{state:string;last_success_at:string|null;last_error:string|null;dirty_version:number;synced_version:number}}
@@ -13,7 +14,7 @@ export default function PortalAdmin(){
  async function run(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError(e instanceof Error?e.message:'Request failed.')}finally{setBusy(false)}}
  return <div style={{padding:32,maxWidth:1100}}>
  <h1 style={{fontSize:28,fontWeight:700}}>Creator portals</h1>
- <p style={{color:'#aaa',margin:'12px 0 24px'}}>Connect each client to a verified QuickBooks customer. Invoices update automatically after setup.</p>
+ <p style={{color:'#aaa',margin:'12px 0 24px'}}>Manage client billing with QuickBooks, manual invoices, or both.</p>
  {error&&<p role="alert" style={{color:'#ff9a7b',margin:16}}>{error}</p>}
  {!data?<p>Apply migration_portal_scoped_connections.sql in the production Supabase project if setup is incomplete.</p>:<>
  <section style={{padding:24,background:'#1e1e1e',borderRadius:12,marginBottom:24}}>
@@ -41,7 +42,7 @@ function AccountForm({client,account,busy,connected,save,preview}:{client:Client
  <form onSubmit={e=>{e.preventDefault();save({client_id:client.id,creator_user_id:user,qbo_customer_id:customer,customer_confirmation:confirmed?name:null,enabled,payment_url:payment})}}>
  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16}}>
  <label>Creator auth user ID<input style={input} value={user} onChange={e=>setUser(e.target.value)} placeholder="Separate creator-auth project UUID"/></label>
- <label>QuickBooks customer ID<input style={input} value={customer} disabled={!!account?.qbo_customer_id||checking} onChange={e=>{setCustomer(e.target.value);setName('');setConfirmed(false)}} pattern="[0-9]*" placeholder="Customer ID from this QuickBooks company"/></label>
+ <label>QuickBooks customer ID (optional)<input style={input} value={customer} disabled={!!account?.qbo_customer_id||checking} onChange={e=>{setCustomer(e.target.value);setName('');setConfirmed(false)}} pattern="[0-9]*" placeholder="Leave blank for manual billing"/></label>
  </div>
  {!account?.customer_name&&<button type="button" style={{...button,marginTop:12}} disabled={!connected||busy||checking||!customer} onClick={verify}>{checking?'Checking…':'Verify customer'}</button>}
  {name&&<label style={{display:'block',margin:'16px 0'}}><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> I confirm “{name}” is the QuickBooks customer for {client.label}.</label>}
@@ -50,5 +51,5 @@ function AccountForm({client,account,busy,connected,save,preview}:{client:Client
  <label style={{display:'block',margin:'16px 0'}}><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> Enable creator portal</label>
  <button disabled={busy||checking||!!customer&&!confirmed} style={{...button,background:'#e03200'}}>Save account</button>
  {account?.enabled&&<button type="button" disabled={busy} style={button} onClick={()=>preview(account.id)}>View as creator ↗</button>}
- </form></section>
+ </form>{account&&<InvoiceHistory accountId={account.id} clientName={client.label}/>}</section>
 }
