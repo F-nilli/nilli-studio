@@ -1547,10 +1547,9 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
         if (!silent) {
           const { data: assignee } = await supabase.from('users').select('*').eq('id', capturedTask.assignee_id).single()
           if (assignee) {
-            const dueDateLabel = capturedDate ? format(parseISO(capturedDate), 'MMM d, yyyy') : ''
             const noteBody = capturedReason
-              ? `"${capturedTask.label}" was sent back: ${capturedReason}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
-              : `"${capturedTask.label}" was sent back for revision by ${currentUser.name}${dueDateLabel ? `. Due: ${dueDateLabel}` : ''}`
+              ? `"${capturedTask.label}" was sent back: ${capturedReason}`
+              : `"${capturedTask.label}" was sent back for revision by ${currentUser.name}`
             await sendNotification(supabase, {
               userId: assignee.id,
               type: 'task_revision',
@@ -1566,7 +1565,6 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
                 episodeId: capturedTask.episode_id,
                 taskLabel: capturedTask.label,
                 assigneeName: assignee.name,
-                dueDate: capturedDate ? format(parseISO(capturedDate), 'MMM d') : undefined,
               }),
             }).catch(err => console.error('[Slack]', err))
           }
@@ -1846,11 +1844,10 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
           <p className="text-xs font-semibold text-[#888]">Send back for revision</p>
           <div>
             <label className="text-[10px] text-[#555] uppercase tracking-wider">Revised deadline (required)</label>
-            <input
-              type="datetime-local"
+            <DateHourPicker
               value={sendBackDate}
               min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
-              onChange={e => setSendBackDate(e.target.value)}
+              onChange={setSendBackDate}
               className="w-full mt-1 px-2 py-1.5 bg-[#141414] border border-[#2e2e2e] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00]"
             />
           </div>
@@ -1912,10 +1909,9 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
           )}
           <div>
             <p className="text-xs font-semibold text-[#888] mb-1.5">New due date for the reopened tasks</p>
-            <input
-              type="datetime-local"
+            <DateHourPicker
               value={clientChangesDate}
-              onChange={e => setClientChangesDate(e.target.value)}
+              onChange={setClientChangesDate}
               className="px-2 py-1.5 bg-[#141414] border border-[#2e2e2e] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#ff3c00] [color-scheme:dark]"
             />
           </div>

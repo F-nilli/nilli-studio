@@ -10,11 +10,12 @@ interface Props {
   value: string // "yyyy-MM-dd'T'HH:mm" (datetime-local format)
   onChange: (value: string) => void
   className?: string
+  min?: string
   disabled?: boolean
   autoFocus?: boolean
 }
 
-export function DateHourPicker({ value, onChange, className, disabled, autoFocus }: Props) {
+export function DateHourPicker({ value, onChange, className, disabled, autoFocus, min }: Props) {
   const datePart = value ? value.slice(0, 10) : ''
   const hour = value ? parseInt(value.slice(11, 13), 10) : 0
 
@@ -38,6 +39,7 @@ export function DateHourPicker({ value, onChange, className, disabled, autoFocus
     <div className={`flex items-center gap-1 ${className ?? ''}`}>
       <input
         type="date"
+        min={min?.slice(0, 10)}
         value={datePart}
         onChange={handleDateChange}
         disabled={disabled}

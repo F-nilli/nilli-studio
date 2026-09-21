@@ -64,7 +64,7 @@ export async function POST(request: Request) {
 
   let blocks: object[]
   if (customTemplate) {
-    const rendered = renderSlackTemplate(customTemplate, {
+    const rendered = renderSlackTemplate(type === 'revision' ? customTemplate.replace(/\s*(?:[·|—-]\s*)?(?:due\s*:?\s*)?\{date\}(?:\s*\{time\})?/gi, '').replace(/\{time\}/g, '') : customTemplate, {
       client: clientLabel ?? '',
       project: guestName ?? '',
       task: completedTaskLabel ?? taskLabel ?? '',
@@ -74,8 +74,8 @@ export async function POST(request: Request) {
       comment: commentBody ?? '',
       from: fromName ?? '',
       to: toName ?? '',
-      date: newDate ?? dueDate ?? '',
-      time: newTime ?? '',
+      date: type === 'revision' ? '' : newDate ?? dueDate ?? '',
+      time: type === 'revision' ? '' : newTime ?? '',
       version: version ? ` (v${version})` : '',
       by: deliveredByName ?? '',
       next_tasks: (nextTasks ?? []).map((t: { label: string; assigneeName: string }) => `*${t.assigneeName}* — ${t.label}`).join('\n'),
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
   } else if (type === 'done') {
     blocks = buildDoneBlocks({ clientLabel, guestName, taskLabel, assigneeName })
   } else if (type === 'revision') {
-    blocks = buildRevisionBlocks({ clientLabel, guestName, taskLabel, assigneeName, dueDate })
+    blocks = buildRevisionBlocks({ clientLabel, guestName, taskLabel, assigneeName })
   } else if (type === 'review_submitted') {
     blocks = buildReviewSubmittedBlocks({ clientLabel, guestName, taskLabel, assigneeName, version })
   } else if (type === 'comment') {
