@@ -18,3 +18,10 @@ export function normalizeInvoice(i:Record<string,unknown>){
 export function invoiceStatus(i:{total:number;balance:number;due_date:string|null},today:string){if(i.total===0&&i.balance===0)return 'Zero balance';if(i.balance===0)return 'Paid';if(i.due_date&&i.due_date<today)return i.balance<i.total?'Partially paid · overdue':'Overdue';return i.balance<i.total?'Partially paid':'Open'}
 
 export function creatorAuthUrl(){const url=new URL(required("PORTAL_AUTH_URL"));const staff=process.env.NEXT_PUBLIC_SUPABASE_URL;if(url.protocol!=="https:"||staff&&url.origin===new URL(staff).origin)throw new PortalError(503,"Creator authentication must use a separate HTTPS project.");return url.origin}
+
+export function paymentUrl(value:unknown):string|null {
+ if(value===null||value==='')return null;
+ if(typeof value!=='string'||value.length>2048)throw new PortalError(400,'Enter a valid HTTPS payment link.');
+ try {const url=new URL(value.trim());if(url.protocol!=='https:'||url.username||url.password)throw new Error();return url.href}
+ catch{throw new PortalError(400,'Enter a valid HTTPS payment link.');}
+}

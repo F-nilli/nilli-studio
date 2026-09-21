@@ -1,6 +1,6 @@
 import { after, NextResponse } from 'next/server'
 import { check, consumeToken, creator, db, issueToken, staff } from '@/lib/portal/store'
-import { creatorAuthUrl, constantEqual, hash, invoiceStatus, PortalError, required, validWebhook } from '@/lib/portal/core'
+import { paymentUrl, creatorAuthUrl, constantEqual, hash, invoiceStatus, PortalError, required, validWebhook } from '@/lib/portal/core'
 import { connectQbo, invoicePdf, syncInvoices } from '@/lib/portal/qbo'
 export const runtime='nodejs'
 export const dynamic='force-dynamic'
@@ -35,7 +35,7 @@ async function route(r:Request){
  if(path==='me'&&method==='GET'){
   const {account,preview}=await creator(r);const {data,error}=await db().from('portal_invoices').select('qbo_id,doc_number,invoice_date,due_date,currency,total,balance,synced_at').eq('account_id',account.id).order('invoice_date',{ascending:false});check(error);
   const {data:sync,error:e}=await db().from('portal_qbo').select('last_success_at,last_error').eq('id',true).maybeSingle();check(e);
-  return json({account:{id:account.id,client:account.clients},preview,invoices:(data||[]).map(i=>({...i,status:invoiceStatus(i,new Date().toISOString().slice(0,10))})),sync:{lastSuccessAt:sync?.last_success_at||null,needsAttention:!!sync?.last_error,connected:!!sync}});
+  return json({account:{id:account.id,client:account.clients,paymentUrl:account.payment_url||null},preview,invoices:(data||[]).map(i=>({...i,status:invoiceStatus(i,new Date().toISOString().slice(0,10))})),sync:{lastSuccessAt:sync?.last_success_at||null,needsAttention:!!sync?.last_error,connected:!!sync}});
  }
  if(path.startsWith('invoice/')&&method==='GET'){
   const {account}=await creator(r);const id=path.slice(8);if(!/^\d+$/.test(id))throw new PortalError(400,'Invalid invoice ID.');const bytes=await invoicePdf(account.id,id);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="invoice-${id}.pdf"`,'Cache-Control':'private, no-store'}});
@@ -49,8 +49,11 @@ async function route(r:Request){
   if(path==='admin/account'&&method==='POST'){
    const b=await r.json();if(typeof b.client_id!=='string'||typeof b.enabled!=='boolean'||(b.creator_user_id&&!/^[0-9a-f-]{36}$/i.test(b.creator_user_id))||(b.qbo_customer_id&&!/^\d+$/.test(b.qbo_customer_id)))throw new PortalError(400,'Invalid account mapping.');
    // Customer mapping cannot be silently reassigned after importing financial data.
-   const {data:existing,error:ee}=await db().from('portal_accounts').select('qbo_customer_id').eq('client_id',b.client_id).maybeSingle();check(ee);if(existing?.qbo_customer_id&&existing.qbo_customer_id!==b.qbo_customer_id)throw new PortalError(409,'Customer remapping requires a reviewed data migration.');
-   const {error}=await db().from('portal_accounts').upsert({client_id:b.client_id,creator_user_id:b.creator_user_id||null,qbo_customer_id:b.qbo_customer_id||null,enabled:b.enabled},{onConflict:'client_id'});check(error);return json({ok:true});
+   const {data:existing,error:ee}=await db().from('portal_accounts').select('*').eq('client_id',b.client_id).maybeSingle();check(ee);if(existing?.qbo_customer_id&&existing.qbo_customer_id!==b.qbo_customer_id)throw new PortalError(409,'Customer remapping requires a reviewed data migration.');
+   const payment=b.payment_url===undefined?undefined:paymentUrl(b.payment_url);
+   const supportsPayment=existing&&Object.prototype.hasOwnProperty.call(existing,'payment_url');
+   const paymentFields=payment!==undefined&&(payment!==null||supportsPayment)?{payment_url:payment}:{};
+   const {error}=await db().from('portal_accounts').upsert({...paymentFields,client_id:b.client_id,creator_user_id:b.creator_user_id||null,qbo_customer_id:b.qbo_customer_id||null,enabled:b.enabled},{onConflict:'client_id'});if(error&&['42703','PGRST204'].includes(error.code))throw new PortalError(503,'Apply migration_portal_payment_url.sql in the production Supabase project, then save again.');check(error);return json({ok:true});
   }
   if(path==='admin/preview'&&method==='POST'){
    const {account_id}=await r.json();const {data,error}=await db().from('portal_accounts').select('id').eq('id',account_id).eq('enabled',true).maybeSingle();check(error);if(!data)throw new PortalError(404,'Enable this portal account first.');const ticket=await issueToken('preview_ticket',user.id,data.id,60);return json({url:required('PORTAL_ORIGIN')+'/live.html#ticket='+encodeURIComponent(ticket)});
