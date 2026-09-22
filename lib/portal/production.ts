@@ -6,13 +6,11 @@ export function projectUrl(value:unknown,frameOnly=false){
  if(typeof value!=='string'||value.length>2048)throw new PortalError(400,'Enter a valid HTTPS link.')
  try{const u=new URL(value.trim());if(u.protocol!=='https:'||u.username||u.password|| (frameOnly&&!(u.hostname==='f.io'||u.hostname==='frame.io'||u.hostname.endsWith('.frame.io'))))throw new Error();return u.href}catch{throw new PortalError(400,frameOnly?'Use a Frame.io HTTPS review link.':'Use a valid HTTPS published-content link.')}
 }
-export function projectDetails(body:Record<string,unknown>,now=new Date()){
+export function projectDetails(body:Record<string,unknown>){
  const review_url=projectUrl(body.review_url,true),publication_url=projectUrl(body.publication_url)
- if(typeof body.review_ready!=='boolean'||typeof body.published!=='boolean')throw new PortalError(400,'Choose a review and publication status.')
+ if(typeof body.review_ready!=='boolean')throw new PortalError(400,'Choose a review status.')
  if(body.review_ready&&!review_url)throw new PortalError(400,'Add a Frame.io link before marking ready for review.')
- let published_at:string|null=null
- if(body.published){if(typeof body.published_at!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(body.published_at))throw new PortalError(400,'Choose the actual publication date.');const date=new Date(body.published_at+'T00:00:00.000Z');if(!Number.isFinite(+date)||date.toISOString().slice(0,10)!==body.published_at||body.published_at>now.toISOString().slice(0,10))throw new PortalError(400,'Publication must be today or earlier.');published_at=date.toISOString()}
- return {review_url,review_ready:body.review_ready,publication_url,published_at}
+ return {review_url,review_ready:body.review_ready,publication_url}
 }
 function visibleProject(p:Record<string,unknown>){return {id:p.id,title:p.title,format:p.format,release_date:p.release_date,status:p.status,published_at:p.published_at,review_ready:p.review_ready,review_url:p.review_ready||p.published_at?p.review_url:null,publication_url:p.published_at?p.publication_url:null}}
 export async function projectFeed(clientId:string,section:string,offset=0){
