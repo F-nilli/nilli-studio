@@ -613,7 +613,7 @@ export function CommentPanel({
         </div>
         <div className={cn('max-w-[84%] flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
           {isHandoff && (
-            <span className="text-[10px] text-[#555] mb-0.5">↗ handoff note</span>
+            <span className="text-[10px] text-[#555] mb-0.5">handoff note</span>
           )}
           {activeTab === 'all' && taskLabel && depth === 0 && (
             <span
