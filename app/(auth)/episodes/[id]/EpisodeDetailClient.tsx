@@ -148,6 +148,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
     await supabase.from('episodes').update({
       release_date: newDate,
       release_time: newTime ?? null,
+      release_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }).eq('id', episode.id)
 
     // Adjust task deadlines
