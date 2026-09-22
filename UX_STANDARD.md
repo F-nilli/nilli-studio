@@ -27,3 +27,7 @@ Use references thoughtfully, not as a requirement to install every library. If a
 ## Review before shipping
 
 Check loading, empty, error, busy and saved states; slow connections; keyboard and reduced motion; narrow screens; draft preservation; repeated actions. Report which checks were actually performed.
+
+## Design preference
+
+Never use northeast-pointing arrow symbols (Unicode U+2197), including equivalent diagonal external-link icons, in Nilli designs. Use clear link labels without this decoration. Applies to all future builds and UI edits.

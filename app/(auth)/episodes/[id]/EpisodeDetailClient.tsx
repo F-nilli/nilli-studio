@@ -613,7 +613,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 href={`/episodes/${episode.source.id}`}
                 className="flex items-center gap-1 text-xs text-[#f7931a]/70 hover:text-[#f7931a] transition-colors mt-0.5"
               >
-                <span className="text-[10px]">↗</span>
+
                 <span>Spawned from: {episode.source.template_name ?? 'Default'} — {episode.source.guest_name}</span>
               </Link>
             )}
