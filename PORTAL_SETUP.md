@@ -98,3 +98,10 @@ Create/rename/archive clients in Client portals. One production template group (
 5. View as creator opens the full portal on Home. All creator tabs and invoices use the same expiring preview identity. No internal task details or staff notes are returned.
 
 Home selects the next scheduled active project (or most recent past-dated active project), falling back to the latest project when no active projects remain. Completed unpublished projects remain in Production as Awaiting publication. Library includes only confirmed published work, newest publication first. Package and Performance remain honest unavailable states until their data is integrated.
+
+
+## Connected completion update (supersedes separate publication confirmation)
+
+Run `supabase/migration_portal_completion_sync.sql` in **nilli team app**, then deploy the matching app and creator Site. All archived projects immediately belong to Library; the production app's normal completion and restore operations are the only authority. The old portal publication values are retained but ignored, and link edits cannot override completion. No bulk publication dates or duplicate status updates are needed. Library dates reflect production completion. Client-visible statuses use Completed to avoid implying external platform verification.
+
+Visible portal pages refresh every 15 seconds and on focus/online recovery; hidden tabs do not poll. Updates retain loaded pagination and skip DOM replacement when unchanged. This is near-live refresh, not a promise of instantaneous cross-tab delivery.
