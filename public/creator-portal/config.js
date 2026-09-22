@@ -1,3 +1,2 @@
-// Public API origin only. Configure after the production backend is deployed.
-// Never put service-role keys, QuickBooks secrets or private credentials here.
-export const API_ORIGIN='';
+// Public backend origin only. Never put credentials in this file.
+export const API_ORIGIN='https://app.nillistudio.com';
