@@ -83,6 +83,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'notes too long' }, { status: 400 })
   }
   const tz = browserTimezone && TZ_RE.test(browserTimezone) ? browserTimezone : 'UTC'
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format() }
+  catch { return NextResponse.json({ error: 'Invalid browser timezone' }, { status: 400 }) }
 
   const admin = createAdminClient()
 
@@ -221,6 +223,7 @@ export async function POST(req: NextRequest) {
     guestName: guestName.trim(),
     releaseDate,
     releaseTime: releaseTime ?? null,
+    releaseTimezone: tz,
     footageUrl: footageUrl || null,
     notes: notes || null,
     templateName,

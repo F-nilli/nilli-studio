@@ -39,6 +39,7 @@ export interface CreateEpisodeInput {
   guestName: string
   releaseDate: string // 'yyyy-MM-dd'
   releaseTime: string | null // 'HH:mm'
+  releaseTimezone?: string // Device timezone for creator-facing schedule conversion
   footageUrl: string | null
   notes: string | null
   templateName: string
@@ -66,6 +67,7 @@ export async function createEpisodeWithTasks(
       guest_name: input.guestName,
       release_date: input.releaseDate,
       release_time: input.releaseTime,
+      ...(input.releaseTimezone ? { release_timezone: input.releaseTimezone } : {}),
       footage_url: input.footageUrl,
       notes: input.notes,
       template_name: input.templateName,
