@@ -18,3 +18,6 @@ export async function creator(request:Request){
  const {data,error}=await db().from('portal_accounts').select('*,clients:portal_clients!inner(label,active)').eq('clients.active',true).eq('id',accountId).eq('scope',qboScope()).eq('enabled',true).single();check(error);if(!data)throw new PortalError(403,'Portal access is disabled.');return {account:data,preview};
 }
 export async function locked<T>(fn:()=>Promise<T>):Promise<T>{const owner=randomUUID();const {data,error}=await db().rpc('portal_take_lock',{lock_name:'qbo',lock_owner:owner});check(error);if(!data)throw new PortalError(409,'QuickBooks synchronization is already running. Try again shortly.');try{return await fn()}finally{await db().from('portal_locks').delete().eq('name','qbo').eq('owner',owner)}}
+
+// Sponsorship rollout is admin-only, independent of broader portal admin/ops access.
+export async function sponsorshipAdmin(){const user=await staff();const {data,error}=await db().from('users').select('role,active').eq('id',user.id).single();check(error);if(data?.role!=='admin'||data.active!==true)throw new PortalError(403,'Admin access required.');return user}
