@@ -1,10 +1,10 @@
-import {sponsorshipData,mutateSponsorship,publicOpportunity} from '@/lib/portal/sponsorships'
+import {sponsorshipData,mutateSponsorship} from '@/lib/portal/sponsorships'
 import {clientPackage,savePackage} from '@/lib/portal/packages'
 import {displayRates} from '@/lib/portal/rates'
 import {projectFeed,saveProject} from '@/lib/portal/production'
 import { replaceManual, manualList, manualAccount, uploadManual, manualDownload, updateManual } from '@/lib/portal/manual'
 import { after, NextResponse } from 'next/server'
-import { check, consumeToken, creator, db, issueToken, staff, locked } from '@/lib/portal/store'
+import { check, consumeToken, creator, sponsorshipAdmin, db, issueToken, staff, locked } from '@/lib/portal/store'
 import { paymentUrl, creatorAuthUrl, constantEqual, hash, invoiceStatus, PortalError, required, validWebhook, qboEnvironment, qboScope, privateHeaders } from '@/lib/portal/core'
 import { connectQbo, invoicePdf, syncInvoices, disconnectQbo, endpoints, verifyCustomer, cleanupPortal } from '@/lib/portal/qbo'
 export const runtime='nodejs'
@@ -37,15 +37,9 @@ async function route(r:Request){
  if(path==='logout'&&method==='POST'){
   const token=r.headers.get('authorization')?.replace(/^Bearer /,'')||'';if(token.startsWith('preview_')){const {error}=await db().from('portal_tokens').delete().eq('token_hash',hash(token.slice(8))).eq('kind','preview_session').eq('scope',qboScope());check(error)}return json({ok:true});
  }
- if(path==='opportunity'&&method==='GET')return json(await publicOpportunity(u.searchParams.get('token')||''));
- if(path==='sponsorships'&&(method==='GET'||method==='POST')){
-  const {account,preview}=await creator(r);
-  if(method==='GET')return json(await sponsorshipData(account.client_id));
-  if(preview)throw new PortalError(403,'Sponsorship changes require the creator’s own login.');
-  if(r.headers.get('origin')!==required('PORTAL_ORIGIN'))throw new PortalError(403,'Origin not permitted.');
-  if(Number(r.headers.get('content-length'))>32000)throw new PortalError(413,'Payload too large.');
-  return json(await mutateSponsorship(account.client_id,account.creator_user_id,false,await r.json()));
- }
+ // Admin-only rollout: creator and public endpoints remain closed until explicitly released.
+ if(path==='opportunity')throw new PortalError(404,'Opportunity is not available.');
+ if(path==='sponsorships')throw new PortalError(403,'Sponsorships are currently available to Nilli admins only.');
  if(path==='package'&&method==='GET'){const {account}=await creator(r);return json({package:await clientPackage(account.client_id)});}
  if(path==='rates'&&method==='GET'){await creator(r);return json(await displayRates());}
  if(path==='production'&&method==='GET'){const {account}=await creator(r);const section=u.searchParams.get('section')||'home';if(section==='all')throw new PortalError(400,'Invalid project page.');return json(await projectFeed(account.client_id,section,Number(u.searchParams.get('offset')||0)));}
@@ -61,7 +55,9 @@ async function route(r:Request){
  }
  if(path.startsWith('admin/')){
   const user=await staff();if(method==='POST')sameOrigin(r);
+  if(path==='admin/sponsorship-access'&&method==='GET'){await sponsorshipAdmin();return json({ok:true});}
   if(path==='admin/sponsorships'&&(method==='GET'||method==='POST')){
+   await sponsorshipAdmin();
    const body=method==='POST'?await r.json():null;const id=body?.client_id||u.searchParams.get('client_id');
    if(typeof id!=='string')throw new PortalError(400,'Select a creator.');
    const {data,error}=await db().from('portal_clients').select('id').eq('id',id).eq('active',true).maybeSingle();check(error);if(!data)throw new PortalError(404,'Creator not found.');
@@ -76,7 +72,7 @@ async function route(r:Request){
   if(path==='admin/history-download'&&method==='POST'){const b=await r.json();const id=await manualAccount(b.account_id);return json({url:await manualDownload(id,b.id)});}
   if(path==='admin/status'&&method==='GET'){
    const results=await Promise.all([db().from('portal_clients').select('id,label,active').order('label'),db().from('portal_accounts').select('*').eq('scope',qboScope()),db().from('portal_connections').select('state,last_success_at,last_error,dirty_version,synced_version').eq('scope',qboScope()).maybeSingle(),db().from('portal_accounts').select('id',{count:'exact',head:true}).is('scope',null),db().from('task_templates').select('client_id,template_name,clients(label)'),db().from('portal_client_templates').select('*')]);for(const x of results)check(x.error);
-   const keys=['PORTAL_AUTH_URL','PORTAL_AUTH_ANON_KEY','PORTAL_ORIGIN','PORTAL_TOKEN_KEY','QBO_CLIENT_ID','QBO_CLIENT_SECRET','QBO_REDIRECT_URI','QBO_EXPECTED_REALM_ID','QBO_ENVIRONMENT','QBO_WEBHOOK_VERIFIER','CRON_SECRET'];return json({environment:qboEnvironment(),legacyAccounts:results[3].count||0,clients:results[0].data,templates:results[4].data,associations:results[5].data,accounts:results[1].data,sync:results[2].data,missing:keys.filter(k=>!process.env[k])});
+   const keys=['PORTAL_AUTH_URL','PORTAL_AUTH_ANON_KEY','PORTAL_ORIGIN','PORTAL_TOKEN_KEY','QBO_CLIENT_ID','QBO_CLIENT_SECRET','QBO_REDIRECT_URI','QBO_EXPECTED_REALM_ID','QBO_ENVIRONMENT','QBO_WEBHOOK_VERIFIER','CRON_SECRET'];const {data:roleRow,error:roleError}=await db().from('users').select('role').eq('id',user.id).single();check(roleError);return json({sponsorshipAdmin:roleRow?.role==='admin',environment:qboEnvironment(),legacyAccounts:results[3].count||0,clients:results[0].data,templates:results[4].data,associations:results[5].data,accounts:results[1].data,sync:results[2].data,missing:keys.filter(k=>!process.env[k])});
   }
   if(path==='admin/client'&&method==='POST'){
    const b=await r.json();const label=typeof b.label==='string'?b.label.trim():'';if(!label||label.length>120)throw new PortalError(400,'Enter a client name (up to 120 characters).');

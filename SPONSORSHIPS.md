@@ -1,3 +1,9 @@
+# Current rollout decision (September 28, 2026, 17:00 Toronto)
+
+Francis authorized deployment with access restricted to the admin role only. This supersedes creator/public access descriptions below: creator sponsorship endpoints return 403, public offer endpoints return 404, and Content NASCAR is hidden from creator navigation. Staff admin endpoints and the staff screen require active role=admin; ops managers and members cannot access them. Admins can prepare menus, opportunities, reviews and pending requests; creator acceptance and brand sharing remain disabled until explicitly released. Existing creator portals and unrelated ops permissions are unchanged.
+
+Frame.io ownership is settled: Nilli Studio always owns the workspace. Integrate one Nilli-controlled server-side Frame.io connection and map each client/project explicitly. Creators and brands receive scoped review/share links, not credentials or workspace-wide access. No separate creator/brand Frame.io account connection is needed for this workflow. Provider setup, API permissions, expiry/revocation and actual link provisioning remain integration work; no Frame.io API was connected by this change.
+
 # Sponsorship opportunities: implementation and continuation
 
 September 28, 2026. First implementation of the approved creator sponsorship menu and episode announcement workflow. Based on main 90b006f, including the six-project pagination fix.

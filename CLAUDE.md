@@ -152,3 +152,5 @@ Creator dashboard/settings: apply migration_portal_dashboard.sql before release.
 ## Sponsorship opportunities
 
 See `SPONSORSHIPS.md`. Apply `migration_portal_sponsorships.sql` before activation. Creator `/api/portal/sponsorships` writes require a real creator session; preview is read-only. Staff review/intake uses `/api/portal/admin/sponsorships`; only creators accept placements. All mutations use the service-only `portal_sponsor_mutate` RPC, serialized per creator to prevent overbooking. Approved share pages expose allowlisted public offer details through random tokens. Brand requests currently go by email to Nilli; announcement previews do not send email. No analytics connectors, automated mail delivery or conversion tracking are implemented by this release.
+
+Sponsorship launch is admin-only (Sept 28): active admin role required for staff API/screen; creator routes blocked and public offers disabled until explicit release. Nilli always owns Frame.io workspaces; future integration uses Nilli server-side credentials and client/project-scoped review links, never creator/brand API connections.
