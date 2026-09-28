@@ -27,8 +27,10 @@ export async function projectFeed(clientId:string,section:string,offset=0){
   return {project:latest.data?.[0]?visibleProject(latest.data[0]):null,current:false,activeCount:0}
  }
  let q=query();if(section==='active')q=q.is('published_at',null);if(section==='library')q=q.not('published_at','is',null)
- const result=await q.order(section==='library'?'published_at':'release_sort_at',{ascending:section==='active'}).order('id').range(offset,offset+23);check(result.error)
- return {projects:section==='all'?(result.data||[]):(result.data||[]).map(visibleProject),total:result.count||0,nextOffset:offset+(result.data?.length||0)<(result.count||0)?offset+24:null}
+ const size=section==='all'?24:6
+ const result=await q.order(section==='library'?'published_at':'release_sort_at',{ascending:section==='active'}).order('id').range(offset,offset+size-1);check(result.error)
+ const next=offset+(result.data?.length||0)
+ return {projects:section==='all'?(result.data||[]):(result.data||[]).map(visibleProject),total:result.count||0,nextOffset:next<(result.count||0)?next:null}
 }
 export async function saveProject(clientId:string,body:Record<string,unknown>,staffId:string){
  if(typeof body.id!=='string'||!/^[0-9a-f-]{36}$/i.test(body.id))throw new PortalError(400,'Invalid project.')

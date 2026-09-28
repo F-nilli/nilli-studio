@@ -104,7 +104,7 @@ Home selects the next scheduled active project (or most recent past-dated active
 
 Run `supabase/migration_portal_completion_sync.sql` in **nilli team app**, then deploy the matching app and creator Site. All archived projects immediately belong to Library; the production app's normal completion and restore operations are the only authority. The old portal publication values are retained but ignored, and link edits cannot override completion. No bulk publication dates or duplicate status updates are needed. Library dates reflect production completion. Client-visible statuses use Completed to avoid implying external platform verification.
 
-Visible portal pages refresh every 15 seconds and on focus/online recovery; hidden tabs do not poll. Updates retain loaded pagination and skip DOM replacement when unchanged. This is near-live refresh, not a promise of instantaneous cross-tab delivery.
+Visible portal pages refresh every 15 seconds and on focus/online recovery; hidden tabs do not poll. Updates retain loaded pagination and skip DOM replacement when unchanged. This is near-live refresh, not a promise of instantaneous cross-tab delivery. Creator Production and Library pages load six projects at a time with Load more; the staff admin project list keeps 24 per request.
 
 ## Dashboard and creator settings
 
