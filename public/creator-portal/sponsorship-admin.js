@@ -1,0 +1,5 @@
+import {sponsorshipController} from './sponsorships.js';
+const select=document.querySelector('#creator'),error=document.querySelector('#error'),host=document.querySelector('#sponsor-admin');let controller=null;
+async function api(path,body){const r=await fetch('/api/portal/admin/'+path,{method:body?'POST':'GET',credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load sponsorships.');return d}
+try{const d=await api('status');d.clients.filter(c=>c.active).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.label;select.append(o)})}catch(e){error.textContent=e.message}
+select.onchange=()=>{controller?.reset();host.innerHTML='';if(!select.value)return;const id=select.value;controller=sponsorshipController({staff:true,api:body=>api('sponsorships'+(body?'':'?client_id='+encodeURIComponent(id)),body?{...body,client_id:id}:null),onBusy:v=>select.disabled=v});void controller.mount(host)};

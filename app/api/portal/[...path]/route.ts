@@ -1,3 +1,4 @@
+import {sponsorshipData,mutateSponsorship,publicOpportunity} from '@/lib/portal/sponsorships'
 import {clientPackage,savePackage} from '@/lib/portal/packages'
 import {displayRates} from '@/lib/portal/rates'
 import {projectFeed,saveProject} from '@/lib/portal/production'
@@ -36,6 +37,15 @@ async function route(r:Request){
  if(path==='logout'&&method==='POST'){
   const token=r.headers.get('authorization')?.replace(/^Bearer /,'')||'';if(token.startsWith('preview_')){const {error}=await db().from('portal_tokens').delete().eq('token_hash',hash(token.slice(8))).eq('kind','preview_session').eq('scope',qboScope());check(error)}return json({ok:true});
  }
+ if(path==='opportunity'&&method==='GET')return json(await publicOpportunity(u.searchParams.get('token')||''));
+ if(path==='sponsorships'&&(method==='GET'||method==='POST')){
+  const {account,preview}=await creator(r);
+  if(method==='GET')return json(await sponsorshipData(account.client_id));
+  if(preview)throw new PortalError(403,'Sponsorship changes require the creator’s own login.');
+  if(r.headers.get('origin')!==required('PORTAL_ORIGIN'))throw new PortalError(403,'Origin not permitted.');
+  if(Number(r.headers.get('content-length'))>32000)throw new PortalError(413,'Payload too large.');
+  return json(await mutateSponsorship(account.client_id,account.creator_user_id,false,await r.json()));
+ }
  if(path==='package'&&method==='GET'){const {account}=await creator(r);return json({package:await clientPackage(account.client_id)});}
  if(path==='rates'&&method==='GET'){await creator(r);return json(await displayRates());}
  if(path==='production'&&method==='GET'){const {account}=await creator(r);const section=u.searchParams.get('section')||'home';if(section==='all')throw new PortalError(400,'Invalid project page.');return json(await projectFeed(account.client_id,section,Number(u.searchParams.get('offset')||0)));}
@@ -51,6 +61,12 @@ async function route(r:Request){
  }
  if(path.startsWith('admin/')){
   const user=await staff();if(method==='POST')sameOrigin(r);
+  if(path==='admin/sponsorships'&&(method==='GET'||method==='POST')){
+   const body=method==='POST'?await r.json():null;const id=body?.client_id||u.searchParams.get('client_id');
+   if(typeof id!=='string')throw new PortalError(400,'Select a creator.');
+   const {data,error}=await db().from('portal_clients').select('id').eq('id',id).eq('active',true).maybeSingle();check(error);if(!data)throw new PortalError(404,'Creator not found.');
+   return json(body?await mutateSponsorship(id,user.id,true,body):await sponsorshipData(id));
+  }
   if(path==='admin/package'&&(method==='GET'||method==='POST')){const body=method==='POST'?await r.json():null;const clientId=body?.client_id||u.searchParams.get('client_id');if(typeof clientId!=='string')throw new PortalError(400,'Select a client.');const {data,error}=await db().from('portal_clients').select('id').eq('id',clientId).eq('active',true).maybeSingle();check(error);if(!data)throw new PortalError(404,'Active client not found.');return json(body?await savePackage(clientId,body,user.id):{package:await clientPackage(clientId,true)});}
   if(path==='admin/production'&&(method==='GET'||method==='POST')){const body=method==='POST'?await r.json():null;const clientId=body?.client_id||u.searchParams.get('client_id');if(typeof clientId!=='string')throw new PortalError(400,'Select a client.');const {data,error}=await db().from('portal_clients').select('id').eq('id',clientId).eq('active',true).maybeSingle();check(error);if(!data)throw new PortalError(404,'Active client not found.');return json(body?await saveProject(clientId,body,user.id):await projectFeed(clientId,'all',Number(u.searchParams.get('offset')||0)));}
   if(path==='admin/history'&&method==='GET'){const id=await manualAccount(u.searchParams.get('account_id'));return json({invoices:await manualList(id)});}
