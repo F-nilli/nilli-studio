@@ -31,3 +31,13 @@ Check loading, empty, error, busy and saved states; slow connections; keyboard a
 ## Design preference
 
 Never use northeast-pointing arrow symbols (Unicode U+2197), including equivalent diagonal external-link icons, in Nilli designs. Use clear link labels without this decoration. Applies to all future builds and UI edits.
+
+## Brand fidelity and typography
+
+Francis approved this direction on September 28, 2026:
+- Keep the black background and subtle flat grid. Avoid broad gray surfaces that dilute Nilli's identity.
+- Use the established red-orange accent for primary actions, selected navigation and meaningful emphasis.
+- Titles use Objektiv Mk1 Bold (700); body copy, navigation, controls, labels and numbers use Inter.
+- Adobe Fonts embed supplied by Francis: `https://use.typekit.net/yjj4avk.css`.
+- Portal styling lives in `public/creator-portal/brand.css`, loaded after existing styles. It must not alter account access, production status rules, invoice data or refresh behavior.
+- Design review sample metrics never appear in the live portal. Analytics remain disconnected until a real integration exists.
