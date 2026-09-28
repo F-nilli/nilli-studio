@@ -28,7 +28,7 @@ Apply `supabase/migration_portal_sponsorships.sql` to the **staff/data Supabase 
 
 Existing `PORTAL_ORIGIN` must be set to the portal origin; public offer links use it. No new credentials required for this release. Staff UI must be opened on app.nillistudio.com, not the separate static portal deployment.
 
-No production migration has been applied by this implementation session. No live emails sent; no production booking data created. Test real creator and staff auth in a staged deployment before production activation.
+Production migration applied on September 28, 2026 to the nilli team app project through its Supabase SQL editor. Verified all five new tables have RLS enabled and deny SELECT to both anon and authenticated roles. No live emails sent and no production booking data created. Production build, role tests, SQL tests and DOM tests pass. Signed-in app visual verification remains outstanding; the app session requires sign-in. Creator/public endpoints stay blocked for this admin-only rollout.
 
 ## API / security
 
