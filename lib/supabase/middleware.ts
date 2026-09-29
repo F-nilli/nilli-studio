@@ -47,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Protect the sponsorship screen itself, in addition to API authorization.
-  if (user && pathname === '/creator-portal/sponsorship-admin.html') {
+  if (user && ['/creator-portal/sponsorship-admin.html','/creator-portal/brand-preview.html','/sponsorships'].includes(pathname)) {
     const {data: profile} = await supabase.from('users').select('role,active').eq('id',user.id).single()
     if(profile?.role !== 'admin' || profile.active !== true) return new NextResponse('Admin access required.', {status:403})
   }

@@ -45,6 +45,7 @@ export interface CreateEpisodeInput {
   templateName: string
   createdBy: string
   sourceEpisodeId?: string | null
+  sponsorship?: Record<string,unknown> | null
   tasks: EpisodeTaskInput[]
   // Notify starting-task assignees (inbox + push). Default true.
   notify?: boolean
@@ -115,6 +116,14 @@ export async function createEpisodeWithTasks(
     // Compensating delete — never leave an episode without its tasks.
     await supabase.from('episodes').delete().eq('id', episode.id)
     return { ok: false, error: tasksError.message || 'Failed to create tasks', code: tasksError.code }
+  }
+
+  // Sponsorship brief belongs to this project. Failure removes the new project
+  // before notifications. The RPC transaction leaves no partial opportunity.
+  const {error:sponsorError}=await supabase.rpc('portal_seed_sponsorship',{target_episode:episode.id,actor:input.createdBy,brief:input.sponsorship??null})
+  if(sponsorError){
+    await supabase.from('episodes').delete().eq('id',episode.id)
+    return {ok:false,error:sponsorError.message,code:sponsorError.code}
   }
 
   // 3. Starting-task notifications (non-fatal on failure — the project exists,

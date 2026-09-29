@@ -1,3 +1,4 @@
+import {projectSponsorshipBrief} from '@/lib/portal/sponsorships'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -32,8 +33,8 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await sessionClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await sessionClient.from('users').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin' && profile?.role !== 'ops_manager') {
+  const { data: profile } = await sessionClient.from('users').select('role,active').eq('id', user.id).single()
+  if (!profile?.active || (profile.role !== 'admin' && profile.role !== 'ops_manager')) {
     return NextResponse.json({ error: 'Only admins and ops managers can create projects' }, { status: 403 })
   }
 
@@ -217,7 +218,10 @@ export async function POST(req: NextRequest) {
     }))
   }
 
+  let sponsorship:Record<string,unknown>|null
+  try{sponsorship=projectSponsorshipBrief(body.sponsorship,releaseDate)}catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Invalid sponsorship brief'},{status:400})}
   const result = await createEpisodeWithTasks(admin, {
+    sponsorship,
     clientKey: client.key,
     clientLabel: client.label,
     guestName: guestName.trim(),
