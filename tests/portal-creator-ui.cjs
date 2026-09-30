@@ -36,3 +36,5 @@ test('shared entrance keeps Brand informational and preserves creator fields acr
  assert.equal(form.email.value,'creator@example.com');assert.equal(form.password.value,'');
  assert.match(f.get('#login-error').textContent,/Connection unavailable/);
 });
+
+test('portal refresh cadence avoids repeated requests and package cache is session-scoped',async()=>{const f=fixture();f.context.navigator={onLine:true};await vm.runInContext('dashboard()',f.context);const packageReads=()=>f.calls.filter(u=>u.endsWith('/package')).length;assert.equal(packageReads(),1);await vm.runInContext("navigate('home',false,true)",f.context);assert.equal(packageReads(),1);const n=f.calls.length;vm.runInContext("token='test';refreshVisible();refreshVisible(true)",f.context);assert.equal(f.calls.length,n);await vm.runInContext("page='invoices';lastRefreshAt=Date.now()-60000;refreshVisible()",f.context);assert.equal(f.calls.length,n);await vm.runInContext("packageCache.at=Date.now()-300001;getPackage()",f.context);assert.equal(packageReads(),2);vm.runInContext('clearSession()',f.context);assert.equal(vm.runInContext('packageCache',f.context),null);});

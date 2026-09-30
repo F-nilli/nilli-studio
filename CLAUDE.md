@@ -77,7 +77,7 @@ Presentation primitives live in `components/motion/WorkflowMotion.tsx`. Motion u
 
 ## Live screens and deadlines
 
-Dashboard, board, calendar and episode detail use `useLiveRefresh`: coalesced task/episode events, reconnect/focus recovery and a 15-second visible-tab snapshot refresh. Client state must reconcile refreshed props without resetting form drafts. Deadline styling ticks every 10 seconds. Overdue means the exact timestamp has passed; review age is shown separately. Daily notification scheduling remains unchanged.
+Dashboard, board, calendar and episode detail use `useLiveRefresh`: coalesced task/episode events, reconnect/focus recovery and a two-minute visible-tab recovery refresh (30 seconds if Realtime is disconnected). Client state must reconcile refreshed props without resetting form drafts. Deadline styling ticks every 10 seconds. Overdue means the exact timestamp has passed; review age is shown separately. Daily notification scheduling remains unchanged.
 
 ## Notifications
 
@@ -145,7 +145,7 @@ Portal identities are in portal_clients (separate from production clients/templa
 
 Read `UX_STANDARD.md` for every new build or UX/UI change. Francis's baseline includes skeletons, subtle purposeful motion, local save feedback, stable drafts and accessible uploads. Consult the four saved references proactively; reuse `WorkflowMotion` and respect reduced motion. Portal panel drafts remain mounted across tab/collapse changes; no extra polling is required.
 
-Creator production/library/invoices refresh silently every 15 seconds only while visible, plus focus/online recovery. Unchanged responses preserve markup; errors retain last loaded content. Admin project status refresh runs only in the expanded Production tab and preserves link drafts.
+Creator home/production refresh every 60 seconds; library/invoices/package every five minutes, only while visible and online. Focus/online recovery is deduplicated for 15 seconds. Package reads reuse a five-minute session-local cache cleared on signout; explicit refresh bypasses it. Unchanged responses preserve markup; errors retain last loaded content. Admin project status refresh runs every 60 seconds only in the expanded Production tab, preserves link drafts and deduplicates focus/initial loads.
 
 Creator dashboard/settings: apply migration_portal_dashboard.sql before release. Staff-only package summaries live in portal_client_packages. episodes.release_timezone records the scheduler device zone on create/release edit; legacy release times fall back to workspace timezone in the read-only portal view. Task deadline calculations are unchanged. Creator preferences/profile use separate auth user metadata (never authorization); secure email/password updates require current-password sign-in and are blocked in staff preview. Currency rates are shared via Next Data Cache for three hours; original invoice currencies remain authoritative. Analytics stay disconnected until a real channel integration exists.
 
@@ -154,3 +154,5 @@ Creator dashboard/settings: apply migration_portal_dashboard.sql before release.
 See `SPONSORSHIPS.md`. Apply `migration_portal_sponsorships.sql` before activation. Creator `/api/portal/sponsorships` writes require a real creator session; preview is read-only. Staff review/intake uses `/api/portal/admin/sponsorships`; only creators accept placements. All mutations use the service-only `portal_sponsor_mutate` RPC, serialized per creator to prevent overbooking. Approved share pages expose allowlisted public offer details through random tokens. Brand requests currently go by email to Nilli; announcement previews do not send email. No analytics connectors, automated mail delivery or conversion tracking are implemented by this release.
 
 Sponsorship launch is admin-only (Sept 28): active admin role required for staff API/screen; creator routes blocked and public offers disabled until explicit release. Nilli always owns Frame.io workspaces; future integration uses Nilli server-side credentials and client/project-scoped review links, never creator/brand API connections.
+
+Compute policy: Realtime events coalesce within 500ms and server refreshes are limited to one per two seconds per tab. The 10-second deadline clock is browser-only. Board task queries join active, unarchived episodes to exclude historical tasks. No shared caching of authenticated client data.

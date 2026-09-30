@@ -25,7 +25,7 @@ export default async function BoardPage({
       supabase.from('users').select('*'),
       supabase.from('episodes').select('*').not('published_at', 'is', null).order('published_at', { ascending: false }),
       supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').eq('archived', false).is('published_at', null).order('release_date', { ascending: true }),
-      supabase.from('tasks').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*)').order('template_task_id', { ascending: true }),
+      supabase.from('tasks').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), active_episode:episodes!inner(id)').eq('active_episode.archived',false).is('active_episode.published_at',null).order('template_task_id', { ascending: true }),
     ])
 
     return (
@@ -64,7 +64,7 @@ export default async function BoardPage({
   const [episodesRes, publishedEpisodesRes, tasksRes] = await Promise.all([
     supabase.from('episodes').select('*, source:episodes!source_episode_id(id, guest_name, template_name)').in('id', involvedEpisodeIds).eq('archived', false).is('published_at', null).order('release_date', { ascending: true }),
     supabase.from('episodes').select('*').in('id', involvedEpisodeIds).not('published_at', 'is', null).order('published_at', { ascending: false }),
-    supabase.from('tasks').select('*, assignee:users(*)').in('episode_id', involvedEpisodeIds).order('template_task_id', { ascending: true }),
+    supabase.from('tasks').select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), active_episode:episodes!inner(id)').in('episode_id', involvedEpisodeIds).eq('active_episode.archived',false).is('active_episode.published_at',null).order('template_task_id', { ascending: true }),
   ])
 
   return (
