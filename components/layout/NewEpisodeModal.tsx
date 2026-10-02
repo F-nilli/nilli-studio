@@ -1,4 +1,5 @@
 'use client'
+import {SponsorshipBrief,type Brief} from '@/components/motion/SponsorshipBrief'
 
 import { useState, useEffect, useRef } from 'react'
 import { X, Upload } from 'lucide-react'
@@ -81,6 +82,8 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
   const [releaseDate, setReleaseDate] = useState('')
   const [footageUrl, setFootageUrl] = useState('')
   const [notes, setNotes] = useState('')
+  const [sponsorship,setSponsorship]=useState<Brief|null>(null)
+  const [sponsorshipReady,setSponsorshipReady]=useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
@@ -214,7 +217,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedClient) return
+    if (!selectedClient || !sponsorshipReady) return
 
     if (isCustom) {
       if (customTasks.length === 0) { setError('Add at least one task'); return }
@@ -233,6 +236,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId,
+          sponsorship,
           guestName,
           releaseDate: releaseDate.slice(0, 10),
           releaseTime: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
@@ -414,6 +418,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                     className="w-full px-3 py-2 text-white rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#f7931a] placeholder-[#555] resize-none" style={inputStyle} />
                 </div>
 
+                <SponsorshipBrief clientId={clientId} template={isCustom?'custom':selectedTemplateName} releaseDate={releaseDate} onChange={setSponsorship} onStatus={setSponsorshipReady}/>
                 {/* Reference Images */}
                 <div>
                   <label className="block text-[13px] font-medium text-[#ccc] mb-1">
@@ -551,7 +556,7 @@ export function NewEpisodeModal({ currentUser, onClose, onSuccess }: Props) {
                     style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
                     Cancel
                   </button>
-                  <button type="submit" disabled={submitting}
+                  <button type="submit" disabled={submitting || !sponsorshipReady}
                     className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold text-black disabled:opacity-50 transition-all hover:scale-[1.01] cursor-pointer"
                     style={{ background: 'linear-gradient(to bottom, #ff9a30, #e8820a)', border: '1px solid #f7931a', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
                     {submitting ? 'Creating...' : 'Create Project'}

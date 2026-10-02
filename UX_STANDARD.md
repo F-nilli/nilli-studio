@@ -41,3 +41,12 @@ Francis approved this direction on September 28, 2026:
 - Adobe Fonts embed supplied by Francis: `https://use.typekit.net/yjj4avk.css`.
 - Portal styling lives in `public/creator-portal/brand.css`, loaded after existing styles. It must not alter account access, production status rules, invoice data or refresh behavior.
 - Design review sample metrics never appear in the live portal. Analytics remain disconnected until a real integration exists.
+
+## Interaction recipes (September 29, 2026)
+
+Use Francis's Transitions.dev recipes throughout the production app, creator portal and brand portal:
+- Boolean controls use toggle switches with a 350ms thumb bounce; never animate the off state on initial load. Keep native form/label/keyboard behavior. Saved buttons remain buttons.
+- Tabs use one measured sliding pill, 250ms cubic-bezier(.22,1,.36,1). Snap on first paint and resize, animate only selection changes. Preserve Nilli black/grid/orange styling.
+- Confirmed success uses the 500ms fade, rotate, blur and vertical bob plus 80ms-delayed stroke draw. Only run after an actual successful action.
+- Respect reduced motion, including hidden success icons staying hidden until confirmed.
+Shared CSS: `public/creator-portal/interactions.css`. React primitives: `Toggle`, `SlidingTabs`, `SaveGlyph`. Static portals: `interactions.js`.

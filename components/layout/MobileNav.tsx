@@ -14,6 +14,7 @@ export function MobileNav({ user }: { user: User }) {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { href: '/board', label: 'Board', icon: Layers2 },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
+    ...(user.role==='admin' ? [{href:'/sponsorships',label:'Sponsors',icon:Layers2}] : []),
     ...(canAccessAnalytics(user) ? [{ href: '/analytics', label: 'Analytics', icon: BarChart2 }] : []),
   ]
 

@@ -45,17 +45,24 @@ export function PanelPresence({ open, children }: { open: boolean; children: Rea
 export function SlidingTabs({ value, children }: { value: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const pill = useRef<HTMLSpanElement>(null)
+  const initialized = useRef(false)
   useLayoutEffect(() => {
     const host = ref.current!, indicator = pill.current!
-    const measure = () => {
+    const measure = (snap=false) => {
       const button = host.querySelector<HTMLElement>('[data-motion-active="true"]')
       if (!button) return
+      const position=[button.offsetLeft,button.offsetTop,button.offsetWidth,button.offsetHeight].join(',')
+      if(indicator.dataset.position===position)return
+      if(snap)indicator.style.transition='none'
+      indicator.dataset.position=position
       indicator.style.transform = `translate(${button.offsetLeft}px, ${button.offsetTop}px)`
       indicator.style.width = `${button.offsetWidth}px`
       indicator.style.height = `${button.offsetHeight}px`
+      if(snap){void indicator.offsetWidth;indicator.style.transition=''}
     }
-    measure()
-    const observer = new ResizeObserver(measure)
+    const snap = () => measure(true)
+    if(initialized.current)measure();else {snap();initialized.current=true}
+    const observer = new ResizeObserver(snap)
     observer.observe(host)
     host.querySelectorAll('button').forEach(button => observer.observe(button))
     return () => observer.disconnect()
@@ -81,6 +88,7 @@ export function CountMotion({ count, children, className = "inline-flex", style 
 }
 
 export function SaveGlyph({ busy, success }: { busy: boolean; success: boolean }) {
+  if(!busy && success)return <span className="t-success-check" data-state="in" aria-hidden="true" style={{marginRight:5}}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path pathLength="20" d="m5.5 10 3 3 6-6"/></svg></span>
   return <span className="save-glyph" data-busy={busy} data-success={!busy && success} aria-hidden="true">
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" /><path d="m5.5 10 3 3 6-6" /></svg>
   </span>

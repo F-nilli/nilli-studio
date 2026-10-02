@@ -1,4 +1,5 @@
 'use client'
+import {SlidingTabs} from '@/components/motion/WorkflowMotion'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { X, Send, ArrowUpDown, Lock, CornerDownLeft, Pencil, Trash2, Link, Paperclip, FileText } from 'lucide-react'
@@ -849,7 +850,7 @@ export function CommentPanel({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+      <SlidingTabs value={activeTab}>
         <TabBtn active={activeTab === 'all'} onClick={() => setActiveTab('all')} dot={totalUnreadTasks > 0}>
           All
         </TabBtn>
@@ -866,7 +867,7 @@ export function CommentPanel({
             </span>
           </TabBtn>
         )}
-      </div>
+      </SlidingTabs>
 
       {/* Task context row (TASKS tab) */}
       {activeTab === 'tasks' && activeTask && (
@@ -1128,7 +1129,7 @@ function TabBtn({ children, active, onClick, dot, isInternal }: {
   isInternal?: boolean
 }) {
   return (
-    <button
+    <button data-motion-active={active}
       onClick={onClick}
       className={cn(
         'flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors border-b-2',

@@ -1,3 +1,28 @@
+# September 29 workflow update — supersedes earlier rollout notes below
+
+Status: implemented on `feat/sponsorship-project-workflow`; migration and deployment are separate release steps.
+
+- Admin-only Sponsorships navigation is visible on desktop and mobile. Admins enroll clients into Content NASCAR, support menus/prices and review briefs.
+- Enrolled creators see Sponsorships in their own portal. They set offers, prices and “Open on new episodes by default”, override individual availability and accept/decline brand requests. Preview never permits writes.
+- The person creating a production project fills in topic, optional guest, duration, sponsor appeal and request deadline. Title/release date come from the project. Both full-page and modal creation are covered; enrollment resolves via explicit client-template association, never labels.
+- The shared server creator seeds one opportunity per project after tasks succeed and before notifications. Auto-spawn also copies defaults but requires a completed brief before review. Seeding is idempotent; a seeding error rolls back its transaction and the caller removes the new project.
+- Default availability/prices affect future projects only. Existing quotes and bookings are preserved. Closing availability blocks new requests/acceptance; it does not cancel confirmed bookings. Project deletion retains sponsorship history and clears its episode link.
+- Each opportunity starts as a draft, even if availability is on. Nilli review remains required. Nothing emails automatically.
+- Brand preview is an admin-authenticated, read-only layout with Opportunities, My campaigns and Results; no fake live metrics or bookings. Real brand sign-in, public offers and automated emails remain disabled.
+- The existing three placement keys are preserved. The broader catalog is still awaiting discussion; do not treat the examples as the final catalog.
+- Motion recipes are recorded in UX_STANDARD.md and shared across staff/static portal interfaces.
+
+## Release sequence
+1. Apply `supabase/migration_sponsorship_projects.sql` to the staff/data Supabase project, after the existing sponsorship/production migrations. It is safe to rerun. It does not enroll clients or backfill old projects.
+2. Deploy both staff app and creator static portal from the same commit. New code depends on the migration.
+3. In Sponsorships, explicitly enroll the intended creator; verify their template associations and creator portal access.
+4. Review creator menu/default, create a project, inspect its brief, review it and test with a real creator session before accepting genuine requests.
+
+## Verification
+Production build and TypeScript; PGlite tests for enrollment/ownership/default snapshot/availability/review/capacity and service permissions; DOM tests for creator/admin/preview controls and draft preservation. Local browser review was blocked by browser policy (localhost URL). No claim of signed-in visual verification.
+
+---
+
 # Current rollout decision (September 28, 2026, 17:00 Toronto)
 
 Francis authorized deployment with access restricted to the admin role only. This supersedes creator/public access descriptions below: creator sponsorship endpoints return 403, public offer endpoints return 404, and Content NASCAR is hidden from creator navigation. Staff admin endpoints and the staff screen require active role=admin; ops managers and members cannot access them. Admins can prepare menus, opportunities, reviews and pending requests; creator acceptance and brand sharing remain disabled until explicitly released. Existing creator portals and unrelated ops permissions are unchanged.
