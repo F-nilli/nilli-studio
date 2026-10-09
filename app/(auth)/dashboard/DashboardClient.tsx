@@ -5,13 +5,12 @@ import { withSaveMotion } from '@/lib/saveMotion'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AlertCircle, Clock, Lock, CheckCircle, AlertTriangle, Calendar, Users, MessageSquare, SendHorizonal, Pencil, Trash2, ArrowRight } from 'lucide-react'
 import { usePendingActions } from '@/lib/usePendingActions'
 import { WorkloadMetricsCard } from '@/components/dashboard/WorkloadMetricsCard'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
-import { differenceInDays, differenceInHours, format, parseISO, startOfToday } from 'date-fns'
+import { differenceInDays, differenceInHours, format, startOfToday } from 'date-fns'
 import { Task, Episode, User, TaskStatus, UserQuota } from '@/lib/types'
 import { StatusBadge, VersionBadge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
@@ -55,7 +54,6 @@ export function DashboardClient({
   monthlyOutput,
 }: Props) {
   const supabase = createClient()
-  const router = useRouter()
   const [tasks, setTasks] = useState(initialTasks)
   const [reviewTasks, setReviewTasks] = useState(initialReviewTasks)
   const [selectedTask, setSelectedTask] = useState<(Task & { episode?: Episode }) | null>(null)
@@ -282,7 +280,7 @@ function MemberDashboard({ currentUser, tasks, userQuotas, monthlyOutput, onTask
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus))
   const lockedTasks = tasks.filter(t => t.status === 'locked')
   const myQuotas = userQuotas.filter(q => q.user_id === currentUser.id)
-  const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
+  const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status)).length
   const grouped = ACTIVE_STATUSES.reduce<Record<TaskStatus, (Task & { episode: Episode })[]>>(
     (acc, s) => { acc[s] = activeTasks.filter(t => t.status === s); return acc },
     {} as Record<TaskStatus, (Task & { episode: Episode })[]>
@@ -347,7 +345,7 @@ function MemberDashboard({ currentUser, tasks, userQuotas, monthlyOutput, onTask
             {ACTIVE_STATUSES.map(status => {
               const statusTasks = grouped[status]
               if (!statusTasks || statusTasks.length === 0) return null
-              const hasOverdue = statusTasks.some(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at))
+              const hasOverdue = statusTasks.some(t => isOverdue(t.due_date, t.status))
               return (
                 <div key={status} id={hasOverdue ? 'overdue-section' : undefined}>
                   <div className="sticky top-0 z-[5] -mx-1 px-1 py-1 backdrop-blur-sm" style={{ background: 'rgba(13,13,13,0.85)' }}>
@@ -402,7 +400,7 @@ function OpsManagerDashboard({ currentUser, tasks, reviewTasks, episodesProgress
 }) {
   const activeTasks = tasks.filter(t => ACTIVE_STATUSES.includes(t.status as TaskStatus) && t.track !== 'Client Action')
   const clientActionTasks = tasks.filter(t => t.track === 'Client Action' && ACTIVE_STATUSES.includes(t.status as TaskStatus))
-  const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at)).length
+  const overdueCount = activeTasks.filter(t => isOverdue(t.due_date, t.status)).length
   const myQuotas = userQuotas.filter(q => q.user_id === currentUser.id)
 
   return (
@@ -758,7 +756,7 @@ function WorkloadPersonCard({ user, tasks, onTaskClick }: {
   tasks: (Task & { episode: Episode })[]
   onTaskClick: (task: Task & { episode?: Episode }) => void
 }) {
-  const overdue = tasks.filter(t => isOverdue(t.due_date, t.status, t.requires_approval, t.review_started_at))
+  const overdue = tasks.filter(t => isOverdue(t.due_date, t.status))
 
   return (
     <div className="rounded-xl overflow-hidden bg-[#141414]" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -798,7 +796,7 @@ function WorkloadTaskRow({ task, onTaskClick }: {
   task: Task & { episode: Episode }
   onTaskClick: (task: Task & { episode?: Episode }) => void
 }) {
-  const late = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
+  const late = isOverdue(task.due_date, task.status)
   const trackColor = (TRACK_COLORS as Record<string, string>)[task.track] || '#444'
 
   return (
@@ -1249,7 +1247,7 @@ function ReviewTaskCard({ task, onClick, showAssignee = false }: {
   showAssignee?: boolean
 }) {
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
-  const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
+  const overdue = isOverdue(task.due_date, task.status)
 
   return (
     <div
@@ -1329,7 +1327,6 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   onPendingAction?: (label: string, revert: () => void, commit: (silent: boolean) => Promise<void>) => void
 }) {
   const supabase = createClient()
-  const [acting, setActing] = useState(false)
   const [reassignOpen, setReassignOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [commentsOpen, setCommentsOpen] = useState(false)
@@ -1342,7 +1339,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   const [editDraft, setEditDraft] = useState('')
   const [commentHoverId, setCommentHoverId] = useState<string | null>(null)
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
-  const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
+  const overdue = isOverdue(task.due_date, task.status)
   const hoursUntilDue = task.due_date ? differenceInHours(parseDate(task.due_date), new Date()) : null
   const isDueSoon = task.status !== 'in_review' && !overdue && hoursUntilDue !== null && parseDate(task.due_date!).getTime() >= Date.now() && hoursUntilDue <= 24
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS] || '#888'
@@ -1391,25 +1388,7 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.status])
 
-  async function maybePostNote() {
-    if (!noteText.trim() || !nextUserForNote) return
-    const body = `→ ${nextUserForNote.user.name}: ${noteText.trim()}`
-    const { data: comment } = await supabase
-      .from('comments')
-      .insert({ task_id: nextUserForNote.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
-      .select('id').single()
-    if (comment) {
-      fetch('/api/notifications/comment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commentId: comment.id, authorId: currentUser.id,
-          taskId: nextUserForNote.taskId, episodeId: task.episode_id,
-          body, assigneeId: nextUserForNote.user.id,
-        }),
-      }).catch(() => {})
-    }
-  }
+
 
   async function loadComments() {
     const { data } = await supabase
@@ -1634,10 +1613,9 @@ function TaskCard({ task, currentUser, onClick, onUpdate, onReassignToast, onPen
         </div>
         <button
           onClick={handleAction}
-          disabled={acting}
           className="shrink-0 px-3 py-1.5 bg-[#f7931a] hover:bg-[#e07d10] disabled:opacity-50 text-black text-xs font-bold rounded-full transition-colors whitespace-nowrap"
         >
-          {acting ? '...' : getActionLabel(task)}
+          {getActionLabel(task)}
         </button>
       </div>
       {/* Task brief — auto-expanded so the assignee can't miss it */}

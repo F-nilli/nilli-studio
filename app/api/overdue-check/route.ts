@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { compareToWorkspaceToday, cronDedupSinceISO } from '@/lib/utils'
-import { unlockReadyTasks } from '@/lib/unlock'
 
 // This route can be called by a Vercel cron job daily
 // Add to vercel.json: { "crons": [{ "path": "/api/overdue-check", "schedule": "0 9 * * *" }] }

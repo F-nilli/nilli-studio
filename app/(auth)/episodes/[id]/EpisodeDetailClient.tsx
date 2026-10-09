@@ -21,7 +21,7 @@ import { TRACK_COLORS } from '@/lib/constants'
 import { sendNotification, markTaskNotificationsRead } from '@/lib/notifications'
 import { usePendingActions } from '@/lib/usePendingActions'
 import { UndoToastStack } from '@/components/ui/UndoToastStack'
-import { format, parseISO, startOfToday, differenceInDays } from 'date-fns'
+import { format, startOfToday, differenceInDays } from 'date-fns'
 import { Spinner } from '@/components/ui/Spinner'
 import { ReassignDropdown } from '@/components/tasks/ReassignDropdown'
 import { TaskBriefEditor } from '@/components/tasks/TaskBriefEditor'
@@ -60,7 +60,6 @@ function getDownstreamTaskIds(taskId: string, allTasks: Task[]): string[] {
   return result
 }
 
-type SupabaseClientType = ReturnType<typeof createClient>
 
 async function checkAndUnlockDependencies(episodeId: string, silent = false): Promise<{ autoArchived: boolean }> {
   try {
@@ -697,9 +696,6 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
       <div className="w-full md:w-80 md:shrink-0 md:sticky md:top-[76px] md:self-start">
         <CommentPanel
           episodeId={episode.id}
-          episodeClientKey={episode.client_key}
-          episodeGuestName={currentGuestName}
-          episodeClientLabel={episode.client_label}
           allComments={allComments}
           tasks={tasks}
           currentUser={currentUser}
@@ -1229,7 +1225,6 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     ''
 
   const [actionError, setActionError] = useState<string | null>(null)
-  const [sendingBack, setSendingBack] = useState(false)
   const [reassignOpen, setReassignOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [nextUserForNote, setNextUserForNote] = useState<{ user: User; taskId: string } | null>(null)
@@ -1336,25 +1331,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
     }
   }
 
-  async function maybePostNote() {
-    if (!noteText.trim() || !nextUserForNote) return
-    const body = `→ ${nextUserForNote.user.name}: ${noteText.trim()}`
-    const { data: comment } = await supabase
-      .from('comments')
-      .insert({ task_id: nextUserForNote.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
-      .select('id').single()
-    if (comment) {
-      fetch('/api/notifications/comment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commentId: comment.id, authorId: currentUser.id,
-          taskId: nextUserForNote.taskId, episodeId: task.episode_id,
-          body, assigneeId: nextUserForNote.user.id,
-        }),
-      }).catch(() => {})
-    }
-  }
+
 
   function handleStatusAction() {
     const capturedTask = task
@@ -1827,7 +1804,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
                   disabled={actionLoading}
                   className="btn-green flex-1 py-1.5 px-3 disabled:cursor-not-allowed cursor-pointer text-white text-xs font-semibold rounded-lg"
                 >
-                  {actionLoading && !sendingBack ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
+                  {actionLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner />Approving…</span> : 'Approve'}
                 </button>
               </>
             )}

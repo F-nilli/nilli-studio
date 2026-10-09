@@ -57,11 +57,10 @@ interface Toast {
 interface Props {
   user?: User
   collapsed?: boolean
-  onToggle?: () => void
   isMobile?: boolean
 }
 
-export function TopBar({ user, collapsed = false, onToggle, isMobile = false }: Props) {
+export function TopBar({ user, collapsed = false, isMobile = false }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()

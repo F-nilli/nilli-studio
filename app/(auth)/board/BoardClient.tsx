@@ -5,11 +5,10 @@ import { SlidingTabs } from '@/components/motion/WorkflowMotion'
 import { useLiveRefresh } from '@/lib/useLiveRefresh'
 
 import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, AlertCircle, Archive, ExternalLink, MoreHorizontal, Trash2, Search, X, Check, Pencil } from 'lucide-react'
 import { InfoIcon } from '@/components/ui/InfoIcon'
-import { Episode, Task, User, TaskStatus, canCreateProject, canManageClients, canSeeAllEpisodes } from '@/lib/types'
+import { Episode, Task, User, canCreateProject, canManageClients, canSeeAllEpisodes } from '@/lib/types'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn, isOverdue, formatDate } from '@/lib/utils'
 import { differenceInDays, differenceInHours, format, startOfToday } from 'date-fns'
@@ -60,13 +59,7 @@ function getActivePipelineStage(tasks: Task[]): string | null {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
 }
 
-function getActiveStatus(tasks: Task[]): string | null {
-  if (tasks.some(t => t.status === 'revision')) return 'Revision'
-  if (tasks.some(t => t.status === 'in_review')) return 'In Review'
-  if (tasks.some(t => t.status === 'in_progress')) return 'In Progress'
-  if (tasks.every(t => t.status === 'approved' || t.status === 'done')) return 'Complete'
-  return null
-}
+
 
 function DeadlineChip({ daysLeft, releaseDate, releaseTime }: {
   daysLeft: number
@@ -106,56 +99,7 @@ function DeadlineChip({ daysLeft, releaseDate, releaseTime }: {
   )
 }
 
-function CompletionCircle({ filling, filled }: { filling: boolean; filled: boolean }) {
-  const r = 10
-  const circ = 2 * Math.PI * r
-  const [dashOffset, setDashOffset] = useState(circ)
-  const [showCheck, setShowCheck] = useState(false)
 
-  useEffect(() => {
-    if (filling) {
-      setShowCheck(false)
-      setDashOffset(circ)
-      const id = requestAnimationFrame(() => requestAnimationFrame(() => setDashOffset(0)))
-      const checkTimer = setTimeout(() => setShowCheck(true), 400)
-      return () => { cancelAnimationFrame(id); clearTimeout(checkTimer) }
-    }
-  }, [filling])
-
-  useEffect(() => {
-    if (filled) { setDashOffset(0); setShowCheck(true) }
-    else if (!filling) { setDashOffset(circ); setShowCheck(false) }
-  }, [filled])
-
-  const isActive = filling || filled
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" style={{ display: 'block' }}>
-      <circle cx="14" cy="14" r={r} fill={filled ? '#f7931a' : 'transparent'} style={{ transition: 'fill 150ms' }} />
-      <circle cx="14" cy="14" r={r} fill="transparent"
-        stroke={isActive ? '#f7931a' : 'rgba(255,255,255,0.25)'}
-        strokeWidth="2"
-        style={{ transition: 'stroke 200ms' }}
-      />
-      <circle cx="14" cy="14" r={r} fill="transparent"
-        stroke="#f7931a" strokeWidth="2.5"
-        strokeDasharray={`${circ} ${circ}`}
-        strokeDashoffset={dashOffset}
-        strokeLinecap="round"
-        style={{
-          transform: 'rotate(-90deg)',
-          transformOrigin: '14px 14px',
-          transition: filling ? 'stroke-dashoffset 600ms ease-in-out' : 'none',
-          opacity: filling && !filled ? 1 : 0,
-        }}
-      />
-      {showCheck && (
-        <path d="M9 14.5l3 3 7-7" stroke={filled ? '#000' : '#f7931a'}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"
-        />
-      )}
-    </svg>
-  )
-}
 
 export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedEpisodes: initialPublished, memberFilterId }: Props) {
   useLiveRefresh()
@@ -171,7 +115,7 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
   const [circleCompletedIds, setCircleCompletedIds] = useState<Set<string>>(new Set())
   const [circleFadingIds, setCircleFadingIds] = useState<Set<string>>(new Set())
   const [circleArchivedIds, setCircleArchivedIds] = useState<Set<string>>(new Set())
-  const [circleWarningId, setCircleWarningId] = useState<string | null>(null)
+  const [, setCircleWarningId] = useState<string | null>(null)
   const [circleUndoInfo, setCircleUndoInfo] = useState<{
     id: string
     guestName: string
@@ -674,8 +618,6 @@ export function BoardClient({ currentUser, episodes, tasks, allUsers, publishedE
           const isCompleting = circleCompletingId === ep.id
           const isCompleted = circleCompletedIds.has(ep.id)
           const isFadingOut = circleFadingIds.has(ep.id)
-          const isWarning = circleWarningId === ep.id
-          const incompleteCount = ep.tasks.filter(t => !['done', 'approved'].includes(t.status)).length
           const circleActive = isCompleting || isCompleted || isFadingOut
 
           return (
@@ -1020,7 +962,6 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
   onTogglePublish: (id: string, publish: boolean) => void
   onDeleteEpisodes: (ids: string[]) => void
 }) {
-  const supabase = createClient()
   const canPublish = canManageClients(currentUser)
   const canDelete = currentUser.role === 'admin'
 
@@ -1094,7 +1035,6 @@ function ArchiveTab({ publishedEpisodes, currentUser, onTogglePublish, onDeleteE
   const totalAll = publishedEpisodes.length
   const totalVisible = filteredPublished.length
   const selectionCount = selectedIds.size
-  const hasSearchFilter = search.trim() !== ''
 
   function toggleSelection(id: string) {
     setSelectedIds(prev => {

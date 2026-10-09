@@ -84,9 +84,6 @@ function renderBody(body: string): React.ReactNode[] {
 
 interface Props {
   episodeId: string
-  episodeClientKey: string
-  episodeGuestName: string
-  episodeClientLabel: string
   allComments: Comment[]
   tasks: Task[]
   currentUser: User
@@ -105,9 +102,6 @@ interface Props {
 
 export function CommentPanel({
   episodeId,
-  episodeClientKey,
-  episodeGuestName,
-  episodeClientLabel,
   allComments,
   tasks,
   currentUser,
