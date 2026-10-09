@@ -1,5 +1,7 @@
 'use client'
 
+import { useBatchedRefresh } from '@/lib/useBatchedRefresh'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Bell, CheckCircle, RotateCcw, Clock, LockOpen, Check } from 'lucide-react'
@@ -35,21 +37,23 @@ export function NotificationDrawer({ user, onClose }: Props) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
 
+  const scheduleRefresh = useBatchedRefresh(fetchNotifications, user?.id)
+
   useEffect(() => {
-    fetchNotifications()
+    scheduleRefresh()
     const channel = supabase
       .channel(`notif-drawer-${user.id}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'notifications',
         filter: `user_id=eq.${user.id}`,
-      }, () => fetchNotifications())
+      }, scheduleRefresh)
       // UPDATE fires when notifications are auto-marked as read (e.g. after
       // the user takes action on the related task). Re-fetch so the drawer
       // reflects the cleared status without requiring a manual refresh.
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'notifications',
         filter: `user_id=eq.${user.id}`,
-      }, () => fetchNotifications())
+      }, scheduleRefresh)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
