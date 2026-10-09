@@ -49,8 +49,6 @@ interface DepTaskInfo {
 
 export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPendingAction }: Props) {
   const supabase = createClient()
-  const [updatingStatus, setUpdatingStatus] = useState(false)
-  const [sendingBack, setSendingBack] = useState(false)
   const [noteText, setNoteText] = useState('')         // note for approve / submit action
   const [sendBackDate, setSendBackDate] = useState('')
   const [sendBackNote, setSendBackNote] = useState('') // note for send back action (→ assignee)
@@ -78,7 +76,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
   const isReviewer = task.requires_approval
     ? (currentUser.id === task.approver_id || currentUser.role === 'admin')
     : false
-  const overdue = isOverdue(task.due_date, task.status, task.requires_approval, task.review_started_at)
+  const overdue = isOverdue(task.due_date, task.status)
   const trackColor = TRACK_COLORS[task.track as keyof typeof TRACK_COLORS]
   const nextStatus = NEXT_STATUS[task.status]
   const canAction = isAssignee && nextStatus !== undefined
@@ -244,46 +242,9 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
     setReverting(false)
   }
 
-  async function maybePostSendBackNote() {
-    if (!sendBackNote.trim() || !task.assignee || task.assignee_id === currentUser.id) return
-    const assignee = task.assignee as User
-    const body = `→ ${assignee.name}: ${sendBackNote.trim()}`
-    const { data: comment } = await supabase
-      .from('comments')
-      .insert({ task_id: task.id, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
-      .select('id').single()
-    if (comment) {
-      fetch('/api/notifications/comment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commentId: comment.id, authorId: currentUser.id,
-          taskId: task.id, episodeId: task.episode_id,
-          body, assigneeId: task.assignee_id,
-        }),
-      }).catch(() => {})
-    }
-  }
 
-  async function maybePostNote() {
-    if (!noteText.trim() || !nextUserForNote) return
-    const body = `→ ${nextUserForNote.user.name}: ${noteText.trim()}`
-    const { data: comment } = await supabase
-      .from('comments')
-      .insert({ task_id: nextUserForNote.taskId, episode_id: task.episode_id, author_id: currentUser.id, body, internal: false })
-      .select('id').single()
-    if (comment) {
-      fetch('/api/notifications/comment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commentId: comment.id, authorId: currentUser.id,
-          taskId: nextUserForNote.taskId, episodeId: task.episode_id,
-          body, assigneeId: nextUserForNote.user.id,
-        }),
-      }).catch(() => {})
-    }
-  }
+
+
 
   async function updateStatus(newStatus: TaskStatus) {
     const resolvedStatus: TaskStatus =

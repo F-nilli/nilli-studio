@@ -38,7 +38,6 @@ export default async function EpisodeDetailPage({
     if (!involved) notFound()
   }
 
-  const taskIds = (tasksRes.data || []).map(t => t.id)
 
   const { data: commentsData } = await supabase
     .from('comments')

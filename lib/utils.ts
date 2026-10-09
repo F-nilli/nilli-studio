@@ -100,8 +100,6 @@ export function roundToHour(value: string): string {
 export function isOverdue(
   dueDate: string | null,
   status: TaskStatus,
-  requiresApproval?: boolean,
-  reviewStartedAt?: string | null,
 ): boolean {
   if (status === 'approved' || status === 'done' || status === 'in_review') return false
   // Submission pauses the assignee deadline, including late submissions.

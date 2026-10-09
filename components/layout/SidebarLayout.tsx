@@ -71,7 +71,7 @@ export function SidebarLayout({ user: initialUser, children }: { user: User; chi
             transition: mounted && !isMobile ? 'margin-left 200ms' : 'none',
           }}
         >
-          <TopBar user={currentUser} collapsed={collapsed} onToggle={handleToggle} isMobile={isMobile} />
+          <TopBar user={currentUser} collapsed={collapsed} isMobile={isMobile} />
           <main className="flex-1 px-4 md:px-8 py-4 md:py-8 max-w-[1400px] w-full mx-auto overflow-x-clip pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8">
             <div key={pathname} className="min-h-full">
               {children}

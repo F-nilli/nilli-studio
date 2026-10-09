@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // Revoke a key. Soft-delete (sets revoked_at) rather than deleting the row,
 // so last_used_at / created_at history survives and the same secret can
 // never silently start working again.
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   const supabase = await createClient()
