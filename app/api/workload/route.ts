@@ -80,8 +80,8 @@ export async function GET(req: NextRequest) {
 
   // 6-month trend
   const trendMonths = Array.from({ length: 6 }, (_, i) => subMonths(monthDate, 5 - i))
-  const trend = await Promise.all(trendMonths.map(async m => {
-    const { completed, reviewed } = await getMonthMetrics(m)
+  const trend = await Promise.all(trendMonths.map(async (m, index) => {
+    const { completed, reviewed } = index === trendMonths.length - 1 ? current : await getMonthMetrics(m)
     return { label: format(m, 'MMM'), month: format(m, 'yyyy-MM'), completed, reviewed }
   }))
 
