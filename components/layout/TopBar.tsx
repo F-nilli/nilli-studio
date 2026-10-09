@@ -1,5 +1,7 @@
 'use client'
 
+import { useBatchedRefresh } from '@/lib/useBatchedRefresh'
+
 import { PanelPresence, CountMotion } from '@/components/motion/WorkflowMotion'
 
 import { useState, useEffect, useRef } from 'react'
@@ -108,24 +110,26 @@ export function TopBar({ user, collapsed = false, isMobile = false }: Props) {
   const isIdleRef = useRef(false)
   const lastSeenWriteRef = useRef<number>(0)
 
+  const scheduleRefresh = useBatchedRefresh(fetchCounts, user?.id)
+
   // ── Badge counts ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return
-    fetchCounts()
+    scheduleRefresh()
     const channel = supabase
       .channel(`topbar-badges-${user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, () => {
         setTaskNotifCount(c => c + 1)
         playCoinSound()
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, scheduleRefresh)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, () => {
         setMsgNotifCount(c => c + 1)
         playCoinSound()
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, fetchCounts)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, scheduleRefresh)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_notifications', filter: `user_id=eq.${user.id}` }, scheduleRefresh)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [user?.id])
@@ -140,8 +144,8 @@ export function TopBar({ user, collapsed = false, isMobile = false }: Props) {
     setMsgNotifCount(msgRes.count ?? 0)
   }
 
-  function handleCloseNotifDrawer() { setShowNotifDrawer(false); fetchCounts() }
-  function handleCloseMsgDrawer() { setShowMsgDrawer(false); fetchCounts() }
+  function handleCloseNotifDrawer() { setShowNotifDrawer(false); scheduleRefresh() }
+  function handleCloseMsgDrawer() { setShowMsgDrawer(false); scheduleRefresh() }
 
   // ── Animated placeholder ──────────────────────────────────────────────────
   useEffect(() => {

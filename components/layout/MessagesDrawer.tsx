@@ -1,5 +1,7 @@
 'use client'
 
+import { useBatchedRefresh } from '@/lib/useBatchedRefresh'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, MessageSquare } from 'lucide-react'
@@ -36,6 +38,8 @@ export function MessagesDrawer({ user, onClose }: Props) {
   const [messages, setMessages] = useState<MessageNotification[]>([])
   const [loading, setLoading] = useState(true)
 
+  const scheduleRefresh = useBatchedRefresh(fetchMessages, user?.id)
+
   useEffect(() => {
     fetchMessages().then(markAllReadDB)
     const channel = supabase
@@ -43,7 +47,7 @@ export function MessagesDrawer({ user, onClose }: Props) {
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'message_notifications',
         filter: `user_id=eq.${user.id}`,
-      }, () => fetchMessages())
+      }, scheduleRefresh)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
