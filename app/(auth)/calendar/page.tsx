@@ -17,7 +17,8 @@ export default async function CalendarPage() {
     const [tasksRes, episodesRes] = await Promise.all([
       supabase
         .from('tasks')
-        .select('*, assignee:users!assignee_id(*), episode:episodes(*)')
+        .select('*, assignee:users!assignee_id(*), episode:episodes!inner(*)')
+        .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
         .not('due_date', 'is', null)
         .order('due_date', { ascending: true }),
       supabase
@@ -44,7 +45,8 @@ export default async function CalendarPage() {
   // Member: need task list first to derive episode IDs
   const { data: tasksData } = await supabase
     .from('tasks')
-    .select('*, assignee:users!assignee_id(*), episode:episodes(*)')
+    .select('*, assignee:users!assignee_id(*), episode:episodes!inner(*)')
+    .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
     .not('due_date', 'is', null)
     .eq('assignee_id', user.id)
     .order('due_date', { ascending: true })

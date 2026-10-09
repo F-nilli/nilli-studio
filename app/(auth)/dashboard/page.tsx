@@ -36,7 +36,8 @@ export default async function DashboardPage() {
     // here automatically because revision isn't excluded.
     supabase
       .from('tasks')
-      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+      .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes!inner(*)')
+      .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
       .eq('assignee_id', user.id)
       .neq('status', 'done')
       .neq('status', 'approved')
@@ -47,14 +48,16 @@ export default async function DashboardPage() {
     currentUser.role === 'admin'
       ? supabase
           .from('tasks')
-          .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+          .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes!inner(*)')
+          .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
           .eq('status', 'in_review')
           .eq('requires_approval', true)
           .neq('assignee_id', user.id)
           .order('due_date', { ascending: true, nullsFirst: false })
       : supabase
           .from('tasks')
-          .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+          .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes!inner(*)')
+          .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
           .eq('status', 'in_review')
           .eq('requires_approval', true)
           .neq('assignee_id', user.id)
@@ -106,13 +109,15 @@ export default async function DashboardPage() {
     const [atRiskByDateRes, atRiskInReviewRes, upcomingRes, teamTasksRes, allUsersRes] = await Promise.all([
       supabase
         .from('tasks')
-        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes!inner(*)')
+        .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
         .in('status', ['ready', 'in_progress', 'revision'])
         .lt('due_date', now.toISOString())
         .order('due_date', { ascending: true }),
       supabase
         .from('tasks')
-        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes!inner(*)')
+        .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
         .eq('status', 'in_review')
         .eq('requires_approval', true)
         .lt('review_started_at', twelveHoursAgo)
@@ -127,7 +132,8 @@ export default async function DashboardPage() {
       // All active team tasks for workload view
       supabase
         .from('tasks')
-        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes(*)')
+        .select('*, assignee:users!assignee_id(*), approver:users!approver_id(*), episode:episodes!inner(*)')
+        .or('archived.eq.false,archived.is.null', { referencedTable: 'episode' })
         .in('status', ['in_progress', 'in_review', 'revision'])
         .order('due_date', { ascending: true, nullsFirst: false }),
       // All users for workload headers
