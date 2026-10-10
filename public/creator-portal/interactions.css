@@ -1,0 +1,19 @@
+/* Francis-approved Transitions.dev recipes. Shared by staff, creator and brand surfaces. */
+:root{--toggle-dur:350ms;--toggle-travel:14.66px;--toggle-ov1:1px;--toggle-ov2:0px;--toggle-track:0ms;--toggle-ease:cubic-bezier(.34,1.35,.64,1);--tabs-dur:250ms;--tabs-ease:cubic-bezier(.22,1,.36,1)}
+.t-toggle{position:relative;display:inline-flex;flex-shrink:0;vertical-align:middle;width:36.66px;height:22px;border-radius:30px;background:#383838;transition:background var(--toggle-track) var(--toggle-ease);cursor:pointer}
+.t-toggle:has(input:checked){background:#ff3c00}.t-toggle input[type=checkbox]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;margin:0!important;cursor:inherit;z-index:2}.t-toggle:has(input:focus-visible){outline:2px solid #ff815b;outline-offset:3px}.t-toggle:has(input:disabled){opacity:.45;cursor:not-allowed}
+.t-toggle-thumb{position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:white;translate:0 0;pointer-events:none;will-change:translate}
+.t-toggle:has(input:checked) .t-toggle-thumb{translate:var(--toggle-travel) 0}
+.t-toggle.is-init:has(input:checked) .t-toggle-thumb{animation:t-toggle-on var(--toggle-dur) var(--toggle-ease) both}.t-toggle.is-init:has(input:not(:checked)) .t-toggle-thumb{animation:t-toggle-off var(--toggle-dur) var(--toggle-ease) both}
+@keyframes t-toggle-on{0%{translate:0 0}55%{translate:calc(var(--toggle-travel) + var(--toggle-ov1)) 0}80%{translate:calc(var(--toggle-travel) - var(--toggle-ov2)) 0}100%{translate:var(--toggle-travel) 0}}
+@keyframes t-toggle-off{0%{translate:var(--toggle-travel) 0}55%{translate:calc(0px - var(--toggle-ov1)) 0}80%{translate:var(--toggle-ov2) 0}100%{translate:0 0}}
+.t-tabs,.motion-tabs{position:relative;isolation:isolate;gap:3px;padding:3px;border-radius:48px;background:#141414;flex-wrap:nowrap!important;max-width:100%;overflow-x:auto}
+.t-tabs>[role=tab],.motion-tabs>button{position:relative;z-index:1;border-radius:48px;background:transparent!important;border-color:transparent!important;white-space:nowrap;transition:color var(--tabs-dur) var(--tabs-ease)}
+.t-tabs-pill,.motion-tab-pill{position:absolute;left:0;top:0;z-index:0;pointer-events:none;border-radius:48px;background:#ff3c00;transition:transform var(--tabs-dur) var(--tabs-ease),width var(--tabs-dur) var(--tabs-ease)}
+.t-success-check{display:inline-block;transform-origin:center;opacity:0;will-change:transform,opacity,filter}.t-success-check svg{display:block;overflow:visible;width:16px;height:16px}.t-success-check svg path{stroke-dasharray:20;stroke-dashoffset:20}
+.t-success-check[data-state=in]{animation:t-check-fade 500ms cubic-bezier(.22,1,.36,1) forwards,t-check-rotate 500ms cubic-bezier(.22,1,.36,1) forwards,t-check-blur 500ms cubic-bezier(.22,1,.36,1) forwards,t-check-bob 500ms cubic-bezier(.34,1.35,.64,1) forwards}
+.t-success-check[data-state=in] svg path{animation:t-check-draw 500ms cubic-bezier(.22,1,.36,1) 80ms forwards}
+@keyframes t-check-fade{from{opacity:0}to{opacity:1}}@keyframes t-check-rotate{from{transform:rotate(80deg)}to{transform:rotate(0)}}@keyframes t-check-blur{from{filter:blur(10px)}to{filter:blur(0)}}@keyframes t-check-bob{from{translate:0 40px}to{translate:0 0}}@keyframes t-check-draw{to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.t-toggle-thumb,.t-success-check,.t-success-check svg path{animation:none!important}.t-tabs-pill,.motion-tab-pill,.t-tab{transition:none!important}.t-success-check[data-state=in]{opacity:1}.t-success-check[data-state=in] svg path{stroke-dashoffset:0}}
+
+.t-tabs [aria-selected=true],.motion-tabs [data-motion-active=true]{color:#fff!important}

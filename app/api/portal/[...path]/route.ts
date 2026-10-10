@@ -1,4 +1,4 @@
-import {sponsorshipData,mutateSponsorship} from '@/lib/portal/sponsorships'
+import {sponsorshipData,mutateSponsorship,projectSponsorshipSettings} from '@/lib/portal/sponsorships'
 import {clientPackage,savePackage} from '@/lib/portal/packages'
 import {displayRates} from '@/lib/portal/rates'
 import {projectFeed,saveProject} from '@/lib/portal/production'
@@ -39,7 +39,18 @@ async function route(r:Request){
  }
  // Admin-only rollout: creator and public endpoints remain closed until explicitly released.
  if(path==='opportunity')throw new PortalError(404,'Opportunity is not available.');
- if(path==='sponsorships')throw new PortalError(403,'Sponsorships are currently available to Nilli admins only.');
+ if(path==='sponsorships'&&(method==='GET'||method==='POST')){
+  const {account,preview}=await creator(r);
+  const {data:c,error}=await db().from('portal_clients').select('content_nascar').eq('id',account.client_id).single();check(error);
+  if(!c?.content_nascar)throw new PortalError(403,'Content NASCAR is not enabled for this creator.');
+  if(method==='POST'){
+   if(preview)throw new PortalError(403,'Creator preview is read-only.');
+   if(r.headers.get('origin')!==required('PORTAL_ORIGIN'))throw new PortalError(403,'Origin not permitted.');
+   const raw=await r.text();if(raw.length>32000)throw new PortalError(413,'Payload too large.');
+   return json(await mutateSponsorship(account.client_id,account.creator_user_id,false,JSON.parse(raw)));
+  }
+  return json(await sponsorshipData(account.client_id));
+ }
  if(path==='package'&&method==='GET'){const {account}=await creator(r);return json({package:await clientPackage(account.client_id)});}
  if(path==='rates'&&method==='GET'){await creator(r);return json(await displayRates());}
  if(path==='production'&&method==='GET'){const {account}=await creator(r);const section=u.searchParams.get('section')||'home';if(section==='all')throw new PortalError(400,'Invalid project page.');return json(await projectFeed(account.client_id,section,Number(u.searchParams.get('offset')||0)));}
@@ -48,13 +59,15 @@ async function route(r:Request){
   const {data:sync,error:e}=await db().from('portal_connections').select('last_success_at,last_error,state').eq('scope',qboScope()).maybeSingle();check(e);
   const history=await manualList(account.id);
   const invoices=[...(data||[]).map(i=>({...i,source:'qbo'})),...history.map(i=>({...i,qbo_id:'manual_'+i.id,source:'manual'}))].sort((a,b)=>(b.invoice_date||'').localeCompare(a.invoice_date||'')||String(a.qbo_id).localeCompare(String(b.qbo_id)));
-  return json({account:{id:account.id,client:account.clients,paymentUrl:account.payment_url||null,billingMode:account.qbo_customer_id?'qbo':'manual'},preview,invoices:invoices.map(i=>({...i,status:invoiceStatus(i,new Date().toISOString().slice(0,10))})),sync:{lastSuccessAt:sync?.last_success_at||null,needsAttention:!!sync?.last_error,connected:sync?.state==='connected'}});
+  const {data:program,error:programError}=await db().from('portal_clients').select('content_nascar').eq('id',account.client_id).single();check(programError);
+  return json({contentNascar:program?.content_nascar===true,account:{id:account.id,client:account.clients,paymentUrl:account.payment_url||null,billingMode:account.qbo_customer_id?'qbo':'manual'},preview,invoices:invoices.map(i=>({...i,status:invoiceStatus(i,new Date().toISOString().slice(0,10))})),sync:{lastSuccessAt:sync?.last_success_at||null,needsAttention:!!sync?.last_error,connected:sync?.state==='connected'}});
  }
  if(path.startsWith('invoice/')&&method==='GET'){
   const {account}=await creator(r);const id=path.slice(8);if(id.startsWith('manual_'))return NextResponse.redirect(await manualDownload(account.id,id.slice(7)),302);if(!/^\d+$/.test(id))throw new PortalError(400,'Invalid invoice ID.');const bytes=await invoicePdf(account.id,id);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="invoice-${id}.pdf"`,...privateHeaders}});
  }
  if(path.startsWith('admin/')){
   const user=await staff();if(method==='POST')sameOrigin(r);
+  if(path==='admin/project-sponsorship'&&method==='GET')return json(await projectSponsorshipSettings(u.searchParams.get('client_id')||'',u.searchParams.get('template')||'Default'));
   if(path==='admin/sponsorship-access'&&method==='GET'){await sponsorshipAdmin();return json({ok:true});}
   if(path==='admin/sponsorships'&&(method==='GET'||method==='POST')){
    await sponsorshipAdmin();

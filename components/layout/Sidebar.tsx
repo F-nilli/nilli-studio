@@ -40,6 +40,7 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
     { href: '/board', label: 'Project Board', icon: Layers2 },
     { href: '/calendar', label: 'Calendar', icon: Calendar },
     ...(canAccessSettings(user) ? [{ href: '/portal-admin', label: 'Creator portals', icon: UserIcon }] : []),
+    ...(user.role==='admin' ? [{href:'/sponsorships',label:'Sponsorships',icon:Layers2}] : []),
     ...(canAccessAnalytics(user) ? [{ href: '/analytics', label: 'Analytics', icon: BarChart2 }] : []),
   ]
 

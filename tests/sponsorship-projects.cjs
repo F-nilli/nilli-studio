@@ -1,0 +1,32 @@
+const {PGlite}=require('@electric-sql/pglite'),fs=require('node:fs'),assert=require('node:assert/strict');
+const c='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002',production='00000000-0000-4000-8000-000000000003',episode='00000000-0000-4000-8000-000000000004',ep2='00000000-0000-4000-8000-000000000005';
+const placements=[{key:'watermark_full',price:300,currency:'USD',capacity:1,requirements:''}];
+const brief={open:true,topic:'Bitcoin',guest:'Guest',duration:60,description:'Sponsor fit',deadline:'2099-10-09'};
+(async()=>{const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role;
+create table portal_clients(id uuid primary key,active boolean default true);
+create table episodes(id uuid primary key,guest_name text,release_date date);
+create table portal_episode_origins(episode_id uuid primary key references episodes(id) on delete cascade,production_client_id uuid,template_name text);
+create table portal_client_templates(portal_client_id uuid references portal_clients(id),production_client_id uuid,template_name text,unique(production_client_id,template_name));`);
+await db.exec(fs.readFileSync('supabase/migration_portal_sponsorships.sql','utf8'));
+const migration=fs.readFileSync('supabase/migration_sponsorship_projects.sql','utf8');await db.exec(migration);await db.exec(migration);
+await db.query('insert into portal_clients(id) values($1),($2)',[c,other]);await db.query('insert into portal_client_templates values($1,$2,$3)',[c,production,'Default']);
+const mutate=(p,staff=false,client=c)=>db.query('select portal_sponsor_mutate($1,$2,$3,$4)',[client,'test',staff,JSON.stringify(p)]);
+const seed=(id,b=null)=>db.query('select portal_seed_sponsorship($1,$2,$3)',[id,'test',b&&JSON.stringify(b)]);
+const add=async(id)=>{await db.query("insert into episodes values($1,'Episode','2099-10-10')",[id]);await db.query("insert into portal_episode_origins values($1,$2,'Default')",[id,production])};
+await add(episode);await seed(episode);assert.equal((await db.query('select count(*) from portal_sponsor_opportunities')).rows[0].count,0);
+await assert.rejects(seed(episode,brief));await assert.rejects(mutate({action:'program',enabled:true}));
+await mutate({action:'program',enabled:true},true);await mutate({action:'menu',version:0,placements,open_by_default:true});
+await seed(episode);await seed(episode);let o=(await db.query('select * from portal_sponsor_opportunities')).rows[0];assert.equal(o.accepting_requests,true);assert.equal(o.status,'draft');assert.equal(o.placements[0].price,300);assert.equal((await db.query('select count(*) from portal_sponsor_opportunities')).rows[0].count,1);
+await assert.rejects(mutate({action:'submit',id:o.id,version:o.version},true)); // incomplete auto-created brief
+await assert.rejects(mutate({action:'save',id:o.id,version:o.version,details:{},placements},false));
+await mutate({action:'menu',version:1,placements:[{...placements[0],price:500}],open_by_default:false});assert.equal((await db.query('select accepting_requests from portal_sponsor_opportunities')).rows[0].accepting_requests,true);
+await add(ep2);await seed(ep2,brief);let second=(await db.query('select * from portal_sponsor_opportunities where episode_id=$1',[ep2])).rows[0];assert.equal(second.accepting_requests,true);assert.equal(second.placements[0].price,500); // explicit episode override
+await assert.rejects(mutate({action:'availability',id:second.id,version:1,enabled:false},false,other));
+await mutate({action:'availability',id:second.id,version:1,enabled:false});await assert.rejects(mutate({action:'availability',id:second.id,version:1,enabled:true}));
+await mutate({action:'submit',id:second.id,version:2},true);await mutate({action:'approve',id:second.id,version:3},true);
+const request={action:'request',id:second.id,placement_key:'watermark_full',brand:'Brand',email:'test@example.com',intake_key:'00000000-0000-4000-8000-000000000006'};
+await assert.rejects(mutate(request,true));await mutate({action:'availability',id:second.id,version:4,enabled:true});await mutate(request,true);
+let req=(await db.query('select * from portal_sponsor_requests')).rows[0];await assert.rejects(mutate({action:'confirm',id:second.id,request_id:req.id},true));await mutate({action:'confirm',id:second.id,request_id:req.id});
+await db.query('delete from episodes where id=$1',[ep2]);assert.equal((await db.query('select * from portal_sponsor_requests')).rows[0].status,'confirmed');assert.equal((await db.query('select episode_id from portal_sponsor_opportunities where id=$1',[second.id])).rows[0].episode_id,null);
+await db.exec('set role authenticated');await assert.rejects(seed(episode,brief));await db.exec('reset role');await db.close();console.log('PASS: enrollment, default snapshots, per-episode overrides, draft review gate, tenant isolation, stale edits, creator acceptance, retained booking history, migration rerun and service-only seeding.');
+})().catch(e=>{console.error(e);process.exit(1)});

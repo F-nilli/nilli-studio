@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "../public/creator-portal/interactions.css";
 import { ServiceWorkerRegistration } from "@/components/ui/ServiceWorkerRegistration";
 import { PushPermissionPrompt } from "@/components/ui/PushPermissionPrompt";
 

@@ -1,4 +1,5 @@
 'use client'
+import {Toggle} from '@/components/motion/Toggle'
 
 import { completionStatus } from '@/lib/taskCompletion'
 import { withSaveMotion } from '@/lib/saveMotion'
@@ -648,8 +649,7 @@ export function TaskModal({ task, currentUser, onClose, onUpdate, episode, onPen
                   <div className="space-y-1.5">
                     {completedDeps.map(dt => (
                       <label key={dt.id} className="flex items-center gap-2.5 cursor-pointer group">
-                        <input
-                          type="checkbox"
+                        <Toggle
                           checked={clientChangesTaskIds.includes(dt.id)}
                           onChange={() => setClientChangesTaskIds(prev =>
                             prev.includes(dt.id) ? prev.filter(id => id !== dt.id) : [...prev, dt.id]

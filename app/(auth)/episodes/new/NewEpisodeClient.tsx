@@ -1,4 +1,5 @@
 'use client'
+import {SponsorshipBrief,type Brief} from '@/components/motion/SponsorshipBrief'
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -54,6 +55,8 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
   const [releaseDate, setReleaseDate] = useState('')
   const [footageUrl, setFootageUrl] = useState('')
   const [notes, setNotes] = useState('')
+  const [sponsorship,setSponsorship]=useState<Brief|null>(null)
+  const [sponsorshipReady,setSponsorshipReady]=useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [taskDueDates, setTaskDueDates] = useState<Record<number, string>>({})
@@ -147,7 +150,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedClient) return
+    if (!selectedClient || !sponsorshipReady) return
     setError('')
     setLoading(true)
 
@@ -160,6 +163,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId,
+          sponsorship,
           guestName,
           releaseDate: releaseDate.slice(0, 10),
           releaseTime: releaseDate.length >= 13 ? releaseDate.slice(11, 16) : null,
@@ -334,6 +338,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               />
             </div>
 
+            <SponsorshipBrief clientId={clientId} template={selectedTemplateName} releaseDate={releaseDate} onChange={setSponsorship} onStatus={setSponsorshipReady}/>
             {/* Reference Images */}
             <div>
               <label className="block text-base font-medium text-[#ccc] mb-1">
@@ -456,7 +461,7 @@ export function NewEpisodeClient({ currentUser, allUsers, clients, templates }: 
               <Link href="/board" className="flex-1 py-2.5 px-4 border border-[#2e2e2e] text-[#ccc] font-medium rounded-lg text-base text-center hover:bg-[#1e1e1e] transition-colors">
                 Cancel
               </Link>
-              <button type="submit" disabled={loading}
+              <button type="submit" disabled={loading || !sponsorshipReady}
                 className="flex-1 py-2.5 px-4 bg-[#ff3c00] hover:bg-[#e63600] disabled:opacity-50 text-white font-semibold rounded-lg text-base transition-colors"
               >
                 {loading ? 'Creating...' : 'Create Project'}

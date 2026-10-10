@@ -1,4 +1,5 @@
 'use client'
+import {Toggle} from '@/components/motion/Toggle'
 
 import { ResizeMotion } from '@/components/motion/WorkflowMotion'
 import { completionStatus } from '@/lib/taskCompletion'
@@ -554,8 +555,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                 >
                   <DateHourPicker value={editReleaseDraft} onChange={setEditReleaseDraft} />
                   <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
+                    <Toggle
                       checked={adjustDeadlines}
                       onChange={e => setAdjustDeadlines(e.target.checked)}
                       className="w-4 h-4 rounded accent-[#f7931a] cursor-pointer"
@@ -563,8 +563,7 @@ export function EpisodeDetailClient({ currentUser, episode, initialTasks, taskCo
                     <span className="text-[13px] text-[#ccc]">Adjust task deadlines automatically</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
+                    <Toggle
                       checked={notifyUsers}
                       onChange={e => setNotifyUsers(e.target.checked)}
                       className="w-4 h-4 rounded accent-[#f7931a] cursor-pointer"
@@ -1871,8 +1870,7 @@ function TrackTaskCard({ task, allTasks, isSelected, isExpanded, isRecentlyUnloc
             <div className="space-y-1.5">
               {depTasks.map(dt => (
                 <label key={dt.id} className="flex items-center gap-2.5 cursor-pointer group">
-                  <input
-                    type="checkbox"
+                  <Toggle
                     checked={clientChangesTaskIds.includes(dt.id)}
                     onChange={() => setClientChangesTaskIds(prev =>
                       prev.includes(dt.id) ? prev.filter(id => id !== dt.id) : [...prev, dt.id]
