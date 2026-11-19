@@ -290,9 +290,14 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
     }
 
     if (action === 'deactivate') {
-      const { error } = await supabase.from('users').update({ active: false }).eq('id', user.id)
-      if (error) {
-        showToast('Failed to deactivate user. Please try again.', true)
+      const res = await fetch(`/api/admin/users/${user.id}/active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: false }),
+      })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: null }))
+        showToast(error || 'Failed to deactivate user. Please try again.', true)
       } else {
         setUsers(prev => prev.map(u => u.id === user.id ? { ...u, active: false } : u))
         showToast(`${user.name} has been deactivated`)
@@ -313,9 +318,13 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
 
   async function handleReactivate(userId: string) {
     setActionLoading(userId + '-reactivate')
-    const { error } = await supabase.from('users').update({ active: true }).eq('id', userId)
+    const res = await fetch(`/api/admin/users/${userId}/active`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: true }),
+    })
     setActionLoading(null)
-    if (error) {
+    if (!res.ok) {
       showToast('Failed to reactivate user.', true)
     } else {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, active: true } : u))

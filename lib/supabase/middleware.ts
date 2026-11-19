@@ -63,9 +63,25 @@ export async function updateSession(request: NextRequest) {
   if (user) {
     const { data: profile } = await supabase
       .from('users')
-      .select('password_changed')
+      .select('password_changed, active')
       .eq('id', user.id)
       .single()
+
+    // Deactivated users lose access immediately: sign them out (revoking their
+    // refresh tokens) and send them to login, where the Auth ban set by
+    // /api/admin/users/[id]/active stops them signing back in.
+    if (profile?.active === false) {
+      await supabase.auth.signOut()
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = ''
+      const redirect = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach(c => redirect.cookies.set(c))
+      request.cookies.getAll()
+        .filter(c => c.name.startsWith('sb-'))
+        .forEach(c => redirect.cookies.delete(c.name))
+      return redirect
+    }
 
     const passwordChanged = profile?.password_changed ?? true
 
