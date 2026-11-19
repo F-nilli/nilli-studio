@@ -51,7 +51,10 @@ function formatLastSeen(lastSeenAt: string | null | undefined): { label: string;
 interface ActionTarget {
   user: User
   action: 'deactivate' | 'delete'
-  tasks: { id: string; label: string }[]
+  tasks: { id: string; label: string; episodeName: string }[]
+  // Template slots still pointing at this user: future episodes would be
+  // created with tasks assigned to them.
+  templateSlots: number
 }
 
 interface Props {
@@ -152,7 +155,6 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
   const [onlineStatus, setOnlineStatus] = useState<Record<string, PresenceStatus>>({})
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null)
   const [reassigneeId, setReassigneeId] = useState('')
-  const [updateTemplates, setUpdateTemplates] = useState(true)
   const [modalLoading, setModalLoading] = useState(false)
 
   // Re-render every minute so relative timestamps stay accurate
@@ -260,18 +262,36 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
 
   async function openActionModal(user: User, action: 'deactivate' | 'delete') {
     setReassigneeId('')
-    setUpdateTemplates(true)
-    const { data: tasks } = await supabase
-      .from('tasks')
-      .select('id, label')
-      .eq('assignee_id', user.id)
-      .in('status', ['in_progress', 'in_review', 'revision'])
-    setActionTarget({ user, action, tasks: tasks ?? [] })
+    // Only unfinished tasks on live episodes matter. Archived/published
+    // episodes are history and keep the person's name. Locked tasks are
+    // included: they would otherwise unlock later, assigned to someone gone.
+    const [{ data: tasks }, { count: templateSlots }] = await Promise.all([
+      supabase
+        .from('tasks')
+        .select('id, label, live_episode:episodes!inner(guest_name, client_label)')
+        .eq('assignee_id', user.id)
+        .in('status', ['locked', 'in_progress', 'in_review', 'revision'])
+        .eq('live_episode.archived', false)
+        .is('live_episode.published_at', null),
+      supabase
+        .from('task_templates')
+        .select('id', { count: 'exact', head: true })
+        .eq('assignee_id', user.id),
+    ])
+    setActionTarget({
+      user,
+      action,
+      tasks: (tasks ?? []).map(t => {
+        const ep = (Array.isArray(t.live_episode) ? t.live_episode[0] : t.live_episode) as { guest_name?: string; client_label?: string } | null
+        return { id: t.id, label: t.label, episodeName: [ep?.client_label, ep?.guest_name].filter(Boolean).join(' · ') }
+      }),
+      templateSlots: templateSlots ?? 0,
+    })
   }
 
   async function handleConfirmAction() {
     if (!actionTarget) return
-    const { user, action, tasks } = actionTarget
+    const { user, action, tasks, templateSlots } = actionTarget
     setModalLoading(true)
 
     // Reassign active tasks
@@ -284,8 +304,8 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
       }))
     }
 
-    // Also update task templates so future episodes assign to the new person
-    if (reassigneeId && updateTemplates) {
+    // Hand over template slots so future episodes assign to the new person
+    if (reassigneeId && templateSlots > 0) {
       await supabase.from('task_templates').update({ assignee_id: reassigneeId }).eq('assignee_id', user.id)
     }
 
@@ -538,8 +558,6 @@ function TeamTab({ currentUser, allUsers, taskCountByUser }: {
           otherUsers={otherActiveUsers}
           reassigneeId={reassigneeId}
           onReassigneeChange={setReassigneeId}
-          updateTemplates={updateTemplates}
-          onUpdateTemplatesChange={setUpdateTemplates}
           loading={modalLoading}
           onConfirm={handleConfirmAction}
           onCancel={() => setActionTarget(null)}
@@ -688,19 +706,23 @@ function UserRow({ user, isSelf, isAdmin, activeTasks, actionLoading, presenceSt
   )
 }
 
-function UserActionModal({ target, otherUsers, reassigneeId, onReassigneeChange, updateTemplates, onUpdateTemplatesChange, loading, onConfirm, onCancel }: {
+function UserActionModal({ target, otherUsers, reassigneeId, onReassigneeChange, loading, onConfirm, onCancel }: {
   target: ActionTarget
   otherUsers: User[]
   reassigneeId: string
   onReassigneeChange: (id: string) => void
-  updateTemplates: boolean
-  onUpdateTemplatesChange: (v: boolean) => void
   loading: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const { user, action, tasks } = target
+  const { user, action, tasks, templateSlots } = target
   const hasTasks = tasks.length > 0
+  const hasTemplates = templateSlots > 0
+  const needsReassign = hasTasks || hasTemplates
+  const what = [
+    hasTasks && `${tasks.length} unfinished task${tasks.length !== 1 ? 's' : ''} on live projects`,
+    hasTemplates && `${templateSlots} template slot${templateSlots !== 1 ? 's' : ''}`,
+  ].filter(Boolean).join(' and ')
   const isDelete = action === 'delete'
 
   // Close on Escape
@@ -740,14 +762,15 @@ function UserActionModal({ target, otherUsers, reassigneeId, onReassigneeChange,
             </div>
           )}
 
-          {hasTasks ? (
+          {needsReassign ? (
             <div className="space-y-3">
               <p className="text-sm text-[#aaa]">
-                {user.name} has <span className="text-white font-semibold">{tasks.length} active task{tasks.length !== 1 ? 's' : ''}</span>.
-                Reassign them before {isDelete ? 'deleting' : 'deactivating'}.
+                {user.name} has <span className="text-white font-semibold">{what}</span>.
+                Choose who takes them over before {isDelete ? 'deleting' : 'deactivating'}.
+                {!isDelete && ' Finished and archived work keeps their name.'}
               </p>
               <div>
-                <label className="text-[12px] text-[#888] mb-1.5 block font-medium">Reassign all tasks to</label>
+                <label className="text-[12px] text-[#888] mb-1.5 block font-medium">Hand over to</label>
                 <select
                   value={reassigneeId}
                   onChange={e => onReassigneeChange(e.target.value)}
@@ -760,39 +783,32 @@ function UserActionModal({ target, otherUsers, reassigneeId, onReassigneeChange,
                   ))}
                 </select>
               </div>
-              {/* Template update checkbox — only relevant when a reassignee is chosen */}
-              {reassigneeId && (
-                <label className="flex items-start gap-2.5 cursor-pointer select-none group">
-                  <input
-                    type="checkbox"
-                    checked={updateTemplates}
-                    onChange={e => onUpdateTemplatesChange(e.target.checked)}
-                    className="mt-0.5 accent-[#f7931a] w-3.5 h-3.5 shrink-0 cursor-pointer"
-                  />
-                  <span className="text-[13px] text-[#aaa] group-hover:text-white transition-colors leading-snug">
-                    Also update task templates
-                    <span className="block text-[11px] text-[#555] mt-0.5">
-                      Future episodes for all clients will assign these task slots to {otherUsers.find(u => u.id === reassigneeId)?.name ?? 'the new member'} instead
-                    </span>
-                  </span>
-                </label>
+              {hasTemplates && (
+                <p className="text-[11px] text-[#555] leading-snug">
+                  Future episodes will assign {user.name}&apos;s template slots to {otherUsers.find(u => u.id === reassigneeId)?.name ?? 'the new member'}.
+                </p>
               )}
 
               {/* Task list preview */}
-              <div className="max-h-[120px] overflow-y-auto space-y-1">
-                {tasks.map(t => (
-                  <div key={t.id} className="flex items-center gap-2 px-2 py-1 rounded" style={{ background: '#1a1a1a' }}>
-                    <span className="w-1 h-1 rounded-full bg-[#555] shrink-0" />
-                    <span className="text-[12px] text-[#888] truncate">{t.label}</span>
-                  </div>
-                ))}
-              </div>
+              {hasTasks && (
+                <div className="max-h-[140px] overflow-y-auto space-y-1">
+                  {tasks.map(t => (
+                    <div key={t.id} className="flex items-center gap-2 px-2 py-1 rounded" style={{ background: '#1a1a1a' }}>
+                      <span className="w-1 h-1 rounded-full bg-[#555] shrink-0" />
+                      <span className="text-[12px] text-[#888] truncate">
+                        {t.label}
+                        {t.episodeName && <span className="text-[#555]"> · {t.episodeName}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm text-[#aaa]">
               {isDelete
-                ? `${user.name} has no active tasks and will be permanently removed from the system.`
-                : `${user.name} has no active tasks. They will be prevented from logging in.`}
+                ? `${user.name} has no unfinished work and will be permanently removed from the system.`
+                : `${user.name} has no unfinished work. They will lose access immediately, and their name stays on past tasks.`}
             </p>
           )}
         </div>
@@ -809,7 +825,7 @@ function UserActionModal({ target, otherUsers, reassigneeId, onReassigneeChange,
           </button>
           <button
             onClick={onConfirm}
-            disabled={loading || (hasTasks && !reassigneeId)}
+            disabled={loading || (needsReassign && !reassigneeId)}
             className={cn(
               'flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-40 cursor-pointer',
               isDelete ? 'bg-[#ff3c00] hover:bg-[#e63600]' : 'bg-[#2a2a2a] hover:bg-[#333]',

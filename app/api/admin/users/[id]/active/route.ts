@@ -56,5 +56,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { error } = await admin.from('users').update({ active }).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
+  // Drop their browser push subscriptions so nothing reaches their devices,
+  // even if a sender skips the active check. They re-subscribe on reactivation
+  // when they next allow notifications.
+  if (!active) {
+    const { error: pushError } = await admin.from('push_subscriptions').delete().eq('user_id', id)
+    if (pushError) return NextResponse.json({ error: pushError.message }, { status: 400 })
+  }
+
   return NextResponse.json({ success: true })
 }

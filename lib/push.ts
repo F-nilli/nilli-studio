@@ -15,6 +15,12 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
     process.env.VAPID_PRIVATE_KEY!
   )
   const admin = createAdminClient()
+
+  // Never notify deactivated team members: payloads carry task and client
+  // names. Single choke point for every push sender in the app.
+  const { data: recipient } = await admin.from('users').select('active').eq('id', userId).maybeSingle()
+  if (!recipient || recipient.active === false) return
+
   const { data: subs } = await admin
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
