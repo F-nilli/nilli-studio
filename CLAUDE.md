@@ -26,7 +26,8 @@ Production management app for Nilli Studio video agency. Manages podcast episode
 - `app/api/` — API routes (admin, episodes, tasks, notifications, push, slack, cron endpoints). All routes other than the cron endpoints and `app/api/v1/*` require a logged-in session (`supabase.auth.getUser()` check).
 - `app/api/v1/` — external read-only API, see **External API** below
 - Auth pages (`/login`, `/signup`, etc.) live outside the `(auth)` group
-- `middleware.ts` wraps all routes via `lib/supabase/middleware.ts` to refresh sessions
+- `middleware.ts` wraps all routes via `lib/supabase/middleware.ts` to refresh sessions, and signs out any user whose `users.active` is false
+- Removing a team member = deactivate, not delete (tasks/comments reference users without cascade). `POST /api/admin/users/[id]/active` sets `active` and bans/unbans the Supabase Auth user; never toggle `active` directly from the client
 
 ## Supabase Clients
 
